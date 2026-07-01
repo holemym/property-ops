@@ -122,6 +122,14 @@ create policy "workspaces_insert_authenticated"
     )
   );
 
+-- No explicit WITH CHECK here; it defaults to the USING expression. That default
+-- is intentionally safe for THIS policy (unlike profiles_update_self): `id` is a
+-- primary key and cannot be changed by an UPDATE that keeps matching this row's
+-- own USING condition without also satisfying it post-update, and the only column
+-- gating the row here is `id = current_workspace_id()`, i.e. an OWNER/SUPER_ADMIN
+-- can only ever touch (and the check re-affirms) their OWN workspace row — there
+-- is no adjacent "escalation" column analogous to profiles.role/workspace_id to
+-- pin, since a workspace row doesn't reference "which workspace it belongs to."
 create policy "workspaces_update_owner"
   on public.workspaces for update
   using (
@@ -179,3 +187,25 @@ create policy "profiles_update_by_manager"
     workspace_id = public.current_workspace_id()
     and public.can_manage_users()
   );
+
+-- =============================================================================
+-- SMOKE TESTS — run these manually once a live Supabase project is connected,
+-- before trusting this migration in production. This checklist travels with the
+-- migration file itself (the plan's own checklist lives one repo up in
+-- `clauderoom` and is thinner — it omits cases 3 and 4 below, which are exactly
+-- the deviations most in need of empirical verification against a real DB):
+-- =============================================================================
+-- 1. New user (no workspace yet) can SELECT only their own profile row, and
+--    zero rows from `workspaces`.
+-- 2. User A (workspace X) cannot SELECT any row from `workspaces` or `profiles`
+--    belonging to workspace Y.
+-- 3. A user running `UPDATE profiles SET role = 'OWNER' WHERE id = auth.uid()`
+--    (or changing workspace_id) is REJECTED by RLS (0 rows affected / policy
+--    violation), even though they can still update full_name/phone/avatar_url
+--    on their own row.
+-- 4. An OPERATOR cannot UPDATE a co-worker's profile row (e.g. cannot
+--    deactivate or re-role another user in the same workspace).
+-- 5. An OWNER (or SUPER_ADMIN) CAN update a co-worker's profile row within
+--    their own workspace.
+-- 6. A user who already belongs to a workspace cannot INSERT a new row into
+--    `workspaces` (only workspace-less users or SUPER_ADMIN can).
