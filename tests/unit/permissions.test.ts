@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { can } from '@/lib/auth/permissions'
+import { can, requirePermission } from '@/lib/auth/permissions'
 
 describe('can', () => {
   it('allows OWNER to manage the workspace', () => {
@@ -26,5 +26,22 @@ describe('can', () => {
   it('grants SUPER_ADMIN every permission granted to OWNER', () => {
     expect(can('SUPER_ADMIN', 'workspace:manage')).toBe(true)
     expect(can('SUPER_ADMIN', 'users:manage')).toBe(true)
+  })
+
+  it('denies GUEST and VENDOR any portfolio permission', () => {
+    expect(can('GUEST', 'properties:read')).toBe(false)
+    expect(can('VENDOR', 'properties:read')).toBe(false)
+  })
+})
+
+describe('requirePermission', () => {
+  it('does not throw when the role has the permission', () => {
+    expect(() => requirePermission('OWNER', 'workspace:manage')).not.toThrow()
+  })
+
+  it('throws with a clear message when the role lacks the permission', () => {
+    expect(() => requirePermission('TENANT', 'properties:read')).toThrow(
+      'Role TENANT lacks permission properties:read'
+    )
   })
 })
