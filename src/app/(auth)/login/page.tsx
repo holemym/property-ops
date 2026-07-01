@@ -6,7 +6,7 @@ import { signInWithPassword, signInWithMagicLink, signInWithGoogle } from '../ac
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; magicLinkSent?: string }>
+  searchParams: Promise<{ error?: string; magicLinkSent?: string; confirmEmailSent?: string }>
 }) {
   const params = await searchParams
 
@@ -20,6 +20,11 @@ export default async function LoginPage({
       {params.magicLinkSent && (
         <p className="rounded-md bg-green-50 px-3 py-2 text-sm text-green-700">
           Check your email for a sign-in link.
+        </p>
+      )}
+      {params.confirmEmailSent && (
+        <p className="rounded-md bg-green-50 px-3 py-2 text-sm text-green-700">
+          Check your email to confirm your account.
         </p>
       )}
 

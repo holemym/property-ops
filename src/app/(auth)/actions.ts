@@ -3,6 +3,10 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 
+function redirectWithError(path: string, message: string): never {
+  redirect(`${path}?error=${encodeURIComponent(message)}`)
+}
+
 export async function signInWithPassword(formData: FormData) {
   const email = String(formData.get('email') ?? '')
   const password = String(formData.get('password') ?? '')
@@ -11,7 +15,7 @@ export async function signInWithPassword(formData: FormData) {
   const { error } = await supabase.auth.signInWithPassword({ email, password })
 
   if (error) {
-    redirect(`/login?error=${encodeURIComponent(error.message)}`)
+    redirectWithError('/login', error.message)
   }
   redirect('/dashboard')
 }
@@ -26,7 +30,7 @@ export async function signInWithMagicLink(formData: FormData) {
   })
 
   if (error) {
-    redirect(`/login?error=${encodeURIComponent(error.message)}`)
+    redirectWithError('/login', error.message)
   }
   redirect('/login?magicLinkSent=1')
 }
@@ -39,7 +43,7 @@ export async function signInWithGoogle() {
   })
 
   if (error || !data.url) {
-    redirect(`/login?error=${encodeURIComponent(error?.message ?? 'oauth_failed')}`)
+    redirectWithError('/login', error?.message ?? 'oauth_failed')
   }
   redirect(data.url)
 }
@@ -60,7 +64,7 @@ export async function signUpWithPassword(formData: FormData) {
   })
 
   if (error) {
-    redirect(`/signup?error=${encodeURIComponent(error.message)}`)
+    redirectWithError('/signup', error.message)
   }
-  redirect('/login?magicLinkSent=1')
+  redirect('/login?confirmEmailSent=1')
 }
