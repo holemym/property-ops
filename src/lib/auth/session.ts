@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { can, type Permission } from '@/lib/auth/permissions'
+import { assertPermission, type Permission } from '@/lib/auth/permissions'
 import type { Role } from '@/types/domain'
 
 export type CurrentUser = {
@@ -26,6 +26,9 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
     .eq('id', user.id)
     .single()
 
+  // Note: any Supabase error here (missing profile, network issue, etc.) is treated
+  // the same — falls through to redirect-to-login. Acceptable for MVP; revisit if this
+  // causes confusing "logged in but bounced to /login" reports once live.
   if (!profile) return null
 
   return {
@@ -50,10 +53,11 @@ export async function requireWorkspace(): Promise<CurrentUser & { workspaceId: s
   return user as CurrentUser & { workspaceId: string }
 }
 
+// Unlike requireUser/requireWorkspace (which redirect), a permission failure here
+// throws a plain Error, surfaced via Next.js's default error boundary. Revisit if
+// Server Actions need friendlier "you don't have permission" UX later.
 export async function requirePermission(permission: Permission): Promise<CurrentUser & { workspaceId: string }> {
   const user = await requireWorkspace()
-  if (!can(user.role, permission)) {
-    throw new Error(`Role ${user.role} lacks permission ${permission}`)
-  }
+  assertPermission(user.role, permission)
   return user
 }

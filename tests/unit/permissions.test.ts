@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { can, requirePermission } from '@/lib/auth/permissions'
+import { can, assertPermission } from '@/lib/auth/permissions'
 
 describe('can', () => {
   it('allows OWNER to manage the workspace', () => {
@@ -34,13 +34,13 @@ describe('can', () => {
   })
 })
 
-describe('requirePermission', () => {
+describe('assertPermission', () => {
   it('does not throw when the role has the permission', () => {
-    expect(() => requirePermission('OWNER', 'workspace:manage')).not.toThrow()
+    expect(() => assertPermission('OWNER', 'workspace:manage')).not.toThrow()
   })
 
   it('throws with a clear message when the role lacks the permission', () => {
-    expect(() => requirePermission('TENANT', 'properties:read')).toThrow(
+    expect(() => assertPermission('TENANT', 'properties:read')).toThrow(
       'Role TENANT lacks permission properties:read'
     )
   })

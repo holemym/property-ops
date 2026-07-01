@@ -34,7 +34,7 @@ export function can(role: Role, permission: Permission): boolean {
   return ROLE_PERMISSIONS[role]?.includes(permission) ?? false
 }
 
-export function requirePermission(role: Role, permission: Permission): void {
+export function assertPermission(role: Role, permission: Permission): void {
   if (!can(role, permission)) {
     throw new Error(`Role ${role} lacks permission ${permission}`)
   }
