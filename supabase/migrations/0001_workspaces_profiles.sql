@@ -1,5 +1,11 @@
 create extension if not exists "pgcrypto";
 
+-- WARNING: RLS is NOT enabled on workspaces/profiles until migration 0002 runs.
+-- Do not apply this migration alone against a live project with real credentials —
+-- Supabase auto-exposes public schema tables via PostgREST as soon as they exist,
+-- so without 0002 immediately following, any authenticated client could read/write
+-- every workspace's data.
+
 create type public.user_role as enum (
   'SUPER_ADMIN',
   'OWNER',
@@ -36,6 +42,8 @@ create table public.profiles (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+create index profiles_workspace_id_idx on public.profiles (workspace_id);
 
 create or replace function public.set_updated_at()
 returns trigger
