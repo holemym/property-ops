@@ -8,23 +8,14 @@ export type CreateWorkspaceInput = {
 
 export async function createWorkspaceAndAssignOwner(
   supabase: SupabaseClient,
-  userId: string,
   input: CreateWorkspaceInput
 ) {
-  const { data: workspace, error: workspaceError } = await supabase
-    .from('workspaces')
-    .insert({ name: input.name, currency: input.currency, language: input.language })
-    .select()
-    .single()
+  const { data: workspace, error } = await supabase.rpc('create_workspace_and_claim_owner', {
+    workspace_name: input.name,
+    workspace_currency: input.currency,
+    workspace_language: input.language,
+  })
 
-  if (workspaceError) throw workspaceError
-
-  const { error: profileError } = await supabase
-    .from('profiles')
-    .update({ workspace_id: workspace.id, role: 'OWNER' })
-    .eq('id', userId)
-
-  if (profileError) throw profileError
-
+  if (error) throw error
   return workspace
 }

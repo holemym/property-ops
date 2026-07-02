@@ -20,7 +20,7 @@ export async function createWorkspace(formData: FormData) {
   }
 
   const supabase = await createClient()
-  await createWorkspaceAndAssignOwner(supabase, user.id, parsed.data)
+  await createWorkspaceAndAssignOwner(supabase, parsed.data)
 
   redirect('/dashboard')
 }
