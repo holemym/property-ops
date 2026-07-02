@@ -7,7 +7,7 @@ import { workspaceFormSchema } from '@/lib/validation/workspace'
 import { createWorkspaceAndAssignOwner } from '@/lib/data/workspaces'
 
 export async function createWorkspace(formData: FormData) {
-  const user = await requireUser()
+  await requireUser()
 
   const parsed = workspaceFormSchema.safeParse({
     name: formData.get('name'),
