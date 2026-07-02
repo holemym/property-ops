@@ -6,6 +6,11 @@ export type CreateWorkspaceInput = {
   language: string
 }
 
+// Intentional exception to the query-builder pattern used by the rest of lib/data/*
+// (see properties.ts, units.ts, vendors.ts): claiming a workspace isn't scoped CRUD --
+// there's no workspace_id to filter by yet, and RLS can't safely allow a client-side
+// role/workspace_id self-update (see migration 0006). Don't copy this RPC-wrapper shape
+// for ordinary CRUD; use an explicit workspaceId parameter + supabase.from(...) instead.
 export async function createWorkspaceAndAssignOwner(
   supabase: SupabaseClient,
   input: CreateWorkspaceInput
