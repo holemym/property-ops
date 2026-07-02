@@ -38,6 +38,14 @@ begin
   set workspace_id = new_workspace.id, role = 'OWNER'
   where id = auth.uid();
 
+  if not found then
+    -- Should be unreachable: handle_new_user() (0001) guarantees every auth.users row
+    -- has a matching profiles row. Guard anyway so a missing profile can never leave an
+    -- orphaned, ownerless workspace behind -- raising here rolls back the insert above
+    -- too, since the whole function runs in one implicit transaction.
+    raise exception 'No profile row for current user';
+  end if;
+
   return new_workspace;
 end;
 $$;
