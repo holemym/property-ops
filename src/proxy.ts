@@ -14,7 +14,12 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(loginUrl)
   }
 
-  if (user && (path === '/login' || path === '/signup')) {
+  // Don't bounce a logged-in user off /login|/signup if they were sent there
+  // deliberately with an error to display (e.g. a deactivated user whose JWT is
+  // still valid but whose app access is revoked by requireUser). Otherwise they'd
+  // ping-pong: requireUser -> /login -> proxy -> /dashboard -> requireUser -> /login...
+  const hasError = request.nextUrl.searchParams.has('error')
+  if (user && !hasError && (path === '/login' || path === '/signup')) {
     const dashboardUrl = new URL('/dashboard', request.url)
     return NextResponse.redirect(dashboardUrl)
   }
