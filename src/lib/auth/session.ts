@@ -44,6 +44,18 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
 export async function requireUser(): Promise<CurrentUser> {
   const user = await getCurrentUser()
   if (!user) redirect('/login')
+  // Deactivated users keep a valid JWT until it expires, so getCurrentUser() still
+  // resolves them. Bounce them here — this is the single app-layer chokepoint that
+  // every gate flows through (requireWorkspace, requirePermission, and the (app)
+  // layout all call requireUser), so enforcing is_active once here covers every
+  // authenticated page. /login is a PUBLIC_PATH (see proxy.ts), so the redirect
+  // does not loop, and the login page renders the ?error message.
+  // NOTE: this is app-layer defense-in-depth; it does not revoke the Supabase Auth
+  // session itself (that would need auth.admin ban_duration — tracked in
+  // setUserActive). RLS + this check together are sufficient for now.
+  if (!user.isActive) {
+    redirect('/login?error=' + encodeURIComponent('Your account has been deactivated.'))
+  }
   return user
 }
 
