@@ -313,6 +313,21 @@ begin
 end;
 $$;
 
+-- SECURITY-CRITICAL: lock this SECURITY DEFINER function to server-side callers.
+-- Postgres grants EXECUTE to PUBLIC by default, and PostgREST auto-exposes public
+-- functions as RPCs — so without this revoke, ANY tenant could call
+-- supabase.rpc('log_ticket_event', {...}) and forge arbitrary audit events
+-- (fabricated TICKET_CLOSED, spoofed actor_user_id, framing another user),
+-- bypassing the manager-only ticket_events_insert_manager policy entirely and
+-- defeating the whole point of an append-only audit log. This function performs
+-- NO internal authorization by design (P3.4's server actions authorize before
+-- calling it via the service-role client, which is unaffected by this revoke).
+-- Contrast 0006's create_workspace_and_claim_owner, which IS granted to
+-- authenticated precisely because it self-authorizes internally; this one does not.
+revoke execute on function public.log_ticket_event(
+  uuid, uuid, public.ticket_event_type, uuid, public.actor_type, jsonb, jsonb, jsonb
+) from public;
+
 -- =============================================================================
 -- TABLE: public.ticket_comments  (PUBLIC / INTERNAL visibility)
 -- =============================================================================
@@ -506,8 +521,15 @@ create policy "comments_insert_manager"
 --     by ticket_events_ticket_fk / ticket_comments_ticket_fk (no tickets row has
 --     (Y's ticket id, X) as an (id, workspace_id) pair) — even if the WITH CHECK
 --     (which only inspects the child's own workspace_id) would have passed.
--- 15. log_ticket_event(): calling it (as the definer path P3.4 uses) appends an event
---     even for a tenant-initiated action, bypassing the manager-only insert policy;
---     the composite FK still forces the (ticket, workspace) pair to be consistent, so
---     it cannot plant a cross-workspace event.
+-- 15. log_ticket_event(): calling it (as the definer path P3.4 uses via the
+--     service-role client) appends an event even for a tenant-initiated action,
+--     bypassing the manager-only insert policy; the composite FK still forces the
+--     (ticket, workspace) pair to be consistent, so it cannot plant a cross-workspace
+--     event.
+-- 16. ADVERSARIAL — a TENANT calling supabase.rpc('log_ticket_event', {...}) directly
+--     is REJECTED with a permission-denied error: EXECUTE on log_ticket_event is
+--     REVOKED from public (not granted to authenticated), so PostgREST cannot invoke
+--     it for a tenant. This is what stops a tenant forging audit events (fabricated
+--     TICKET_CLOSED, spoofed actor) through the definer RPC. The service-role client
+--     P3.4 uses is unaffected (it is not subject to the revoke).
 -- =============================================================================
