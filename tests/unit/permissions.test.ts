@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { can, assertPermission } from '@/lib/auth/permissions'
+import { can, assertPermission, isTenantRole } from '@/lib/auth/permissions'
 
 describe('can', () => {
   it('allows OWNER to manage the workspace', () => {
@@ -62,6 +62,19 @@ describe('can', () => {
       expect(can(role, 'tickets:write')).toBe(false)
       expect(can(role, 'tickets:assign')).toBe(false)
       expect(can(role, 'tickets:comment-internal')).toBe(false)
+    }
+  })
+})
+
+describe('isTenantRole', () => {
+  it('is true for TENANT and GUEST (the portal self-service roles)', () => {
+    expect(isTenantRole('TENANT')).toBe(true)
+    expect(isTenantRole('GUEST')).toBe(true)
+  })
+
+  it('is false for every operator/accountant role and for VENDOR', () => {
+    for (const role of ['SUPER_ADMIN', 'OWNER', 'OPERATOR', 'ACCOUNTANT', 'VENDOR'] as const) {
+      expect(isTenantRole(role)).toBe(false)
     }
   })
 })

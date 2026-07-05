@@ -14,7 +14,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="flex h-screen">
-      <Sidebar />
+      <Sidebar role={user.role} />
       <div className="flex flex-1 flex-col">
         <TopNav userName={user.fullName || user.email} role={user.role} workspaceName={workspace?.name ?? ''} />
         <main className="flex-1 overflow-y-auto p-6">{children}</main>
