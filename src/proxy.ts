@@ -12,7 +12,12 @@ export async function proxy(request: NextRequest) {
   const { response, user } = await updateSession(request)
 
   const path = request.nextUrl.pathname
-  const isPublic = PUBLIC_PATHS.some((p) => path.startsWith(p))
+  // Exact-or-subpath match, NOT a bare prefix: a public path `p` matches `p` itself or any
+  // `p/...` subpath, but never a sibling that merely shares the prefix. A loose
+  // `startsWith(p)` would make `/login-history` public via `/login`, or a future `/jobs*`
+  // route public via `/job` — a latent footgun in the security-critical route gate. Closing
+  // the whole class here, not just for `/job`.
+  const isPublic = PUBLIC_PATHS.some((p) => path === p || path.startsWith(p + '/'))
 
   if (!user && !isPublic) {
     const loginUrl = new URL('/login', request.url)
