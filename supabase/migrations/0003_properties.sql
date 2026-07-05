@@ -3,7 +3,21 @@
 -- =============================================================================
 -- Adds the first Phase 2 domain table, `public.properties`, plus its two
 -- supporting enums (property_type, entity_status). This is the TEMPLATE that the
--- units (0018) and vendors (0021) migrations copy, so it is deliberately explicit.
+-- future units and vendors migrations copy, so it is deliberately explicit.
+--
+-- COPIER GUIDANCE: "units" and "vendors" are plan TASK numbers (0018 / 0021 in the
+-- plan text), NOT migration filenames. The actual migration files land AFTER 0008
+-- in lexical apply order (the next free numbers, e.g. 0009 / 0010) — number them
+-- by their apply position, not by the plan task id.
+--
+-- SHARED TYPE WARNING: `public.entity_status` (defined below) is a SHARED enum used
+-- by properties, units, vendors, and every other Phase 2/3 domain table. It is
+-- created HERE, once. Do NOT re-create it in the units/vendors migrations — a naive
+-- copy of this file that leaves the `create type public.entity_status ...` line in
+-- will fail loudly on apply ("type already exists"), which is the correct, fail-fast
+-- outcome; just delete that line from the copy and REUSE the existing type. The
+-- per-table `property_type` enum, by contrast, is table-specific — units/vendors get
+-- their own analogous enum if they need one.
 --
 -- RLS is enabled in THIS SAME FILE, immediately after the table is created — not
 -- split into a later migration. This is the hard-learned lesson from 0001/0002:
@@ -14,9 +28,14 @@
 -- All helper functions used below (set_updated_at, current_workspace_id,
 -- current_role, is_workspace_manager) already exist from 0001/0002 and are REUSED
 -- here — they are NOT redefined. Lexical apply order is 0001 -> 0002 -> 0003 ->
--- 0006 -> 0007, so every dependency this file needs is already in place, and
+-- 0006 -> 0007 -> 0008, so every dependency this file needs is already in place, and
 -- nothing in 0006/0007 (which only touch workspaces/profiles) conflicts with 0003
 -- being applied between 0002 and 0006.
+--
+-- NOTE: 0008 later re-defines is_workspace_manager() (via create or replace) to also
+-- require the caller be is_active. The policies below reference the function by name
+-- and evaluate its CURRENT body per query, so once 0008 applies, a deactivated
+-- manager is blocked from these INSERT/UPDATE policies with no change to this file.
 -- =============================================================================
 
 create type public.property_type as enum (
@@ -39,6 +58,15 @@ create table public.properties (
   postal_code text not null,
   country text not null,
   property_type public.property_type not null default 'OTHER',
+  -- `notes`: WORKSPACE-VISIBLE free text. Under the open-select design below
+  -- (properties_select_workspace gates on membership, NOT role), this column is
+  -- readable by TENANT / GUEST / VENDOR sessions hitting PostgREST directly. Do NOT
+  -- put internal-only remarks here — no door codes, owner phone numbers, or tenant
+  -- assessments. When Phase 3 needs manager-private remarks, add a SEPARATE
+  -- structure (e.g. an `internal_notes` column or table with its own manager-only
+  -- RLS), rather than silently widening this column's audience assumptions. The
+  -- future units migration's free-text fields inherit the same rule: workspace-wide
+  -- readable, so internal remarks go in a separate manager-gated place.
   notes text,
   status public.entity_status not null default 'ACTIVE',
   created_at timestamptz not null default now(),
@@ -95,13 +123,29 @@ create policy "properties_select_workspace"
 -- is_workspace_manager(), which deliberately EXCLUDES ACCOUNTANT), and only within
 -- their own workspace. ACCOUNTANT gets read-only, matching properties:read-without
 -- -write in the permission matrix.
-create policy "properties_write_manager"
+--
+-- SUPER_ADMIN NOTE: unlike the SELECT policy above, these WRITE policies grant NO
+-- platform override. A platform SUPER_ADMIN has workspace_id = NULL, so although
+-- is_workspace_manager() returns true for them, the `workspace_id = current_workspace_id()`
+-- conjunct evaluates `workspace_id = NULL` -> NULL -> rejected (three-valued logic,
+-- same as 0002). This is INTENTIONAL and fail-closed: SUPER_ADMIN's platform reach
+-- is READ-ONLY oversight (it appears only in the SELECT policy); writing to a
+-- workspace's properties requires actual membership in that workspace. A SUPER_ADMIN
+-- who genuinely needs to write joins the workspace (gets a non-NULL workspace_id).
+create policy "properties_insert_manager"
   on public.properties for insert
   with check (workspace_id = public.current_workspace_id() and public.is_workspace_manager());
 
+-- Explicit WITH CHECK (not relying on the implicit default). WITH CHECK re-validates
+-- the NEW row, so an `UPDATE ... SET workspace_id = <other workspace>` is rejected:
+-- the post-update workspace_id would no longer equal current_workspace_id(). Postgres
+-- would default WITH CHECK to the USING expression here and get the same result, but
+-- an implicit load-bearing default does not survive being copied into the next domain
+-- table's migration, so it is spelled out — the template teaches the safe pattern.
 create policy "properties_update_manager"
   on public.properties for update
-  using (workspace_id = public.current_workspace_id() and public.is_workspace_manager());
+  using (workspace_id = public.current_workspace_id() and public.is_workspace_manager())
+  with check (workspace_id = public.current_workspace_id() and public.is_workspace_manager());
 
 -- No DELETE policy — intentional. RLS default-denies any command without a
 -- matching policy, so DELETE is closed to everyone through the API. Deletion is
@@ -124,4 +168,12 @@ create policy "properties_update_manager"
 --    app layer; this is by design (RLS = isolation boundary, matrix = role UX).
 -- 5. No user (any role) can DELETE a property through the API — there is no DELETE
 --    policy, so RLS default-denies it. Archiving is done via UPDATE status.
+-- 6. A manager in workspace Y attempting `INSERT INTO properties (..., workspace_id)
+--    VALUES (..., <workspace X's id>)` is REJECTED by the insert WITH CHECK (the NEW
+--    row's workspace_id != current_workspace_id()) — no cross-workspace row planting.
+-- 7. A manager in workspace X attempting
+--    `UPDATE properties SET workspace_id = <workspace Y's id> WHERE ...` (against a
+--    row they legitimately own in X) is REJECTED by the update WITH CHECK — no
+--    moving a row out of one's own workspace into another. (Cases 6 & 7 are the
+--    WITH-CHECK behaviors most in need of live-DB verification.)
 -- =============================================================================

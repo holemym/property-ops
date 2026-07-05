@@ -40,6 +40,12 @@ as $$
   select workspace_id from public.profiles where id = auth.uid()
 $$;
 
+-- RESERVED-KEYWORD CAUTION: `current_role` is a reserved SQL keyword (a built-in
+-- that returns the current Postgres ROLE name). These helpers only resolve to the
+-- APP role because every call site schema-qualifies the name: `public.current_role()`.
+-- A bare `current_role()` (or `current_role`) in a future policy would silently bind
+-- to the SQL built-in and return the database role, not the app role — a quiet,
+-- fail-OPEN bug. Always write `public.current_role()`. (Comment-only note.)
 create or replace function public.current_role()
 returns public.user_role
 language sql
