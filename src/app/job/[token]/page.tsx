@@ -1,7 +1,13 @@
 import { createServiceClient } from '@/lib/supabase/service'
 import { getValidVendorJob } from '@/lib/data/vendor-tokens'
+import { ATTACHMENTS_BUCKET } from '@/lib/data/attachments'
 import { Button } from '@/components/ui/button'
-import { acceptJobAction, declineJobAction, completeJobAction } from './actions'
+import {
+  acceptJobAction,
+  declineJobAction,
+  completeJobAction,
+  uploadVendorProofAction,
+} from './actions'
 
 // The vendor secure-link PUBLIC page (P3.8). OUTSIDE the (app) group — vendors have NO
 // session, no app shell, no requireWorkspace. Reachable without auth (/job is in
@@ -15,6 +21,53 @@ export const dynamic = 'force-dynamic'
 
 function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString()
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+// The whitelisted attachment shape the vendor may see for THIS ticket. Explicit columns
+// only (never select('*')) and scoped to the token's workspace + ticket — the vendor can
+// never see another ticket's files. Loaded via the SERVICE client (no vendor session) and
+// signed for short-lived download; a failed sign just omits that row's link.
+type VendorAttachment = {
+  id: string
+  file_name: string
+  file_size: number
+  attachment_type: string
+  storage_path: string
+}
+
+async function loadVendorAttachments(
+  service: ReturnType<typeof createServiceClient>,
+  workspaceId: string,
+  ticketId: string
+): Promise<{ att: VendorAttachment; url: string | null }[]> {
+  const { data, error } = await service
+    .from('attachments')
+    .select('id, file_name, file_size, attachment_type, storage_path')
+    .eq('workspace_id', workspaceId)
+    .eq('ticket_id', ticketId)
+    .order('created_at', { ascending: true })
+  if (error || !data) return []
+  const rows = data as VendorAttachment[]
+  return Promise.all(
+    rows.map(async (att) => {
+      let url: string | null = null
+      try {
+        const signed = await service.storage
+          .from(ATTACHMENTS_BUCKET)
+          .createSignedUrl(att.storage_path, 60)
+        url = signed.data?.signedUrl ?? null
+      } catch {
+        url = null
+      }
+      return { att, url }
+    })
+  )
 }
 
 // The whitelisted PUBLIC-comment shape the vendor may see. Explicit columns only — NEVER
@@ -66,6 +119,11 @@ export default async function VendorJobPage({
   if (!job) return <InvalidLinkPage />
 
   const comments = await loadPublicComments(service, job.token.workspace_id, job.token.ticket_id)
+  const attachments = await loadVendorAttachments(
+    service,
+    job.token.workspace_id,
+    job.token.ticket_id
+  )
 
   const accepted = Boolean(job.token.accepted_at)
   const declined = Boolean(job.token.declined_at)
@@ -75,6 +133,7 @@ export default async function VendorJobPage({
   const boundAccept = acceptJobAction.bind(null, token)
   const boundDecline = declineJobAction.bind(null, token)
   const boundComplete = completeJobAction.bind(null, token)
+  const boundUploadProof = uploadVendorProofAction.bind(null, token)
 
   return (
     <main className="mx-auto flex min-h-full max-w-2xl flex-col gap-8 px-6 py-12">
@@ -124,6 +183,38 @@ export default async function VendorJobPage({
         </section>
       )}
 
+      {/* Attachments for THIS ticket only — signed download links (private bucket). */}
+      {attachments.length > 0 && (
+        <section className="flex flex-col gap-3">
+          <h2 className="text-sm font-semibold">Attachments</h2>
+          <ul className="flex flex-col gap-2">
+            {attachments.map(({ att, url }) => (
+              <li
+                key={att.id}
+                className="flex flex-wrap items-center gap-2 rounded-md border p-3 text-sm"
+              >
+                <span className="font-medium">{att.file_name}</span>
+                <span className="rounded-md border px-2 py-0.5 text-xs text-muted-foreground">
+                  {att.attachment_type}
+                </span>
+                <span className="text-muted-foreground">{formatBytes(att.file_size)}</span>
+                {url ? (
+                  <a
+                    href={url}
+                    download={att.file_name}
+                    className="ml-auto underline underline-offset-2"
+                  >
+                    Download
+                  </a>
+                ) : (
+                  <span className="ml-auto text-muted-foreground">Link unavailable</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       {/* Actions, gated by lifecycle state */}
       <section className="flex flex-col gap-3">
         {pending && (
@@ -142,8 +233,21 @@ export default async function VendorJobPage({
         {accepted && !completed && !declined && (
           <div className="flex flex-col gap-3">
             <p className="text-sm text-muted-foreground">
-              You accepted this job. Mark it complete when the work is done.
+              You accepted this job. Upload proof of work (photos or an invoice), then mark it
+              complete when the work is done.
             </p>
+            <form action={boundUploadProof} encType="multipart/form-data" className="flex flex-wrap items-center gap-2">
+              <input
+                type="file"
+                name="file"
+                accept="image/jpeg,image/png,image/webp,application/pdf"
+                required
+                className="text-sm"
+              />
+              <Button type="submit" variant="outline">
+                Upload proof
+              </Button>
+            </form>
             <form action={boundComplete}>
               <Button type="submit">Mark complete</Button>
             </form>

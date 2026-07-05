@@ -69,3 +69,5 @@ export type TicketEventType =
 export type CommentVisibility = 'PUBLIC' | 'INTERNAL'
 
 export type CommentType = 'MESSAGE' | 'SYSTEM_NOTE' | 'AI_NOTE'
+
+export type AttachmentType = 'PHOTO' | 'INVOICE' | 'RECEIPT' | 'CONTRACT' | 'REPORT' | 'OTHER'

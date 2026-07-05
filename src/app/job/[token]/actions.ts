@@ -11,6 +11,12 @@ import {
 } from '@/lib/data/vendor-tokens'
 import { updateTicketStatus, assignTicket } from '@/lib/data/tickets'
 import { appendTicketEvent } from '@/lib/data/ticket-events'
+import {
+  ATTACHMENTS_BUCKET,
+  buildStoragePath,
+  createAttachmentRecord,
+} from '@/lib/data/attachments'
+import { validateUploadFile } from '@/lib/attachments/upload'
 import type { TicketStatus } from '@/types/domain'
 
 // =============================================================================
@@ -178,6 +184,101 @@ export async function completeJobAction(token: string) {
     })
   } catch (e) {
     console.error('Failed to log vendor complete event for ticket', job.token.ticket_id, e)
+  }
+
+  revalidatePath(jobPath(token))
+  redirect(jobPath(token))
+}
+
+// -----------------------------------------------------------------------------
+// uploadVendorProofAction (P3.9) — a vendor attaches proof-of-work (a photo of the
+// completed repair, an invoice PDF) to THIS ticket via their secure link.
+//
+// SECURITY: identical trust model to the lifecycle actions above. The raw token is the
+// ENTIRE auth boundary; we re-validate it FIRST (getValidVendorJob) and derive the
+// workspace_id/ticket_id ONLY from the validated token row — NEVER from client input. A
+// vendor has no session, so Storage RLS cannot key on them; the token validation IS the
+// authorization and the SERVICE client (server-side only) performs the byte upload +
+// metadata insert with uploaded_by_user_id = NULL (there is no vendor profile). Same
+// posture as vendor accept/decline/complete.
+//
+// STATE GUARD: proof upload is allowed while the job is LIVE for this vendor — the token
+// must be accepted and not yet declined or completed. Uploading before accepting, or
+// after a terminal decline/complete (both of which revoke the token so getValidVendorJob
+// would already return null), is rejected. This mirrors completeJobAction's "accepted,
+// not declined/completed" gate — proof belongs to work in progress.
+// -----------------------------------------------------------------------------
+export async function uploadVendorProofAction(token: string, formData: FormData) {
+  const service = createServiceClient()
+  const job = await requireJob(service, token)
+
+  // Must have accepted the job, and not already have a terminal decline/complete. (A
+  // declined/completed token is revoked, so requireJob would have redirected already; this
+  // is belt-and-suspenders + gives the "accept first" message for a fresh token.)
+  if (!job.token.accepted_at) {
+    redirectJobError(token, 'Accept the job before uploading proof of work.')
+  }
+  if (job.token.declined_at || job.token.completed_at) {
+    redirectJobError(token, 'This job has already been responded to.')
+  }
+
+  const file = formData.get('file')
+  if (!(file instanceof File)) {
+    redirectJobError(token, 'Please choose a file to upload.')
+  }
+  const validation = validateUploadFile(file)
+  if (!validation.ok) {
+    redirectJobError(token, validation.error)
+  }
+
+  // SERVER-BUILT path from the VALIDATED token's workspace_id + ticket_id (NEVER client
+  // input). Filename sanitized inside buildStoragePath.
+  const storagePath = buildStoragePath(job.token.workspace_id, job.token.ticket_id, file.name)
+
+  // Upload via the SERVICE client — the vendor has no session for Storage RLS to key on;
+  // the token validation above IS the authorization.
+  try {
+    const { error: uploadError } = await service.storage
+      .from(ATTACHMENTS_BUCKET)
+      .upload(storagePath, file, { contentType: validation.mime, upsert: false })
+    if (uploadError) throw uploadError
+  } catch (e) {
+    redirectJobError(token, e instanceof Error ? e.message : 'Could not upload the file.')
+  }
+
+  // Metadata row via the SERVICE client, uploaded_by_user_id = NULL (no vendor profile).
+  try {
+    await createAttachmentRecord(service, {
+      workspaceId: job.token.workspace_id,
+      ticketId: job.token.ticket_id,
+      uploadedByUserId: null,
+      fileName: file.name,
+      storagePath,
+      fileType: validation.mime,
+      fileSize: validation.size,
+      attachmentType: validation.type,
+    })
+  } catch (e) {
+    redirectJobError(token, e instanceof Error ? e.message : 'Could not save the attachment.')
+  }
+
+  // Best-effort audit event (actor null, AUTOMATION, metadata.via='vendor_token').
+  try {
+    await appendTicketEvent(service, {
+      workspaceId: job.token.workspace_id,
+      ticketId: job.token.ticket_id,
+      eventType: 'ATTACHMENT_UPLOADED',
+      actorUserId: null,
+      actorType: 'AUTOMATION',
+      metadataJson: {
+        via: 'vendor_token',
+        fileName: file.name,
+        fileType: validation.mime,
+        fileSize: validation.size,
+      },
+    })
+  } catch (e) {
+    console.error('Failed to log vendor proof upload event for ticket', job.token.ticket_id, e)
   }
 
   revalidatePath(jobPath(token))

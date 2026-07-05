@@ -7,15 +7,23 @@ import { getTicket } from '@/lib/data/tickets'
 import { getProperty } from '@/lib/data/properties'
 import { getUnit } from '@/lib/data/units'
 import { listTicketComments } from '@/lib/data/ticket-comments'
+import { listAttachments, ATTACHMENTS_BUCKET } from '@/lib/data/attachments'
 import { TicketStatusBadge } from '@/components/tickets/TicketBadges'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { addPublicCommentAction } from '../actions'
+import { uploadAttachmentAction } from '@/app/(app)/tickets/attachment-actions'
 
 function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString()
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
 export default async function PortalTicketDetailPage({
@@ -47,7 +55,27 @@ export default async function PortalTicketDetailPage({
     listTicketComments(supabase, user.workspaceId, id),
   ])
 
+  // Attachments on the tenant's own ticket + short-lived signed download URLs (private
+  // bucket). RLS scopes the list to this ticket; a failed sign just omits that link.
+  const attachments = await listAttachments(supabase, user.workspaceId, id)
+  const signedAttachments = await Promise.all(
+    attachments.map(async (att) => {
+      let url: string | null = null
+      try {
+        const { data } = await supabase.storage
+          .from(ATTACHMENTS_BUCKET)
+          .createSignedUrl(att.storage_path, 60)
+        url = data?.signedUrl ?? null
+      } catch {
+        url = null
+      }
+      return { att, url }
+    })
+  )
+
   const boundAddComment = addPublicCommentAction.bind(null, id)
+  // Tenants can always attach to their OWN ticket (they own it) — no canWrite gate.
+  const boundUploadAttachment = uploadAttachmentAction.bind(null, id, 'tenant')
 
   return (
     <div className="flex flex-col gap-8">
@@ -118,6 +146,55 @@ export default async function PortalTicketDetailPage({
           <Textarea id="body" name="body" required />
           <Button type="submit" size="sm" className="self-start">
             Send
+          </Button>
+        </form>
+      </section>
+
+      {/* Attachments — the tenant's own ticket. Photos/PDFs of the issue, with signed
+          download links + an always-available upload form (they own the ticket). */}
+      <section className="flex flex-col gap-4">
+        <h2 className="text-sm font-semibold">Attachments</h2>
+        {signedAttachments.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No attachments yet.</p>
+        ) : (
+          <ul className="flex flex-col gap-2">
+            {signedAttachments.map(({ att, url }) => (
+              <li
+                key={att.id}
+                className="flex flex-wrap items-center gap-2 rounded-md border p-3 text-sm"
+              >
+                <span className="font-medium">{att.file_name}</span>
+                <Badge variant="outline">{att.attachment_type}</Badge>
+                <span className="text-muted-foreground">{formatBytes(att.file_size)}</span>
+                {url ? (
+                  <a
+                    href={url}
+                    download={att.file_name}
+                    className="ml-auto underline underline-offset-2"
+                  >
+                    Download
+                  </a>
+                ) : (
+                  <span className="ml-auto text-muted-foreground">Link unavailable</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+        <form
+          action={boundUploadAttachment}
+          encType="multipart/form-data"
+          className="flex flex-wrap items-center gap-2"
+        >
+          <input
+            type="file"
+            name="file"
+            accept="image/jpeg,image/png,image/webp,application/pdf"
+            required
+            className="text-sm"
+          />
+          <Button type="submit" size="sm">
+            Upload
           </Button>
         </form>
       </section>

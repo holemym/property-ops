@@ -13,6 +13,8 @@ import { getUnit } from '@/lib/data/units'
 import { getVendor, listVendors } from '@/lib/data/vendors'
 import { listTicketEvents, type TicketEvent } from '@/lib/data/ticket-events'
 import { listTicketComments } from '@/lib/data/ticket-comments'
+import { listAttachments, ATTACHMENTS_BUCKET, type Attachment } from '@/lib/data/attachments'
+import { uploadAttachmentAction } from '../attachment-actions'
 import { nextStatuses } from '@/lib/tickets/status-flow'
 import { TicketStatusBadge, TicketPriorityBadge } from '@/components/tickets/TicketBadges'
 import { Badge } from '@/components/ui/badge'
@@ -50,6 +52,28 @@ function formatDateTime(iso: string): string {
 
 function formatMoney(value: number): string {
   return new Intl.NumberFormat(undefined, { style: 'currency', currency: 'EUR' }).format(value)
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+// Generate a short-lived signed URL for a private-bucket attachment. Returns null (link
+// omitted) if signing fails, so one bad path never crashes the page render.
+async function signAttachmentUrl(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  att: Attachment
+): Promise<string | null> {
+  try {
+    const { data } = await supabase.storage
+      .from(ATTACHMENTS_BUCKET)
+      .createSignedUrl(att.storage_path, 60)
+    return data?.signedUrl ?? null
+  } catch {
+    return null
+  }
 }
 
 // Compact old→new rendering for the audit timeline. STATUS_CHANGED carries {status},
@@ -115,6 +139,14 @@ export default async function TicketDetailPage({
   if (assignedOperator?.full_name) nameById.set(assignedOperator.id, assignedOperator.full_name)
   const displayName = (userId: string | null) =>
     userId ? nameById.get(userId) ?? userId : 'System'
+
+  // Attachments + short-lived signed download URLs (private bucket). Signing per-render is
+  // fine (60s TTL); if a single path fails to sign we skip its link rather than crash.
+  const attachments = await listAttachments(supabase, user.workspaceId, id)
+  const signedAttachments = await Promise.all(
+    attachments.map(async (att) => ({ att, url: await signAttachmentUrl(supabase, att) }))
+  )
+  const boundUploadAttachment = uploadAttachmentAction.bind(null, id, 'manager')
 
   const transitions = nextStatuses(ticket.status)
   const boundTransition = transitionTicketStatusAction.bind(null, id)
@@ -350,6 +382,56 @@ export default async function TicketDetailPage({
                 Post comment
               </Button>
             </div>
+          </form>
+        )}
+      </section>
+
+      {/* 5b. Attachments — list with signed download links + upload form (canWrite). */}
+      <section className="flex flex-col gap-4">
+        <h2 className="text-sm font-semibold">Attachments</h2>
+        {signedAttachments.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No attachments yet.</p>
+        ) : (
+          <ul className="flex flex-col gap-2">
+            {signedAttachments.map(({ att, url }) => (
+              <li
+                key={att.id}
+                className="flex flex-wrap items-center gap-2 rounded-md border p-3 text-sm"
+              >
+                <span className="font-medium">{att.file_name}</span>
+                <Badge variant="outline">{att.attachment_type}</Badge>
+                <span className="text-muted-foreground">{formatBytes(att.file_size)}</span>
+                {url ? (
+                  <a
+                    href={url}
+                    download={att.file_name}
+                    className="ml-auto underline underline-offset-2"
+                  >
+                    Download
+                  </a>
+                ) : (
+                  <span className="ml-auto text-muted-foreground">Link unavailable</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+        {canWrite && (
+          <form
+            action={boundUploadAttachment}
+            encType="multipart/form-data"
+            className="flex flex-wrap items-center gap-2"
+          >
+            <input
+              type="file"
+              name="file"
+              accept="image/jpeg,image/png,image/webp,application/pdf"
+              required
+              className="text-sm"
+            />
+            <Button type="submit" size="sm">
+              Upload
+            </Button>
           </form>
         )}
       </section>
