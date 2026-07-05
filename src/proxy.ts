@@ -1,7 +1,12 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { updateSession } from '@/lib/supabase/middleware'
 
-const PUBLIC_PATHS = ['/login', '/signup', '/auth/callback']
+// /job/<token> is the vendor secure-link route (P3.8): vendors have NO session, so the
+// proxy must NOT bounce them to /login. Adding /job here ONLY makes the route reachable
+// without auth — it is NOT a security relaxation: the route still REQUIRES a valid
+// capability token, which the page/actions validate (hash + expiry + not-revoked) via the
+// service client. An invalid/expired/revoked token shows the generic "invalid" page.
+const PUBLIC_PATHS = ['/login', '/signup', '/auth/callback', '/job']
 
 export async function proxy(request: NextRequest) {
   const { response, user } = await updateSession(request)

@@ -18,6 +18,7 @@ import { TicketStatusBadge, TicketPriorityBadge } from '@/components/tickets/Tic
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
+import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import type { TicketEventType } from '@/types/domain'
 import {
@@ -25,6 +26,7 @@ import {
   assignOperatorAction,
   assignVendorAction,
   addTicketCommentAction,
+  generateVendorLinkAction,
 } from '../actions'
 
 const EVENT_LABELS: Record<TicketEventType, string> = {
@@ -72,10 +74,10 @@ export default async function TicketDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>
-  searchParams: Promise<{ error?: string }>
+  searchParams: Promise<{ error?: string; joblink?: string }>
 }) {
   const { id } = await params
-  const { error } = await searchParams
+  const { error, joblink } = await searchParams
   // Managers + accountant reach this page (all hold tickets:read). Tenants lack
   // tickets:read and get their own portal in P3.7.
   const user = await requirePermission('tickets:read')
@@ -119,6 +121,13 @@ export default async function TicketDetailPage({
   const boundAssignOperator = assignOperatorAction.bind(null, id)
   const boundAssignVendor = assignVendorAction.bind(null, id)
   const boundAddComment = addTicketCommentAction.bind(null, id)
+  const boundGenerateVendorLink = generateVendorLinkAction.bind(null, id)
+
+  // The one-time vendor job link, if the manager just generated one (present only in
+  // their own URL for this render — see generateVendorLinkAction's docstring).
+  const jobLinkUrl = joblink
+    ? `${process.env.NEXT_PUBLIC_SITE_URL}/job/${joblink}`
+    : null
 
   return (
     <div className="flex flex-col gap-8">
@@ -253,6 +262,36 @@ export default async function TicketDetailPage({
               Save vendor
             </Button>
           </form>
+        </section>
+      )}
+
+      {/* Vendor secure job link (canAssign only). Only offered once a vendor is
+          assigned — the link is a capability FOR that vendor. */}
+      {canAssign && ticket.assigned_vendor_id && (
+        <section className="flex flex-col gap-3 rounded-lg border p-4">
+          <h2 className="text-sm font-semibold">Vendor job link</h2>
+          {jobLinkUrl ? (
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="joblink">Share this link with the vendor</Label>
+              <Input id="joblink" readOnly value={jobLinkUrl} />
+              <p className="text-xs text-muted-foreground">
+                The vendor can view and act on this job without logging in. It expires in 7
+                days. Share it only with the assigned vendor.
+              </p>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2">
+              <p className="text-sm text-muted-foreground">
+                Generate a no-login link the assigned vendor can use to accept, decline, or
+                complete this job.
+              </p>
+              <form action={boundGenerateVendorLink}>
+                <Button type="submit" variant="outline" size="sm">
+                  Generate vendor job link
+                </Button>
+              </form>
+            </div>
+          )}
         </section>
       )}
 

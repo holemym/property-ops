@@ -20,6 +20,7 @@ import {
 } from '@/lib/data/tickets'
 import { appendTicketEvent } from '@/lib/data/ticket-events'
 import { createTicketComment } from '@/lib/data/ticket-comments'
+import { createVendorJobToken } from '@/lib/data/vendor-tokens'
 import { getProperty } from '@/lib/data/properties'
 import { getUnit } from '@/lib/data/units'
 import { getVendor } from '@/lib/data/vendors'
@@ -267,6 +268,85 @@ export async function assignVendorAction(id: string, formData: FormData) {
 
   revalidatePath(detailPath)
   redirect(detailPath)
+}
+
+/**
+ * Generate a vendor SECURE JOB LINK for an assigned vendor (P3.8).
+ *
+ * Gates on tickets:assign (only a manager who can dispatch vendors may mint a link). The
+ * ticket must already have an assigned_vendor_id — you can only hand a link to the vendor
+ * that is actually on the job — and that vendor must be in-workspace (getVendor). We then
+ * mint a hashed capability token (createVendorJobToken via the SERVICE-ROLE client, the
+ * only principal that may write the RLS-no-policy vendor_job_tokens table), and hand the
+ * ONE-TIME raw token back to the manager by redirecting to the detail page with a
+ * ?joblink= param, where the page renders the copyable full link.
+ *
+ * ONE-TIME-URL EXPOSURE — DELIBERATE, DOCUMENTED: the raw token appears once in the
+ * MANAGER'S OWN browser URL (and their history). This is acceptable: the manager is a
+ * trusted principal generating the link for themselves to copy and send. It is NOT stored
+ * anywhere (only the hash is), and it is never shown to any other user. Phase 4 replaces
+ * this with email delivery, which removes the URL exposure entirely.
+ */
+export async function generateVendorLinkAction(id: string) {
+  const user = await requirePermission('tickets:assign')
+  const detailPath = `/tickets/${id}`
+
+  const supabase = await createClient()
+  const ticket = await getTicket(supabase, user.workspaceId, id)
+  if (!ticket) {
+    redirectWithError(detailPath, 'Ticket not found.')
+  }
+
+  // A link is a capability FOR THE ASSIGNED VENDOR. No vendor assigned → nothing to
+  // authorize; make the manager assign one first.
+  if (!ticket.assigned_vendor_id) {
+    redirectWithError(detailPath, 'Assign a vendor before generating a job link.')
+  }
+
+  // Confirm the assigned vendor is really in this workspace (defense-in-depth over the
+  // composite FK — the token insert would also reject a cross-workspace pair, but we give
+  // a clean error rather than a raw FK failure).
+  const vendor = await getVendor(supabase, user.workspaceId, ticket.assigned_vendor_id)
+  if (!vendor) {
+    redirectWithError(detailPath, 'Assigned vendor is not in this workspace.')
+  }
+
+  let rawToken: string
+  try {
+    // SERVICE-ROLE client: vendor_job_tokens has RLS enabled with zero policies, so the
+    // authenticated (RLS-bound) client cannot write it. Authorization already happened
+    // above (requirePermission + in-workspace ticket + in-workspace vendor).
+    const result = await createVendorJobToken(createServiceClient(), {
+      workspaceId: user.workspaceId,
+      ticketId: id,
+      vendorId: ticket.assigned_vendor_id,
+      createdByUserId: user.id,
+      expiresInDays: 7,
+    })
+    rawToken = result.rawToken
+  } catch (e) {
+    // redirectWithError throws NEXT_REDIRECT, so rawToken is definitely assigned past here.
+    redirectWithError(detailPath, e instanceof Error ? e.message : 'Could not generate job link.')
+  }
+
+  // Best-effort audit event. We reuse the existing VENDOR_ASSIGNED enum value (no new
+  // TicketEventType invented) with metadata marking the link-generation action, mirroring
+  // the best-effort logging pattern used by the other detail actions.
+  try {
+    await appendTicketEvent(createServiceClient(), {
+      workspaceId: user.workspaceId,
+      ticketId: id,
+      eventType: 'VENDOR_ASSIGNED',
+      actorUserId: user.id,
+      actorType: 'USER',
+      metadataJson: { action: 'job_link_generated', vendorId: ticket.assigned_vendor_id },
+    })
+  } catch (e) {
+    console.error('Failed to log job_link_generated event for ticket', id, e)
+  }
+
+  // The raw token is returned to the manager ONCE via their own URL (see docstring).
+  redirect(`${detailPath}?joblink=${encodeURIComponent(rawToken)}`)
 }
 
 export async function addTicketCommentAction(id: string, formData: FormData) {
