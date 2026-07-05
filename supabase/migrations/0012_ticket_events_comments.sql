@@ -111,6 +111,16 @@ as $$
   )
 $$;
 
+-- NOTE: user_owns_ticket is INTENTIONALLY left callable by public/authenticated
+-- (not revoked). It is invoked INSIDE the comment RLS policies, which Postgres
+-- evaluates with the privileges of the querying role (the tenant / authenticated
+-- role) — SECURITY DEFINER changes privileges inside the body but the caller still
+-- needs EXECUTE to invoke it. Revoking it would make tenant SELECTs on
+-- ticket_comments fail with "permission denied for function". This mirrors the
+-- 0002 RLS helpers (current_role/current_workspace_id/is_workspace_manager), which
+-- are likewise left callable. Exposure is benign: it only reveals whether the
+-- CALLER owns a ticket id they already supply — no write, no cross-user leak.
+
 -- =============================================================================
 -- TABLE: public.ticket_events  (APPEND-ONLY AUDIT LOG)
 -- =============================================================================
@@ -324,9 +334,20 @@ $$;
 -- calling it via the service-role client, which is unaffected by this revoke).
 -- Contrast 0006's create_workspace_and_claim_owner, which IS granted to
 -- authenticated precisely because it self-authorizes internally; this one does not.
+--
+-- We revoke from public AND explicitly grant to service_role: revoking from public
+-- removes the default grant for EVERY role (including service_role, which for a
+-- brand-new function had only the implicit PUBLIC grant), so the explicit grant is
+-- what keeps the intended server-side caller working. P3.4 REQUIREMENT: the
+-- ticket-create / comment paths must invoke log_ticket_event via the SERVICE-ROLE
+-- client (the same client inviteUser uses), NOT the tenant's authenticated client —
+-- the authenticated role can no longer call it, which is the whole point.
 revoke execute on function public.log_ticket_event(
   uuid, uuid, public.ticket_event_type, uuid, public.actor_type, jsonb, jsonb, jsonb
 ) from public;
+grant execute on function public.log_ticket_event(
+  uuid, uuid, public.ticket_event_type, uuid, public.actor_type, jsonb, jsonb, jsonb
+) to service_role;
 
 -- =============================================================================
 -- TABLE: public.ticket_comments  (PUBLIC / INTERNAL visibility)
@@ -528,8 +549,10 @@ create policy "comments_insert_manager"
 --     event.
 -- 16. ADVERSARIAL — a TENANT calling supabase.rpc('log_ticket_event', {...}) directly
 --     is REJECTED with a permission-denied error: EXECUTE on log_ticket_event is
---     REVOKED from public (not granted to authenticated), so PostgREST cannot invoke
---     it for a tenant. This is what stops a tenant forging audit events (fabricated
---     TICKET_CLOSED, spoofed actor) through the definer RPC. The service-role client
---     P3.4 uses is unaffected (it is not subject to the revoke).
+--     REVOKED from public and granted only to service_role, so PostgREST cannot
+--     invoke it for a tenant (authenticated). This is what stops a tenant forging
+--     audit events (fabricated TICKET_CLOSED, spoofed actor) through the definer RPC.
+-- 17. The P3.4 server-side path calling log_ticket_event via the SERVICE-ROLE client
+--     STILL succeeds (service_role has the explicit grant) — verify a manager AND a
+--     tenant ticket-create both produce their TICKET_CREATED event through that path.
 -- =============================================================================
