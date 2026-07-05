@@ -145,11 +145,18 @@ describe('vendor token DB wrappers', () => {
       'status',
       'title',
     ])
-    const flat = JSON.stringify(job!)
-    expect(flat).not.toContain('500') // estimated_cost
-    expect(flat).not.toContain('480') // actual_cost
-    expect(flat).not.toContain('op-secret') // assigned_operator_id
-    expect(flat).not.toContain('tenant-secret') // created_by_user_id
+    // Value-substring belt-and-suspenders over the SANITIZED TICKET VIEW only — the
+    // structural key assertion above is the primary, complete guarantee. Scope to
+    // job.ticket, NOT the whole job: job.token carries the high-entropy SHA-256
+    // token_hash, and a 64-char hex string contains arbitrary digit runs ('500'/'480')
+    // with meaningful probability, which made the old whole-object check FLAKY (passing
+    // or failing per random token). The sensitive values all live on the ticket row, so
+    // the ticket view is the correct — and deterministic — leak surface.
+    const flatTicket = JSON.stringify(job!.ticket)
+    expect(flatTicket).not.toContain('500') // estimated_cost
+    expect(flatTicket).not.toContain('480') // actual_cost
+    expect(flatTicket).not.toContain('op-secret') // assigned_operator_id
+    expect(flatTicket).not.toContain('tenant-secret') // created_by_user_id
   })
 
   it('getValidVendorJob returns null for an unknown token (no oracle)', async () => {
