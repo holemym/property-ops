@@ -1,9 +1,11 @@
 import { Badge } from '@/components/ui/badge'
+import type { EntityStatus, UnitStatus } from '@/types/domain'
 
-// status is typed as `string` (not e.g. EntityStatus | UnitStatus) because those enums
-// don't exist yet -- Task 13 (properties) and Task 18 (units) introduce them. Tighten this
-// to a union of both once they land, so mismatched/misspelled status values get caught at
-// compile time instead of silently falling through to the default gray tone below.
+// The prop is tightened to `EntityStatus | UnitStatus` (both enums now exist, from
+// Task 13 and Task 18) so mismatched/misspelled status values get caught at compile
+// time instead of silently falling through to the default gray tone below. The TONE
+// map covers every member of both unions: ACTIVE/ARCHIVED (EntityStatus) and
+// OCCUPIED/VACANT/MAINTENANCE/BLOCKED (UnitStatus).
 const TONE: Record<string, string> = {
   ACTIVE: 'bg-green-100 text-green-800 dark:bg-green-500/20 dark:text-green-400',
   ARCHIVED: 'bg-gray-100 text-gray-600 dark:bg-gray-500/20 dark:text-gray-400',
@@ -13,7 +15,7 @@ const TONE: Record<string, string> = {
   BLOCKED: 'bg-red-100 text-red-800 dark:bg-red-500/20 dark:text-red-400',
 }
 
-export function StatusBadge({ status }: { status: string }) {
+export function StatusBadge({ status }: { status: EntityStatus | UnitStatus }) {
   return (
     <Badge
       className={TONE[status] ?? 'bg-gray-100 text-gray-700 dark:bg-gray-500/20 dark:text-gray-400'}
