@@ -61,5 +61,14 @@ export function createFakeSupabaseClient(seed: Record<string, Row[]> = {}) {
     return api
   }
 
-  return { from(table: string) { return builder(table) }, _tables: tables } as any
+  // Records every rpc call so tests can assert on the funnel. Added minimally for
+  // P3.4's appendTicketEvent (log_ticket_event service-role RPC): the real client
+  // returns { data, error }; here we just record (name, params) and resolve ok.
+  const rpcCalls: Array<{ name: string; params: any }> = []
+  function rpc(name: string, params: any) {
+    rpcCalls.push({ name, params })
+    return Promise.resolve({ data: null, error: null })
+  }
+
+  return { from(table: string) { return builder(table) }, rpc, _tables: tables, _rpcCalls: rpcCalls } as any
 }
