@@ -5,6 +5,7 @@ const NAV = [
   { href: '/properties', label: 'Properties' },
   { href: '/units', label: 'Units' },
   { href: '/vendors', label: 'Vendors' },
+  { href: '/tickets', label: 'Tickets' },
 ]
 
 export function Sidebar() {
