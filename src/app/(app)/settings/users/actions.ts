@@ -4,7 +4,7 @@ import { createClient as createServerClient } from '@/lib/supabase/server'
 import { createClient as createServiceClient } from '@supabase/supabase-js'
 import { requirePermission } from '@/lib/auth/session'
 import { revalidatePath } from 'next/cache'
-import { redirect } from 'next/navigation'
+import { redirectWithError } from '@/lib/redirect-with-error'
 import { z } from 'zod'
 import { AUTH_CALLBACK_URL } from '@/lib/urls'
 
@@ -34,7 +34,7 @@ export async function inviteUser(formData: FormData) {
   })
 
   if (!parsed.success) {
-    redirect('/settings/users?error=' + encodeURIComponent(parsed.error.issues[0].message))
+    redirectWithError('/settings/users', parsed.error.issues[0].message)
   }
 
   const { email, role } = parsed.data
@@ -66,15 +66,23 @@ export async function setUserActive(formData: FormData) {
   const isActive = formData.get('isActive') === 'true'
 
   if (userId === admin.id) {
-    redirect('/settings/users?error=' + encodeURIComponent('You cannot deactivate your own account.'))
+    redirectWithError('/settings/users', 'You cannot deactivate your own account.')
   }
 
   const supabase = await createServerClient()
-  await supabase
+  const { error } = await supabase
     .from('profiles')
     .update({ is_active: isActive })
     .eq('id', userId)
     .eq('workspace_id', admin.workspaceId)
+    .select('id')
+    .single()
+
+  // .single() errors on 0 matched rows too, so a foreign-workspace or unknown
+  // userId surfaces as an error instead of silently "succeeding" in the UI.
+  if (error) {
+    redirectWithError('/settings/users', 'Could not update that user.')
+  }
 
   // Future hardening: this flips the app-level is_active flag (enforced by
   // requireUser + RLS), but does NOT revoke the user's live Supabase Auth

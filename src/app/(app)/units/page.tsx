@@ -15,7 +15,12 @@ export default async function UnitsPage({
 }) {
   const user = await requirePermission('units:read')
   const canWrite = can(user.role, 'units:write')
-  const { propertyId } = await searchParams
+  const { propertyId: rawPropertyId } = await searchParams
+  // property_id is a uuid column: a garbage ?propertyId= would 400 at PostgREST
+  // and crash into the error boundary. Ignore non-uuid values instead (same
+  // approach as the vendors page's enum-validated ?category filter).
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+  const propertyId = rawPropertyId && UUID_RE.test(rawPropertyId) ? rawPropertyId : undefined
   const supabase = await createClient()
   const [units, properties] = await Promise.all([
     listUnits(supabase, user.workspaceId, { propertyId }),

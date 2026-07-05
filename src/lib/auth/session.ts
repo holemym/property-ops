@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { redirectWithError } from '@/lib/redirect-with-error'
 import { assertPermission, type Permission } from '@/lib/auth/permissions'
 import type { Role } from '@/types/domain'
 
@@ -54,7 +55,7 @@ export async function requireUser(): Promise<CurrentUser> {
   // session itself (that would need auth.admin ban_duration — tracked in
   // setUserActive). RLS + this check together are sufficient for now.
   if (!user.isActive) {
-    redirect('/login?error=' + encodeURIComponent('Your account has been deactivated.'))
+    redirectWithError('/login', 'Your account has been deactivated.')
   }
   return user
 }
