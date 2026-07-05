@@ -19,6 +19,11 @@ function parseUnitForm(formData: FormData) {
     sizeM2: (formData.get('sizeM2') as string | null) || null,
     roomCount: (formData.get('roomCount') as string | null) || null,
     occupancyType: formData.get('occupancyType'),
+    // The create form omits the Status select (new units always start VACANT — see
+    // createUnitAction), so status is absent there; coalesce to VACANT so the required
+    // enum parses. The edit form submits a real status, which updateUnitAction passes
+    // through. createUnitAction discards parsed status regardless.
+    status: formData.get('status') ?? 'VACANT',
     accessNotes: (formData.get('accessNotes') as string | null) || null,
     wifiInfo: (formData.get('wifiInfo') as string | null) || null,
     heatingInfo: (formData.get('heatingInfo') as string | null) || null,
@@ -47,13 +52,26 @@ export async function createUnitAction(formData: FormData) {
   if (!property) {
     redirectWithError('/units/new', 'Selected property was not found in your workspace.')
   }
+  // Archived-property backstop: even if a stale/hand-crafted propertyId points at an
+  // archived property (the new-unit page only lists ACTIVE ones, but the payload is
+  // client-controlled), refuse to attach a unit to it.
+  if (property.status !== 'ACTIVE') {
+    redirectWithError('/units/new', 'Cannot add a unit to an archived property.')
+  }
 
   let unitId: string
   try {
+    // Create intentionally forces status VACANT: a brand-new unit starting OCCUPIED /
+    // MAINTENANCE / BLOCKED is odd, and the create form offers no Status select. We
+    // therefore discard the parsed `status` here (status becomes editable only on the
+    // edit path via updateUnitAction). createUnit also defaults status to 'VACANT' when
+    // it is omitted.
+    const { status, ...createData } = parsed.data
+    void status
     const unit = await createUnit(supabase, {
       workspaceId: user.workspaceId,
       propertyId: propertyId!,
-      ...parsed.data,
+      ...createData,
     })
     unitId = unit.id
   } catch (e) {

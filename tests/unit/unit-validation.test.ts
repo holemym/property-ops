@@ -6,8 +6,27 @@ describe('unitFormSchema', () => {
     const result = unitFormSchema.safeParse({
       label: 'Top floor apartment',
       occupancyType: 'LONG_TERM',
+      status: 'VACANT',
     })
     expect(result.success).toBe(true)
+  })
+
+  it('accepts a valid status', () => {
+    const result = unitFormSchema.safeParse({
+      label: 'Unit 1',
+      occupancyType: 'LONG_TERM',
+      status: 'MAINTENANCE',
+    })
+    expect(result.success).toBe(true)
+  })
+
+  it('rejects an invalid status', () => {
+    const result = unitFormSchema.safeParse({
+      label: 'Unit 1',
+      occupancyType: 'LONG_TERM',
+      status: 'NOT_A_STATUS',
+    })
+    expect(result.success).toBe(false)
   })
 
   it('rejects a missing label', () => {
@@ -37,6 +56,7 @@ describe('unitFormSchema', () => {
     const result = unitFormSchema.safeParse({
       label: 'Unit 1',
       occupancyType: 'LONG_TERM',
+      status: 'VACANT',
       floor: null,
       staircase: null,
       sizeM2: null,
@@ -54,13 +74,13 @@ describe('unitFormSchema', () => {
   })
 
   it('coerces numeric strings and rejects non-positive sizes', () => {
-    const ok = unitFormSchema.safeParse({ label: 'U', occupancyType: 'LONG_TERM', sizeM2: '55.5', roomCount: '3' })
+    const ok = unitFormSchema.safeParse({ label: 'U', occupancyType: 'LONG_TERM', status: 'VACANT', sizeM2: '55.5', roomCount: '3' })
     expect(ok.success).toBe(true)
     if (ok.success) {
       expect(ok.data.sizeM2).toBe(55.5)
       expect(ok.data.roomCount).toBe(3)
     }
-    const bad = unitFormSchema.safeParse({ label: 'U', occupancyType: 'LONG_TERM', sizeM2: -5 })
+    const bad = unitFormSchema.safeParse({ label: 'U', occupancyType: 'LONG_TERM', status: 'VACANT', sizeM2: -5 })
     expect(bad.success).toBe(false)
   })
 })

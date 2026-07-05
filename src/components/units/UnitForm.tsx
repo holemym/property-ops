@@ -2,11 +2,12 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
-import { occupancyTypeEnum } from '@/lib/validation/unit'
+import { occupancyTypeEnum, unitStatusEnum } from '@/lib/validation/unit'
 import type { Unit } from '@/lib/data/units'
 import type { Property } from '@/lib/data/properties'
 
 const OCCUPANCY_TYPES = occupancyTypeEnum.options
+const UNIT_STATUSES = unitStatusEnum.options
 
 export function UnitForm({
   action,
@@ -23,9 +24,10 @@ export function UnitForm({
 }) {
   // The property select is disabled when editing (defaultValues present): a unit's
   // property_id is immutable after creation. Moving a unit across properties is out of
-  // MVP scope, and the composite FK would also require workspace consistency. The
-  // hidden input keeps property_id available in the form payload for the create path;
-  // on edit the update action never reads it.
+  // MVP scope, and the composite FK would also require workspace consistency.
+  // property_id payload: on CREATE the select is enabled, so it submits property_id
+  // (createUnitAction reads it); on EDIT the select is disabled, so it submits nothing —
+  // and updateUnitAction never reads property_id anyway.
   const isEdit = Boolean(defaultValues?.id)
 
   return (
@@ -104,6 +106,27 @@ export function UnitForm({
           ))}
         </select>
       </div>
+
+      {/* Status is editable only on the edit path — new units always start VACANT
+          (createUnitAction forces it), so the create form omits this select. */}
+      {isEdit && (
+        <div>
+          <Label htmlFor="status">Status</Label>
+          <select
+            id="status"
+            name="status"
+            defaultValue={defaultValues?.status ?? 'VACANT'}
+            className="h-9 w-full rounded-md border px-2 text-sm"
+            disabled={readOnly}
+          >
+            {UNIT_STATUSES.map((status) => (
+              <option key={status} value={status}>
+                {status.replace(/_/g, ' ')}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       <div>
         <Label htmlFor="accessNotes">Access notes</Label>

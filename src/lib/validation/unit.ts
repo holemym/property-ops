@@ -14,6 +14,10 @@ export const unitFormSchema = z.object({
   sizeM2: z.coerce.number().positive().nullable().optional(),
   roomCount: z.coerce.number().positive().nullable().optional(),
   occupancyType: occupancyTypeEnum,
+  // Editable only on the edit path (createUnitAction ignores it and forces VACANT on
+  // create). The form supplies a select defaultValue rather than the schema carrying a
+  // default, so this stays a required enum here.
+  status: unitStatusEnum,
   accessNotes: z.string().nullable().optional(),
   wifiInfo: z.string().nullable().optional(),
   heatingInfo: z.string().nullable().optional(),
