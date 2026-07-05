@@ -10,6 +10,10 @@ export type Permission =
   | 'vendors:write'
   | 'users:invite'
   | 'users:manage'
+  | 'tickets:read'
+  | 'tickets:write'
+  | 'tickets:assign'
+  | 'tickets:comment-internal'
 
 const MANAGER_PERMISSIONS: Permission[] = [
   'properties:read',
@@ -18,6 +22,13 @@ const MANAGER_PERMISSIONS: Permission[] = [
   'units:write',
   'vendors:read',
   'vendors:write',
+  // Managers (OPERATOR + OWNER/SUPER_ADMIN via ADMIN_PERMISSIONS) get the full
+  // ticket surface. tickets:read is also granted explicitly to ACCOUNTANT below
+  // for read-only oversight (per P3.1 RLS tickets_select_manager_or_accountant).
+  'tickets:read',
+  'tickets:write',
+  'tickets:assign',
+  'tickets:comment-internal',
 ]
 
 const ADMIN_PERMISSIONS: Permission[] = [
@@ -31,7 +42,7 @@ const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   SUPER_ADMIN: ADMIN_PERMISSIONS,
   OWNER: ADMIN_PERMISSIONS,
   OPERATOR: [...MANAGER_PERMISSIONS],
-  ACCOUNTANT: ['properties:read', 'units:read', 'vendors:read'],
+  ACCOUNTANT: ['properties:read', 'units:read', 'vendors:read', 'tickets:read'],
   TENANT: [],
   GUEST: [],
   VENDOR: [],

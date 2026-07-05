@@ -32,6 +32,38 @@ describe('can', () => {
     expect(can('GUEST', 'properties:read')).toBe(false)
     expect(can('VENDOR', 'properties:read')).toBe(false)
   })
+
+  it('grants OPERATOR all four ticket permissions', () => {
+    expect(can('OPERATOR', 'tickets:read')).toBe(true)
+    expect(can('OPERATOR', 'tickets:write')).toBe(true)
+    expect(can('OPERATOR', 'tickets:assign')).toBe(true)
+    expect(can('OPERATOR', 'tickets:comment-internal')).toBe(true)
+  })
+
+  it('grants OWNER and SUPER_ADMIN all four ticket permissions', () => {
+    for (const role of ['OWNER', 'SUPER_ADMIN'] as const) {
+      expect(can(role, 'tickets:read')).toBe(true)
+      expect(can(role, 'tickets:write')).toBe(true)
+      expect(can(role, 'tickets:assign')).toBe(true)
+      expect(can(role, 'tickets:comment-internal')).toBe(true)
+    }
+  })
+
+  it('grants ACCOUNTANT tickets:read only (read-only oversight)', () => {
+    expect(can('ACCOUNTANT', 'tickets:read')).toBe(true)
+    expect(can('ACCOUNTANT', 'tickets:write')).toBe(false)
+    expect(can('ACCOUNTANT', 'tickets:assign')).toBe(false)
+    expect(can('ACCOUNTANT', 'tickets:comment-internal')).toBe(false)
+  })
+
+  it('denies TENANT, GUEST and VENDOR every ticket matrix permission', () => {
+    for (const role of ['TENANT', 'GUEST', 'VENDOR'] as const) {
+      expect(can(role, 'tickets:read')).toBe(false)
+      expect(can(role, 'tickets:write')).toBe(false)
+      expect(can(role, 'tickets:assign')).toBe(false)
+      expect(can(role, 'tickets:comment-internal')).toBe(false)
+    }
+  })
 })
 
 describe('assertPermission', () => {
