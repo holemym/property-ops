@@ -49,3 +49,23 @@ export type TicketStatus =
   | 'RESOLVED'
   | 'CLOSED'
   | 'CANCELLED'
+
+export type ActorType = 'USER' | 'SYSTEM' | 'AI' | 'AUTOMATION'
+
+export type TicketEventType =
+  | 'TICKET_CREATED'
+  | 'STATUS_CHANGED'
+  | 'PRIORITY_CHANGED'
+  | 'CATEGORY_CHANGED'
+  | 'OPERATOR_ASSIGNED'
+  | 'VENDOR_ASSIGNED'
+  | 'COMMENT_ADDED'
+  | 'ATTACHMENT_UPLOADED'
+  | 'AI_CLASSIFICATION_GENERATED'
+  | 'EXPENSE_LINKED'
+  | 'INVOICE_UPLOADED'
+  | 'TICKET_CLOSED'
+
+export type CommentVisibility = 'PUBLIC' | 'INTERNAL'
+
+export type CommentType = 'MESSAGE' | 'SYSTEM_NOTE' | 'AI_NOTE'
