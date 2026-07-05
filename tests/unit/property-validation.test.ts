@@ -23,4 +23,16 @@ describe('propertyFormSchema', () => {
     })
     expect(result.success).toBe(false)
   })
+  it('accepts null for the optional addressLine2 and notes fields', () => {
+    const result = propertyFormSchema.safeParse({
+      name: 'Sunset Apartments', addressLine1: '1 Main St', city: 'Vienna',
+      postalCode: '1010', country: 'AT', propertyType: 'APARTMENT_BUILDING',
+      addressLine2: null, notes: null,
+    })
+    expect(result.success).toBe(true)
+    if (result.success) {
+      expect(result.data.addressLine2).toBeNull()
+      expect(result.data.notes).toBeNull()
+    }
+  })
 })

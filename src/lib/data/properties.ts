@@ -50,12 +50,12 @@ export type CreatePropertyInput = {
   workspaceId: string
   name: string
   addressLine1: string
-  addressLine2?: string
+  addressLine2?: string | null
   city: string
   postalCode: string
   country: string
   propertyType: PropertyType
-  notes?: string
+  notes?: string | null
 }
 
 export async function createProperty(

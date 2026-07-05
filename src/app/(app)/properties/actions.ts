@@ -12,12 +12,12 @@ function parsePropertyForm(formData: FormData) {
   return propertyFormSchema.safeParse({
     name: formData.get('name'),
     addressLine1: formData.get('addressLine1'),
-    addressLine2: formData.get('addressLine2') || undefined,
+    addressLine2: (formData.get('addressLine2') as string | null) || null,
     city: formData.get('city'),
     postalCode: formData.get('postalCode'),
     country: formData.get('country'),
     propertyType: formData.get('propertyType'),
-    notes: formData.get('notes') || undefined,
+    notes: (formData.get('notes') as string | null) || null,
   })
 }
 

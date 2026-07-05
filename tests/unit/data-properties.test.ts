@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { createFakeSupabaseClient } from '../helpers/fake-supabase'
-import { listProperties, getProperty, createProperty, archiveProperty } from '@/lib/data/properties'
+import { listProperties, getProperty, createProperty, updateProperty, archiveProperty } from '@/lib/data/properties'
 
 const WORKSPACE_A = 'workspace-a'
 const WORKSPACE_B = 'workspace-b'
@@ -39,6 +39,20 @@ describe('properties data access', () => {
     expect(created.workspace_id).toBe(WORKSPACE_A)
     const listed = await listProperties(client, WORKSPACE_A)
     expect(listed.map((p) => p.name)).toContain('New Building')
+  })
+
+  it('clears an optional field when updated with null', async () => {
+    const created = await createProperty(client, {
+      workspaceId: WORKSPACE_A, name: 'Notable Building', addressLine1: '1 Main St',
+      city: 'Vienna', postalCode: '1010', country: 'AT', propertyType: 'APARTMENT_BUILDING',
+      notes: 'old note',
+    })
+    expect(created.notes).toBe('old note')
+
+    await updateProperty(client, WORKSPACE_A, created.id, { notes: null })
+
+    const after = await getProperty(client, WORKSPACE_A, created.id)
+    expect(after?.notes).toBeNull()
   })
 
   it('archives a property by id within the workspace', async () => {

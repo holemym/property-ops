@@ -1,3 +1,4 @@
+import { requirePermission } from '@/lib/auth/session'
 import { PropertyForm } from '@/components/properties/PropertyForm'
 import { createPropertyAction } from '../actions'
 
@@ -6,6 +7,7 @@ export default async function NewPropertyPage({
 }: {
   searchParams: Promise<{ error?: string }>
 }) {
+  await requirePermission('properties:write')
   const { error } = await searchParams
 
   return (
