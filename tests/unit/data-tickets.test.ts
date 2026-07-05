@@ -110,9 +110,21 @@ describe('tickets data access', () => {
   })
 
   it('stamps closed_at when transitioning to CLOSED', async () => {
+    // t-3 seeds as IN_PROGRESS; walk the real chain to RESOLVED then CLOSED so the
+    // compare-and-swap's `.eq('status', currentStatus)` predicate matches at each step
+    // (rather than relying on prior-test state).
+    await updateTicketStatus(client, WS_A, 't-3', 'RESOLVED', 'IN_PROGRESS')
     const updated = await updateTicketStatus(client, WS_A, 't-3', 'CLOSED', 'RESOLVED')
     expect(updated.status).toBe('CLOSED')
     expect(updated.closed_at).toBeTruthy()
+  })
+
+  it('rejects a stale transition when the DB status no longer matches (compare-and-swap)', async () => {
+    // t-3 is IN_PROGRESS; a caller who thinks it is still TRIAGE (stale view) supplies a
+    // legal-from-TRIAGE next status, but the CAS predicate matches zero rows → error.
+    await expect(
+      updateTicketStatus(client, WS_A, 't-3', 'ASSIGNED', 'TRIAGE')
+    ).rejects.toThrow()
   })
 
   it('throws on an illegal status transition (NEW -> CLOSED)', async () => {

@@ -140,8 +140,21 @@ export async function updateTicketStatus(
   const now = new Date().toISOString()
   if (nextStatus === 'RESOLVED') payload.resolved_at = now
   if (nextStatus === 'CLOSED') payload.closed_at = now
+  // Compare-and-swap: the `.eq('status', currentStatus)` predicate makes the UPDATE
+  // atomic against concurrent writers. If another transaction changed the status
+  // between the caller's read and this write, zero rows match, .single() errors, and
+  // the caller surfaces a drift error — closing the TOCTOU window the app-layer
+  // expectedCurrentStatus check alone left open (two divergent-but-legal concurrent
+  // transitions from the same state can no longer both commit; last write no longer
+  // silently wins). Also transition-validated by assertTransition above.
   const { data, error } = await supabase
-    .from('tickets').update(payload).eq('workspace_id', workspaceId).eq('id', id).select().single()
+    .from('tickets')
+    .update(payload)
+    .eq('workspace_id', workspaceId)
+    .eq('id', id)
+    .eq('status', currentStatus)
+    .select()
+    .single()
   if (error) throw error
   return data as Ticket
 }
