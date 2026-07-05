@@ -12,3 +12,14 @@ export type EntityStatus = 'ACTIVE' | 'ARCHIVED'
 
 export type OccupancyType = 'LONG_TERM' | 'SHORT_TERM' | 'VACANT' | 'MIXED'
 export type UnitStatus = 'OCCUPIED' | 'VACANT' | 'MAINTENANCE' | 'BLOCKED'
+
+export type VendorCategory =
+  | 'PLUMBING'
+  | 'HEATING'
+  | 'ELECTRICAL'
+  | 'CLEANING'
+  | 'LOCKSMITH'
+  | 'APPLIANCE_REPAIR'
+  | 'HANDYMAN'
+  | 'PEST_CONTROL'
+  | 'OTHER'
