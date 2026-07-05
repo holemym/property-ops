@@ -23,3 +23,29 @@ export type VendorCategory =
   | 'HANDYMAN'
   | 'PEST_CONTROL'
   | 'OTHER'
+
+export type TicketCategory =
+  | 'PLUMBING'
+  | 'HEATING'
+  | 'ELECTRICAL'
+  | 'CLEANING'
+  | 'APPLIANCE'
+  | 'INTERNET'
+  | 'KEYS'
+  | 'DAMAGE'
+  | 'NOISE'
+  | 'BILLING'
+  | 'OTHER'
+
+export type TicketPriority = 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT'
+
+export type TicketStatus =
+  | 'NEW'
+  | 'TRIAGE'
+  | 'WAITING_FOR_INFO'
+  | 'ASSIGNED'
+  | 'SCHEDULED'
+  | 'IN_PROGRESS'
+  | 'RESOLVED'
+  | 'CLOSED'
+  | 'CANCELLED'
