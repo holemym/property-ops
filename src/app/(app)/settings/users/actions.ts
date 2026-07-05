@@ -6,6 +6,7 @@ import { requirePermission } from '@/lib/auth/session'
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { z } from 'zod'
+import { AUTH_CALLBACK_URL } from '@/lib/urls'
 
 const inviteSchema = z.object({
   email: z.string().email('Enter a valid email address.'),
@@ -40,7 +41,7 @@ export async function inviteUser(formData: FormData) {
 
   const admin_client = serviceClient()
   const { data, error } = await admin_client.auth.admin.inviteUserByEmail(email, {
-    redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`,
+    redirectTo: AUTH_CALLBACK_URL,
   })
 
   if (error) throw error

@@ -3,8 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { redirectWithError } from '@/lib/redirect-with-error'
-
-const AUTH_CALLBACK_URL = `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`
+import { AUTH_CALLBACK_URL } from '@/lib/urls'
 
 export async function signInWithPassword(formData: FormData) {
   const email = String(formData.get('email') ?? '')
