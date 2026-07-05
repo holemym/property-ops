@@ -3,7 +3,7 @@
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
-import { createClient as createServiceClient } from '@supabase/supabase-js'
+import { createServiceClient } from '@/lib/supabase/service'
 import { requirePermission } from '@/lib/auth/session'
 import { redirectWithError } from '@/lib/redirect-with-error'
 import { ticketCreateSchema } from '@/lib/validation/ticket'
@@ -11,19 +11,6 @@ import { createTicket } from '@/lib/data/tickets'
 import { appendTicketEvent } from '@/lib/data/ticket-events'
 import { getProperty } from '@/lib/data/properties'
 import { getUnit } from '@/lib/data/units'
-
-// Service-role client: mirrors src/app/(app)/settings/users/actions.ts. Required for
-// event logging because migration 0012 REVOKEs EXECUTE on log_ticket_event from
-// `authenticated` and grants it only to `service_role` — the RLS-bound authenticated
-// client would fail with "permission denied for function". SUPABASE_SERVICE_ROLE_KEY is
-// server-only (never NEXT_PUBLIC) and only ever read inside this 'use server' file, so
-// it is never shipped to the client bundle.
-function serviceClient() {
-  return createServiceClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
-}
 
 export async function createTicketAction(formData: FormData) {
   // Operator create path — managers only. Tenant self-report is P3.7 with a different
@@ -88,7 +75,7 @@ export async function createTicketAction(formData: FormData) {
   // A stricter, atomic design would move this into a DB AFTER-INSERT trigger — tracked
   // for Phase 4. This block is the template P3.6's status/assignment events mirror.
   try {
-    await appendTicketEvent(serviceClient(), {
+    await appendTicketEvent(createServiceClient(), {
       workspaceId: user.workspaceId,
       ticketId,
       eventType: 'TICKET_CREATED',

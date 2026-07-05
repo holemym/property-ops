@@ -1,7 +1,7 @@
 'use server'
 
 import { createClient as createServerClient } from '@/lib/supabase/server'
-import { createClient as createServiceClient } from '@supabase/supabase-js'
+import { createServiceClient } from '@/lib/supabase/service'
 import { requirePermission } from '@/lib/auth/session'
 import { revalidatePath } from 'next/cache'
 import { redirectWithError } from '@/lib/redirect-with-error'
@@ -13,17 +13,6 @@ const inviteSchema = z.object({
   // SUPER_ADMIN deliberately excluded: platform-internal role, never workspace-assignable.
   role: z.enum(['OPERATOR', 'ACCOUNTANT', 'OWNER']),
 })
-
-// Service-role client: bypasses RLS and is required for the Auth Admin API
-// (inviteUserByEmail). SUPABASE_SERVICE_ROLE_KEY is server-only (never
-// NEXT_PUBLIC) and is only ever read inside this 'use server' file, so it is
-// never shipped to the client bundle.
-function serviceClient() {
-  return createServiceClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
-}
 
 export async function inviteUser(formData: FormData) {
   const admin = await requirePermission('users:invite')
@@ -39,7 +28,7 @@ export async function inviteUser(formData: FormData) {
 
   const { email, role } = parsed.data
 
-  const admin_client = serviceClient()
+  const admin_client = createServiceClient()
   const { data, error } = await admin_client.auth.admin.inviteUserByEmail(email, {
     redirectTo: AUTH_CALLBACK_URL,
   })
