@@ -62,6 +62,39 @@ create policy "tickets_select_own"
     )
   );
 
+-- Widen user_owns_ticket() SYMMETRICALLY with the ticket-visibility change above.
+-- user_owns_ticket() (defined in 0012) gates the PUBLIC-comment SELECT/INSERT policies
+-- (comments_select_own_public / comments_insert_own_public). It originally matched only
+-- created_by_user_id — so without this, a tenant could now SEE an on-behalf ticket (from
+-- the widened policy above) but could NOT read or post PUBLIC comments on it, because the
+-- comment policies would still consider them a non-owner. That is fail-closed (no leak)
+-- but incoherent: if the ticket is theirs to see, its public comment thread is theirs to
+-- participate in. Recreating the function body to also match created_for_user_id makes
+-- comment access track ticket visibility. `create or replace` preserves the function OID,
+-- so the 0012 comment policies that reference it pick up the new body with no policy edit
+-- (same mechanism 0008 used to harden is_workspace_manager). Still SECURITY DEFINER with
+-- pinned search_path (mirrors 0012), still returns FALSE (never NULL) for non-owners →
+-- fails closed. No new visibility: a tenant who is neither created_by nor created_for of a
+-- ticket still owns nothing on it. EXECUTE stays as 0012 left it (callable by
+-- authenticated — it is invoked INSIDE the RLS policies as the querying role; revoking it
+-- would break tenant comment reads).
+create or replace function public.user_owns_ticket(p_ticket_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1 from public.tickets
+    where id = p_ticket_id
+      and (
+        created_by_user_id = auth.uid()
+        or created_for_user_id = auth.uid()
+      )
+  )
+$$;
+
 -- =============================================================================
 -- SMOKE TESTS — run these manually once a live Supabase project is connected:
 -- =============================================================================
@@ -78,4 +111,10 @@ create policy "tickets_select_own"
 --    matched. Workspace isolation holds on top of the own-rows filter.
 -- 5. A MANAGER/ACCOUNTANT in X still SELECTs ALL of X's tickets (unchanged — that is a
 --    different policy, tickets_select_manager_or_accountant, untouched here).
+-- 6. A TENANT who is the created_for subject of on-behalf ticket U can now READ and POST
+--    PUBLIC comments on U (user_owns_ticket now matches created_for) — comment access is
+--    coherent with the ticket visibility from case 2. They still cannot post INTERNAL
+--    (comments_insert_own_public pins visibility = 'PUBLIC').
+-- 7. A TENANT still gets user_owns_ticket = FALSE (no comment read/post) for a ticket
+--    where they are neither created_by nor created_for — no over-widening of comment access.
 -- =============================================================================
