@@ -5,7 +5,12 @@ import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { inviteUser, setUserActive } from './actions'
 
-export default async function UsersSettingsPage() {
+export default async function UsersSettingsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string }>
+}) {
+  const params = await searchParams
   const admin = await requirePermission('users:invite')
   const supabase = await createClient()
   const { data: users } = await supabase
@@ -17,6 +22,10 @@ export default async function UsersSettingsPage() {
   return (
     <div className="flex flex-col gap-6">
       <h1 className="text-xl font-semibold">Users</h1>
+
+      {params.error && (
+        <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{params.error}</p>
+      )}
 
       <form action={inviteUser} className="flex items-end gap-2">
         <Input name="email" type="email" placeholder="teammate@company.com" required className="w-64" />
@@ -44,13 +53,17 @@ export default async function UsersSettingsPage() {
               <TableCell>{u.role}</TableCell>
               <TableCell>{u.is_active ? 'Active' : 'Deactivated'}</TableCell>
               <TableCell>
-                <form action={setUserActive}>
-                  <input type="hidden" name="userId" value={u.id} />
-                  <input type="hidden" name="isActive" value={String(!u.is_active)} />
-                  <Button type="submit" variant="outline" size="sm">
-                    {u.is_active ? 'Deactivate' : 'Activate'}
-                  </Button>
-                </form>
+                {u.id === admin.id ? (
+                  <span className="text-sm text-muted-foreground">(you)</span>
+                ) : (
+                  <form action={setUserActive}>
+                    <input type="hidden" name="userId" value={u.id} />
+                    <input type="hidden" name="isActive" value={String(!u.is_active)} />
+                    <Button type="submit" variant="outline" size="sm">
+                      {u.is_active ? 'Deactivate' : 'Activate'}
+                    </Button>
+                  </form>
+                )}
               </TableCell>
             </TableRow>
           ))}

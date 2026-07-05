@@ -18,6 +18,10 @@ export async function proxy(request: NextRequest) {
   // deliberately with an error to display (e.g. a deactivated user whose JWT is
   // still valid but whose app access is revoked by requireUser). Otherwise they'd
   // ping-pong: requireUser -> /login -> proxy -> /dashboard -> requireUser -> /login...
+  // Invariant: any authenticated user landing on /login with an ?error param got there
+  // via requireUser's deactivation redirect (login-failure errors only happen for
+  // logged-out users, whom the `user &&` guard already excludes); if a future flow sends
+  // logged-in users to /login?error for another reason, revisit.
   const hasError = request.nextUrl.searchParams.has('error')
   if (user && !hasError && (path === '/login' || path === '/signup')) {
     const dashboardUrl = new URL('/dashboard', request.url)

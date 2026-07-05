@@ -4,6 +4,14 @@ import { createClient as createServerClient } from '@/lib/supabase/server'
 import { createClient as createServiceClient } from '@supabase/supabase-js'
 import { requirePermission } from '@/lib/auth/session'
 import { revalidatePath } from 'next/cache'
+import { redirect } from 'next/navigation'
+import { z } from 'zod'
+
+const inviteSchema = z.object({
+  email: z.string().email('Enter a valid email address.'),
+  // SUPER_ADMIN deliberately excluded: platform-internal role, never workspace-assignable.
+  role: z.enum(['OPERATOR', 'ACCOUNTANT', 'OWNER']),
+})
 
 // Service-role client: bypasses RLS and is required for the Auth Admin API
 // (inviteUserByEmail). SUPABASE_SERVICE_ROLE_KEY is server-only (never
@@ -18,8 +26,17 @@ function serviceClient() {
 
 export async function inviteUser(formData: FormData) {
   const admin = await requirePermission('users:invite')
-  const email = String(formData.get('email') ?? '')
-  const role = String(formData.get('role') ?? 'OPERATOR')
+
+  const parsed = inviteSchema.safeParse({
+    email: formData.get('email'),
+    role: formData.get('role') ?? 'OPERATOR',
+  })
+
+  if (!parsed.success) {
+    redirect('/settings/users?error=' + encodeURIComponent(parsed.error.issues[0].message))
+  }
+
+  const { email, role } = parsed.data
 
   const admin_client = serviceClient()
   const { data, error } = await admin_client.auth.admin.inviteUserByEmail(email, {
@@ -30,10 +47,14 @@ export async function inviteUser(formData: FormData) {
 
   // handle_new_user already created a profile row for the invited user; attach it to
   // this workspace with the chosen role.
-  await admin_client
+  const { error: attachError } = await admin_client
     .from('profiles')
     .update({ workspace_id: admin.workspaceId, role })
     .eq('id', data.user.id)
+    .select('id')
+    .single()
+
+  if (attachError) throw attachError
 
   revalidatePath('/settings/users')
 }
@@ -42,6 +63,10 @@ export async function setUserActive(formData: FormData) {
   const admin = await requirePermission('users:manage')
   const userId = String(formData.get('userId') ?? '')
   const isActive = formData.get('isActive') === 'true'
+
+  if (userId === admin.id) {
+    redirect('/settings/users?error=' + encodeURIComponent('You cannot deactivate your own account.'))
+  }
 
   const supabase = await createServerClient()
   await supabase
