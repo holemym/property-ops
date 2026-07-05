@@ -210,6 +210,32 @@ export type WorkspaceProfile = {
   role: Role
 }
 
+// Manager roles eligible to own/triage a ticket (the operator-assign select). VENDOR
+// work is a separate assignment (assigned_vendor_id); ACCOUNTANT is read-only and
+// TENANT/GUEST are never assignees, so none of them appear here.
+const OPERATOR_ROLES: Role[] = ['OWNER', 'OPERATOR', 'SUPER_ADMIN']
+
+/**
+ * The workspace's assignable operators — active profiles whose role can own a ticket
+ * (OWNER/OPERATOR/SUPER_ADMIN). Feeds the P3.6 operator-assign select. Scoped by
+ * workspace_id + is_active at the query layer; the manager-role filter is applied in JS
+ * (the set-membership filter keeps this portable across the in-memory test client, which
+ * models only eq-filters, and PostgREST). Ordered by name for a stable select.
+ */
+export async function listWorkspaceOperators(
+  supabase: SupabaseClient,
+  workspaceId: string
+): Promise<WorkspaceProfile[]> {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id, full_name, role')
+    .eq('workspace_id', workspaceId)
+    .eq('is_active', true)
+    .order('full_name', { ascending: true })
+  if (error) throw error
+  return (data as WorkspaceProfile[]).filter((p) => OPERATOR_ROLES.includes(p.role))
+}
+
 /**
  * Deferred-validation helper (P3.1 defer #2). assigned_operator_id and
  * created_for_user_id are PLAIN FKs to profiles(id) — they do NOT enforce that the

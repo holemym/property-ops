@@ -7,6 +7,7 @@ import {
   updateTicketStatus,
   assignTicket,
   getWorkspaceProfile,
+  listWorkspaceOperators,
   countTicketsByStatus,
 } from '@/lib/data/tickets'
 import { appendTicketEvent } from '@/lib/data/ticket-events'
@@ -142,6 +143,25 @@ describe('tickets data access', () => {
   it('getWorkspaceProfile returns null for a foreign-workspace user', async () => {
     const profile = await getWorkspaceProfile(client, WS_A, 'op-b')
     expect(profile).toBeNull()
+  })
+
+  it('listWorkspaceOperators returns only active manager-role profiles in the workspace', async () => {
+    const opsClient = createFakeSupabaseClient({
+      profiles: [
+        { id: 'owner-1', workspace_id: WS_A, full_name: 'Ownie Owner', role: 'OWNER', is_active: true },
+        { id: 'op-a', workspace_id: WS_A, full_name: 'Ally Operator', role: 'OPERATOR', is_active: true },
+        { id: 'sa-1', workspace_id: WS_A, full_name: 'Sam Admin', role: 'SUPER_ADMIN', is_active: true },
+        // Excluded: accountant/tenant roles are never assignable operators.
+        { id: 'acct-1', workspace_id: WS_A, full_name: 'Andy Accountant', role: 'ACCOUNTANT', is_active: true },
+        { id: 'ten-1', workspace_id: WS_A, full_name: 'Tina Tenant', role: 'TENANT', is_active: true },
+        // Excluded: inactive operator.
+        { id: 'op-inactive', workspace_id: WS_A, full_name: 'Ida Inactive', role: 'OPERATOR', is_active: false },
+        // Excluded: operator in another workspace.
+        { id: 'op-foreign', workspace_id: WS_B, full_name: 'Fred Foreign', role: 'OPERATOR', is_active: true },
+      ],
+    })
+    const operators = await listWorkspaceOperators(opsClient, WS_A)
+    expect(operators.map((o) => o.id).sort()).toEqual(['op-a', 'owner-1', 'sa-1'])
   })
 
   it('countTicketsByStatus tallies statuses for the workspace', async () => {
