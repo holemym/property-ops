@@ -20,9 +20,16 @@ const MANAGER_PERMISSIONS: Permission[] = [
   'vendors:write',
 ]
 
+const ADMIN_PERMISSIONS: Permission[] = [
+  ...MANAGER_PERMISSIONS,
+  'workspace:manage',
+  'users:invite',
+  'users:manage',
+]
+
 const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
-  SUPER_ADMIN: [...MANAGER_PERMISSIONS, 'workspace:manage', 'users:invite', 'users:manage'],
-  OWNER: [...MANAGER_PERMISSIONS, 'workspace:manage', 'users:invite', 'users:manage'],
+  SUPER_ADMIN: ADMIN_PERMISSIONS,
+  OWNER: ADMIN_PERMISSIONS,
   OPERATOR: [...MANAGER_PERMISSIONS],
   ACCOUNTANT: ['properties:read', 'units:read', 'vendors:read'],
   TENANT: [],

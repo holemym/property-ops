@@ -1,6 +1,7 @@
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { AuthPageShell } from '@/components/common/AuthPageShell'
 import { signUpWithPassword } from '../actions'
 
 export default async function SignupPage({
@@ -11,13 +12,7 @@ export default async function SignupPage({
   const params = await searchParams
 
   return (
-    <div className="mx-auto flex min-h-screen max-w-sm flex-col justify-center gap-6 px-4">
-      <h1 className="text-2xl font-semibold">Create account</h1>
-
-      {params.error && (
-        <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{params.error}</p>
-      )}
-
+    <AuthPageShell title="Create account" error={params.error}>
       <form action={signUpWithPassword} className="flex flex-col gap-3">
         <div>
           <Label htmlFor="fullName">Full name</Label>
@@ -37,6 +32,6 @@ export default async function SignupPage({
       <p className="text-center text-sm text-muted-foreground">
         Already have an account? <a href="/login" className="underline">Sign in</a>
       </p>
-    </div>
+    </AuthPageShell>
   )
 }

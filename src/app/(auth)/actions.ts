@@ -2,10 +2,9 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
+import { redirectWithError } from '@/lib/redirect-with-error'
 
-function redirectWithError(path: string, message: string): never {
-  redirect(`${path}?error=${encodeURIComponent(message)}`)
-}
+const AUTH_CALLBACK_URL = `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`
 
 export async function signInWithPassword(formData: FormData) {
   const email = String(formData.get('email') ?? '')
@@ -26,7 +25,7 @@ export async function signInWithMagicLink(formData: FormData) {
 
   const { error } = await supabase.auth.signInWithOtp({
     email,
-    options: { emailRedirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback` },
+    options: { emailRedirectTo: AUTH_CALLBACK_URL },
   })
 
   if (error) {
@@ -39,7 +38,7 @@ export async function signInWithGoogle() {
   const supabase = await createClient()
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: 'google',
-    options: { redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback` },
+    options: { redirectTo: AUTH_CALLBACK_URL },
   })
 
   if (error || !data.url) {
@@ -59,7 +58,7 @@ export async function signUpWithPassword(formData: FormData) {
     password,
     options: {
       data: { full_name: fullName },
-      emailRedirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`,
+      emailRedirectTo: AUTH_CALLBACK_URL,
     },
   })
 

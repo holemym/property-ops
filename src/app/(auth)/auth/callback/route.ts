@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 
+// Canonical `?error=` redirect pattern lives in src/lib/redirect-with-error.ts;
+// Route Handlers must build absolute-URL NextResponse redirects, so we inline the
+// same encoding here rather than importing that (redirect()-based) helper.
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url)
   const code = searchParams.get('code')

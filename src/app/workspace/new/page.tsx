@@ -1,6 +1,9 @@
+import { redirect } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { AuthPageShell } from '@/components/common/AuthPageShell'
+import { requireUser } from '@/lib/auth/session'
 import { createWorkspace } from './actions'
 
 export default async function NewWorkspacePage({
@@ -8,19 +11,17 @@ export default async function NewWorkspacePage({
 }: {
   searchParams: Promise<{ error?: string }>
 }) {
+  const user = await requireUser()
+  if (user.workspaceId) redirect('/dashboard')
+
   const params = await searchParams
 
   return (
-    <div className="mx-auto flex min-h-screen max-w-sm flex-col justify-center gap-6 px-4">
-      <h1 className="text-2xl font-semibold">Create your workspace</h1>
+    <AuthPageShell title="Create your workspace" error={params.error}>
       <p className="text-sm text-muted-foreground">
         Your workspace holds your properties, units, vendors, and everything else. You&apos;ll be
         the Owner.
       </p>
-
-      {params.error && (
-        <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{params.error}</p>
-      )}
 
       <form action={createWorkspace} className="flex flex-col gap-3">
         <div>
@@ -33,6 +34,6 @@ export default async function NewWorkspacePage({
         </div>
         <Button type="submit">Create workspace</Button>
       </form>
-    </div>
+    </AuthPageShell>
   )
 }
