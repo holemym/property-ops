@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { DoorClosed } from 'lucide-react'
 import { requirePermission } from '@/lib/auth/session'
 import { can } from '@/lib/auth/permissions'
 import { createClient } from '@/lib/supabase/server'
@@ -6,6 +7,7 @@ import { listUnits } from '@/lib/data/units'
 import { listProperties } from '@/lib/data/properties'
 import { UnitTable } from '@/components/units/UnitTable'
 import { EmptyState } from '@/components/common/EmptyState'
+import { PageHeader } from '@/components/layout/PageHeader'
 import { Button } from '@/components/ui/button'
 
 export default async function UnitsPage({
@@ -27,18 +29,21 @@ export default async function UnitsPage({
     listProperties(supabase, user.workspaceId),
   ])
 
+  const isFiltered = Boolean(propertyId)
+
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">Units</h1>
-        {canWrite && <Button render={<Link href="/units/new" />}>New unit</Button>}
-      </div>
+      <PageHeader
+        title="Units"
+        subtitle="Individual units across your properties, with occupancy and access details."
+        actions={canWrite && <Button render={<Link href="/units/new" />}>New unit</Button>}
+      />
 
-      <form className="flex max-w-sm items-center gap-2">
+      <form className="flex items-center gap-2">
         <select
           name="propertyId"
           defaultValue={propertyId ?? ''}
-          className="h-9 w-full rounded-md border px-2 text-sm"
+          className="h-8 w-full max-w-sm rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
         >
           <option value="">All properties</option>
           {properties.map((p) => (
@@ -54,10 +59,18 @@ export default async function UnitsPage({
 
       {units.length === 0 ? (
         <EmptyState
-          title="No units yet"
-          description="Add units to a property to track occupancy, access details, and tickets."
-          actionLabel={canWrite ? 'Add unit' : undefined}
-          actionHref={canWrite ? '/units/new' : undefined}
+          icon={<DoorClosed />}
+          title={isFiltered ? 'No units in this property' : 'No units yet'}
+          body={
+            isFiltered
+              ? 'Pick another property, or add a unit here.'
+              : 'Add units to a property to track occupancy, access details, and tickets.'
+          }
+          action={
+            canWrite ? (
+              <Button render={<Link href="/units/new" />}>Add unit</Button>
+            ) : undefined
+          }
         />
       ) : (
         <UnitTable units={units} />
