@@ -71,3 +71,23 @@ export type CommentVisibility = 'PUBLIC' | 'INTERNAL'
 export type CommentType = 'MESSAGE' | 'SYSTEM_NOTE' | 'AI_NOTE'
 
 export type AttachmentType = 'PHOTO' | 'INVOICE' | 'RECEIPT' | 'CONTRACT' | 'REPORT' | 'OTHER'
+
+// A time-ranged occupancy record for a unit (migration 0016). Drives the occupancy
+// timeline; unlike UnitStatus (a point-in-time ops flag), a tenancy expresses an
+// occupied span. end_date null = open-ended / month-to-month. tenant_name /
+// tenant_contact are PII (SELECT is role-gated to managers + accountant via RLS).
+// rent_amount is captured for the future rent roll and is unused by the timeline.
+export type Tenancy = {
+  id: string
+  workspace_id: string
+  unit_id: string
+  tenant_name: string
+  tenant_contact: string | null
+  start_date: string
+  end_date: string | null
+  rent_amount: number | null
+  notes: string | null
+  created_by_user_id: string
+  created_at: string
+  updated_at: string
+}

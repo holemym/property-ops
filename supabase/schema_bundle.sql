@@ -796,5 +796,62 @@ create policy "attachments_objects_insert"
   );
 
 -- =============================================================================
--- DONE. Verify: select count(*) from pg_tables where schemaname='public';  -- expect 10
+-- TENANCIES (0016) — time-ranged occupancy; composite FK to units. PII: role-gated
+-- SELECT (NOT open-select), manager-only write, no DELETE.
+-- =============================================================================
+create table if not exists public.tenancies (
+  id uuid primary key default gen_random_uuid(),
+  workspace_id uuid not null references public.workspaces (id) on delete cascade,
+  unit_id uuid not null,
+  tenant_name text not null,
+  tenant_contact text,
+  start_date date not null,
+  end_date date,
+  rent_amount numeric,
+  notes text,
+  created_by_user_id uuid not null references public.profiles (id),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint tenancies_unit_fk
+    foreign key (unit_id, workspace_id)
+    references public.units (id, workspace_id)
+    on delete cascade
+);
+
+create index if not exists tenancies_workspace_unit_idx
+  on public.tenancies (workspace_id, unit_id);
+
+drop trigger if exists tenancies_set_updated_at on public.tenancies;
+create trigger tenancies_set_updated_at
+  before update on public.tenancies
+  for each row execute function public.set_updated_at();
+
+alter table public.tenancies enable row level security;
+
+-- SELECT: ROLE-GATED (tenant PII), NOT open-select. Manager+accountant only, plus
+-- SUPER_ADMIN platform read override. TENANT/GUEST/VENDOR get zero rows.
+drop policy if exists "tenancies_select_manager_or_accountant" on public.tenancies;
+create policy "tenancies_select_manager_or_accountant"
+  on public.tenancies for select
+  using (
+    (workspace_id = public.current_workspace_id()
+       and public.current_role() in ('SUPER_ADMIN','OWNER','OPERATOR','ACCOUNTANT'))
+    or public.current_role() = 'SUPER_ADMIN'
+  );
+
+drop policy if exists "tenancies_insert_manager" on public.tenancies;
+create policy "tenancies_insert_manager"
+  on public.tenancies for insert
+  with check (workspace_id = public.current_workspace_id() and public.is_workspace_manager());
+
+drop policy if exists "tenancies_update_manager" on public.tenancies;
+create policy "tenancies_update_manager"
+  on public.tenancies for update
+  using (workspace_id = public.current_workspace_id() and public.is_workspace_manager())
+  with check (workspace_id = public.current_workspace_id() and public.is_workspace_manager());
+
+-- No DELETE policy — end a tenancy via end_date; default-deny delete.
+
+-- =============================================================================
+-- DONE. Verify: select count(*) from pg_tables where schemaname='public';  -- expect 11
 -- =============================================================================

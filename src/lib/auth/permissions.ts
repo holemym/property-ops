@@ -6,6 +6,7 @@ export type Permission =
   | 'properties:write'
   | 'units:read'
   | 'units:write'
+  | 'occupancy:read'
   | 'vendors:read'
   | 'vendors:write'
   | 'users:invite'
@@ -20,6 +21,10 @@ const MANAGER_PERMISSIONS: Permission[] = [
   'properties:write',
   'units:read',
   'units:write',
+  // occupancy:read — the occupancy timeline (tenancies carry PII; gated to
+  // managers + accountant, matching the tenancies_select_manager_or_accountant RLS
+  // policy). Granted explicitly to ACCOUNTANT below for read-only oversight.
+  'occupancy:read',
   'vendors:read',
   'vendors:write',
   // Managers (OPERATOR + OWNER/SUPER_ADMIN via ADMIN_PERMISSIONS) get the full
@@ -42,7 +47,7 @@ const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   SUPER_ADMIN: ADMIN_PERMISSIONS,
   OWNER: ADMIN_PERMISSIONS,
   OPERATOR: [...MANAGER_PERMISSIONS],
-  ACCOUNTANT: ['properties:read', 'units:read', 'vendors:read', 'tickets:read'],
+  ACCOUNTANT: ['properties:read', 'units:read', 'occupancy:read', 'vendors:read', 'tickets:read'],
   TENANT: [],
   GUEST: [],
   VENDOR: [],
