@@ -2,6 +2,7 @@ import { requireWorkspace } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { TopNav } from '@/components/layout/TopNav'
+import { Toaster } from '@/components/ui/sonner'
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requireWorkspace()
@@ -19,6 +20,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <TopNav userName={user.fullName || user.email} role={user.role} workspaceName={workspace?.name ?? ''} />
         <main className="flex-1 overflow-y-auto p-6">{children}</main>
       </div>
+      <Toaster />
     </div>
   )
 }
