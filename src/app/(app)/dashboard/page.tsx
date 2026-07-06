@@ -1,15 +1,17 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
+import { ArrowRight, Inbox } from 'lucide-react'
 import { requireWorkspace } from '@/lib/auth/session'
 import { isTenantRole } from '@/lib/auth/permissions'
 import { createClient } from '@/lib/supabase/server'
 import { listTickets, countTicketsByStatus, type Ticket } from '@/lib/data/tickets'
 import { listProperties } from '@/lib/data/properties'
-import { TicketPriorityBadge, TicketStatusBadge } from '@/components/tickets/TicketBadges'
+import { PageHeader } from '@/components/layout/PageHeader'
+import { StatusBadge } from '@/components/ui/badge'
 import type { TicketStatus } from '@/types/domain'
 
 // Per-widget cap — the dashboard shows short curated slices, not the full inbox. Each
-// list links to the filtered inbox ("View all →") for the complete set.
+// list links to the filtered inbox ("View all") for the complete set.
 const LIST_CAP = 8
 const RECENT_CAP = 6
 
@@ -26,6 +28,18 @@ const STRIP_STATUSES: TicketStatus[] = [
   'IN_PROGRESS',
   'RESOLVED',
 ]
+
+const STRIP_LABELS: Record<TicketStatus, string> = {
+  NEW: 'New',
+  TRIAGE: 'Triage',
+  WAITING_FOR_INFO: 'Waiting',
+  ASSIGNED: 'Assigned',
+  SCHEDULED: 'Scheduled',
+  IN_PROGRESS: 'In progress',
+  RESOLVED: 'Resolved',
+  CLOSED: 'Closed',
+  CANCELLED: 'Cancelled',
+}
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString()
@@ -75,50 +89,52 @@ export default async function DashboardPage() {
     .slice(0, RECENT_CAP)
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h1 className="text-xl font-semibold">Dashboard</h1>
-        <p className="text-sm text-muted-foreground">
-          <span className="font-semibold text-foreground">{openCount}</span> open{' '}
-          {openCount === 1 ? 'ticket' : 'tickets'} need attention
-        </p>
-      </div>
+    <div className="motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-[--duration-slow]">
+      <PageHeader
+        title="Dashboard"
+        subtitle={`${openCount} open ${openCount === 1 ? 'ticket' : 'tickets'} across the portfolio`}
+      />
 
-      {/* Status summary strip — one card per key status, linking to the filtered inbox. */}
+      {/* Status summary strip — one graphite metric card per key status, linking to the
+          filtered inbox. Saturated color stays out of these; the counts read as data. */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         {STRIP_STATUSES.map((status) => (
           <Link
             key={status}
             href={`/tickets?status=${status}`}
-            className="flex flex-col gap-1 rounded-lg border p-3 hover:bg-accent"
+            className="group flex flex-col gap-1 rounded-xl border bg-card p-4 transition-colors duration-[--duration-fast] ease-[--ease-out] hover:border-foreground/20 hover:bg-accent"
           >
-            <span className="text-2xl font-semibold tabular-nums">{counts[status] ?? 0}</span>
-            <span className="text-xs text-muted-foreground">{status.replace(/_/g, ' ')}</span>
+            <span className="text-2xl font-semibold tabular-nums tracking-tight text-foreground">
+              {counts[status] ?? 0}
+            </span>
+            <span className="text-xs font-medium text-muted-foreground">
+              {STRIP_LABELS[status]}
+            </span>
           </Link>
         ))}
       </div>
 
       {/* Operational list widgets — curated triage queues, 2 columns on desktop. */}
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="mt-6 grid gap-4 lg:grid-cols-2">
         <TicketWidget
           title="Needs triage"
-          subtitle="New, unhandled tickets."
+          subtitle="New, unhandled tickets"
           tickets={newTickets.slice(0, LIST_CAP)}
           propertyNames={propertyNames}
-          emptyMessage="Nothing needs triage."
+          emptyMessage="Nothing needs triage right now."
           viewAllHref="/tickets?status=NEW"
         />
         <TicketWidget
           title="Urgent open"
-          subtitle="Urgent tickets still in play."
+          subtitle="Urgent tickets still in play"
           tickets={urgentOpen}
           propertyNames={propertyNames}
-          emptyMessage="No urgent tickets open."
+          emptyMessage="No urgent tickets are open."
           viewAllHref="/tickets?priority=URGENT"
         />
         <TicketWidget
           title="Waiting for info"
-          subtitle="Blocked on a response."
+          subtitle="Blocked on a response"
           tickets={waitingTickets.slice(0, LIST_CAP)}
           propertyNames={propertyNames}
           emptyMessage="Nothing is waiting on info."
@@ -126,15 +142,15 @@ export default async function DashboardPage() {
         />
         <TicketWidget
           title="Assigned to me"
-          subtitle="Your open queue."
+          subtitle="Your open queue"
           tickets={mineOpen}
           propertyNames={propertyNames}
-          emptyMessage="Nothing assigned to you."
+          emptyMessage="Nothing is assigned to you."
           viewAllHref="/tickets"
         />
         <TicketWidget
           title="Recently resolved"
-          subtitle="Wrapped up lately."
+          subtitle="Wrapped up lately"
           tickets={recentlyDone}
           propertyNames={propertyNames}
           emptyMessage="Nothing resolved yet."
@@ -146,7 +162,7 @@ export default async function DashboardPage() {
 }
 
 // A compact list widget: heading, a short ticket list (title link, priority + status
-// badge, property, date), a per-widget empty state, and a "View all →" link to the
+// badge, property, date), a per-widget empty state, and a "View all" link to the
 // corresponding filtered inbox. Read-only — no action controls (dashboard is triage
 // links only; the accountant gets the same read-only overview).
 function TicketWidget({
@@ -165,36 +181,43 @@ function TicketWidget({
   viewAllHref: string
 }) {
   return (
-    <section className="flex flex-col rounded-lg border">
+    <section className="flex flex-col overflow-hidden rounded-xl border bg-card">
       <div className="flex items-baseline justify-between gap-2 border-b px-4 py-3">
         <div className="flex flex-col">
-          <h2 className="text-sm font-semibold">{title}</h2>
+          <h2 className="text-sm font-semibold text-foreground">{title}</h2>
           <p className="text-xs text-muted-foreground">{subtitle}</p>
         </div>
-        <Link href={viewAllHref} className="text-xs font-medium text-primary hover:underline">
-          View all →
+        <Link
+          href={viewAllHref}
+          className="group inline-flex shrink-0 items-center gap-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+        >
+          View all
+          <ArrowRight className="size-3 transition-transform duration-[--duration-fast] ease-[--ease-out] group-hover:translate-x-0.5" />
         </Link>
       </div>
 
       {tickets.length === 0 ? (
-        <p className="px-4 py-6 text-center text-sm text-muted-foreground">{emptyMessage}</p>
+        <div className="flex flex-col items-center justify-center gap-2 px-4 py-10 text-center">
+          <Inbox className="size-5 text-muted-foreground/60" />
+          <p className="text-sm text-muted-foreground">{emptyMessage}</p>
+        </div>
       ) : (
         <ul className="flex flex-col divide-y">
           {tickets.map((t) => (
             <li key={t.id}>
               <Link
                 href={`/tickets/${t.id}`}
-                className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 hover:bg-accent"
+                className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 transition-colors duration-[--duration-fast] ease-[--ease-out] hover:bg-accent"
               >
                 <div className="flex min-w-0 flex-col gap-0.5">
-                  <span className="truncate text-sm font-medium">{t.title}</span>
+                  <span className="truncate text-sm font-medium text-foreground">{t.title}</span>
                   <span className="text-xs text-muted-foreground">
                     {propertyNames[t.property_id] ?? '—'} · {formatDate(t.created_at)}
                   </span>
                 </div>
                 <div className="flex shrink-0 items-center gap-1.5">
-                  <TicketPriorityBadge priority={t.priority} />
-                  <TicketStatusBadge status={t.status} />
+                  <StatusBadge kind="ticket_priority" value={t.priority} />
+                  <StatusBadge kind="ticket_status" value={t.status} />
                 </div>
               </Link>
             </li>

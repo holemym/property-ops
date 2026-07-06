@@ -1,37 +1,92 @@
+'use client'
+
 import Link from 'next/link'
+import { usePathname } from 'next/navigation'
+import {
+  LayoutDashboard,
+  Building2,
+  DoorOpen,
+  Wrench,
+  Ticket,
+  Inbox,
+  CirclePlus,
+  Building,
+  type LucideIcon,
+} from 'lucide-react'
+import { cn } from '@/lib/utils'
 import { isTenantRole } from '@/lib/auth/permissions'
 import type { Role } from '@/types/domain'
+
+type NavItem = { href: string; label: string; icon: LucideIcon }
 
 // Operator nav — the full portfolio surface. Tenants/guests hold NONE of the
 // permissions these pages gate on (properties/units/vendors/tickets), so showing them
 // these links would only lead to permission errors. They get TENANT_NAV instead.
-const OPERATOR_NAV = [
-  { href: '/dashboard', label: 'Dashboard' },
-  { href: '/properties', label: 'Properties' },
-  { href: '/units', label: 'Units' },
-  { href: '/vendors', label: 'Vendors' },
-  { href: '/tickets', label: 'Tickets' },
+const OPERATOR_NAV: NavItem[] = [
+  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/properties', label: 'Properties', icon: Building2 },
+  { href: '/units', label: 'Units', icon: DoorOpen },
+  { href: '/vendors', label: 'Vendors', icon: Wrench },
+  { href: '/tickets', label: 'Tickets', icon: Ticket },
 ]
 
 // Minimal tenant/guest nav — the P3.7 self-service portal only.
-const TENANT_NAV = [
-  { href: '/portal', label: 'My Requests' },
-  { href: '/portal/new', label: 'Report an Issue' },
+const TENANT_NAV: NavItem[] = [
+  { href: '/portal', label: 'My requests', icon: Inbox },
+  { href: '/portal/new', label: 'Report an issue', icon: CirclePlus },
 ]
 
+// A nav link is "active" when the current path is that link or nested under it, so
+// /properties/123 keeps the Properties item lit. The exact "/" guard keeps a bare
+// /portal from lighting up when on /portal/new (both share the prefix), by requiring
+// the next char to be a boundary.
+function isActive(pathname: string, href: string): boolean {
+  return pathname === href || pathname.startsWith(`${href}/`)
+}
+
 export function Sidebar({ role }: { role: Role }) {
+  const pathname = usePathname()
   const nav = isTenantRole(role) ? TENANT_NAV : OPERATOR_NAV
+
   return (
-    <nav className="flex h-full w-56 flex-col gap-1 border-r px-3 py-4">
-      {nav.map((item) => (
-        <Link
-          key={item.href}
-          href={item.href}
-          className="rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-        >
-          {item.label}
-        </Link>
-      ))}
+    <nav className="flex h-full w-56 flex-col border-r bg-sidebar">
+      {/* Workspace mark — a graphite emblem block anchoring the shell. */}
+      <div className="flex h-14 items-center gap-2 border-b px-4">
+        <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-foreground text-background">
+          <Building className="size-4" />
+        </span>
+        <span className="text-sm font-semibold tracking-tight text-foreground">
+          Property Ops
+        </span>
+      </div>
+
+      <div className="flex flex-1 flex-col gap-0.5 p-3">
+        {nav.map((item) => {
+          const active = isActive(pathname, item.href)
+          const Icon = item.icon
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              aria-current={active ? 'page' : undefined}
+              className={cn(
+                'group flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-[--duration-fast] ease-[--ease-out]',
+                active
+                  ? 'bg-foreground text-background'
+                  : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+              )}
+            >
+              <Icon
+                className={cn(
+                  'size-4 shrink-0 transition-colors',
+                  active ? 'text-background' : 'text-muted-foreground group-hover:text-accent-foreground'
+                )}
+              />
+              {item.label}
+            </Link>
+          )
+        })}
+      </div>
     </nav>
   )
 }
