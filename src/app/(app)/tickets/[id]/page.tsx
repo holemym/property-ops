@@ -16,12 +16,16 @@ import { listTicketComments } from '@/lib/data/ticket-comments'
 import { listAttachments, ATTACHMENTS_BUCKET, type Attachment } from '@/lib/data/attachments'
 import { uploadAttachmentAction } from '../attachment-actions'
 import { nextStatuses } from '@/lib/tickets/status-flow'
-import { TicketStatusBadge, TicketPriorityBadge } from '@/components/tickets/TicketBadges'
+import { StatusBadge } from '@/components/ui/badge'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { ErrorToast } from '@/components/tickets/ErrorToast'
+import { SubmitButton } from '@/components/tickets/SubmitButton'
+import { ActivityTimeline } from '@/components/tickets/ActivityTimeline'
+import { CommentThread } from '@/components/tickets/CommentThread'
 import type { TicketEventType } from '@/types/domain'
 import {
   transitionTicketStatusAction,
@@ -45,6 +49,9 @@ const EVENT_LABELS: Record<TicketEventType, string> = {
   INVOICE_UPLOADED: 'Invoice uploaded',
   TICKET_CLOSED: 'Ticket closed',
 }
+
+const SELECT_CLASS =
+  'h-8 w-full rounded-lg border border-border bg-background px-2.5 text-sm text-foreground'
 
 function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString()
@@ -93,6 +100,26 @@ function eventDelta(event: TicketEvent): string | null {
   return null
 }
 
+// A label/value row for the summary card's definition grid.
+function SummaryField({
+  label,
+  children,
+  wide,
+}: {
+  label: string
+  children: React.ReactNode
+  wide?: boolean
+}) {
+  return (
+    <div className={wide ? 'sm:col-span-2' : undefined}>
+      <dt className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+        {label}
+      </dt>
+      <dd className="mt-1 text-sm text-foreground">{children}</dd>
+    </div>
+  )
+}
+
 export default async function TicketDetailPage({
   params,
   searchParams,
@@ -101,7 +128,7 @@ export default async function TicketDetailPage({
   searchParams: Promise<{ error?: string; joblink?: string }>
 }) {
   const { id } = await params
-  const { error, joblink } = await searchParams
+  const { joblink } = await searchParams
   // Managers + accountant reach this page (all hold tickets:read). Tenants lack
   // tickets:read and get their own portal in P3.7.
   const user = await requirePermission('tickets:read')
@@ -161,303 +188,335 @@ export default async function TicketDetailPage({
     ? `${process.env.NEXT_PUBLIC_SITE_URL}/job/${joblink}`
     : null
 
+  const timelineEvents = events.map((e) => ({
+    id: e.id,
+    label: EVENT_LABELS[e.event_type] ?? e.event_type,
+    delta: eventDelta(e),
+    actor: displayName(e.actor_user_id),
+    at: formatDateTime(e.created_at),
+  }))
+
+  const threadComments = comments.map((c) => ({
+    id: c.id,
+    author: displayName(c.author_user_id),
+    body: c.body,
+    at: formatDateTime(c.created_at),
+    internal: c.visibility === 'INTERNAL',
+  }))
+
   return (
-    <div className="flex flex-col gap-8">
-      {/* 1. Header */}
+    <div className="flex flex-col gap-6">
+      {/* Client-side error surfacing: server actions redirect back with ?error=. */}
+      <ErrorToast />
+
+      {/* Header */}
       <div className="flex flex-col gap-3">
-        <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-xl font-semibold">{ticket.title}</h1>
-          <TicketStatusBadge status={ticket.status} />
-          <TicketPriorityBadge priority={ticket.priority} />
-          <Badge variant="outline">{ticket.category.replace(/_/g, ' ')}</Badge>
+        <Link
+          href="/tickets"
+          className="w-fit text-sm text-muted-foreground hover:text-foreground"
+        >
+          ← Tickets
+        </Link>
+        <div className="flex flex-wrap items-center gap-2.5">
+          <h1 className="text-2xl font-semibold tracking-tight">{ticket.title}</h1>
+          <StatusBadge kind="ticket_status" value={ticket.status} />
+          <StatusBadge kind="ticket_priority" value={ticket.priority} />
+          <Badge variant="outline" className="capitalize">
+            {ticket.category.replace(/_/g, ' ').toLowerCase()}
+          </Badge>
         </div>
-        {error && (
-          <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
-        )}
       </div>
 
-      {/* 2. Info panel */}
-      <section className="grid gap-3 rounded-lg border p-4 text-sm sm:grid-cols-2">
-        <div>
-          <dt className="text-muted-foreground">Property</dt>
-          <dd>
-            {property ? (
-              <Link href={`/properties/${property.id}`} className="underline underline-offset-2">
-                {property.name}
-              </Link>
-            ) : (
-              ticket.property_id
-            )}
-          </dd>
-        </div>
-        {unit && (
-          <div>
-            <dt className="text-muted-foreground">Unit</dt>
-            <dd>{unit.label}</dd>
-          </div>
-        )}
-        <div className="sm:col-span-2">
-          <dt className="text-muted-foreground">Description</dt>
-          <dd className="whitespace-pre-wrap">{ticket.description}</dd>
-        </div>
-        <div>
-          <dt className="text-muted-foreground">Reported by</dt>
-          <dd>{displayName(ticket.created_by_user_id)}</dd>
-        </div>
-        <div>
-          <dt className="text-muted-foreground">Created</dt>
-          <dd>{formatDateTime(ticket.created_at)}</dd>
-        </div>
-        {ticket.scheduled_at && (
-          <div>
-            <dt className="text-muted-foreground">Scheduled</dt>
-            <dd>{formatDateTime(ticket.scheduled_at)}</dd>
-          </div>
-        )}
-        {ticket.estimated_cost != null && (
-          <div>
-            <dt className="text-muted-foreground">Estimated cost</dt>
-            <dd>{formatMoney(ticket.estimated_cost)}</dd>
-          </div>
-        )}
-        {ticket.actual_cost != null && (
-          <div>
-            <dt className="text-muted-foreground">Actual cost</dt>
-            <dd>{formatMoney(ticket.actual_cost)}</dd>
-          </div>
-        )}
-      </section>
-
-      {/* 3. Status transitions (canWrite only) */}
-      {canWrite && (
-        <section className="flex flex-col gap-3">
-          <h2 className="text-sm font-semibold">Status</h2>
-          {transitions.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              This ticket is {ticket.status.replace(/_/g, ' ')}.
-            </p>
-          ) : (
-            <div className="flex flex-wrap gap-2">
-              {transitions.map((next) => (
-                <form key={next} action={boundTransition}>
-                  <input type="hidden" name="nextStatus" value={next} />
-                  <input type="hidden" name="expectedCurrentStatus" value={ticket.status} />
-                  <Button type="submit" variant="outline" size="sm">
-                    Mark {next.replace(/_/g, ' ')}
-                  </Button>
-                </form>
-              ))}
-            </div>
-          )}
-        </section>
-      )}
-
-      {/* 4. Assignment (canAssign only) */}
-      {canAssign && (
-        <section className="grid gap-6 sm:grid-cols-2">
-          <form action={boundAssignOperator} className="flex flex-col gap-2">
-            <Label htmlFor="operatorId">Assigned operator</Label>
-            <select
-              id="operatorId"
-              name="operatorId"
-              defaultValue={ticket.assigned_operator_id ?? ''}
-              className="h-9 w-full rounded-md border px-2 text-sm"
-            >
-              <option value="">Unassigned</option>
-              {operators.map((op) => (
-                <option key={op.id} value={op.id}>
-                  {op.full_name ?? op.id}
-                </option>
-              ))}
-            </select>
-            <Button type="submit" variant="outline" size="sm" className="self-start">
-              Save operator
-            </Button>
-          </form>
-
-          <form action={boundAssignVendor} className="flex flex-col gap-2">
-            <Label htmlFor="vendorId">Assigned vendor</Label>
-            <select
-              id="vendorId"
-              name="vendorId"
-              defaultValue={ticket.assigned_vendor_id ?? ''}
-              className="h-9 w-full rounded-md border px-2 text-sm"
-            >
-              <option value="">Unassigned</option>
-              {vendors.map((v) => (
-                <option key={v.id} value={v.id}>
-                  {v.company_name}
-                </option>
-              ))}
-            </select>
-            <Button type="submit" variant="outline" size="sm" className="self-start">
-              Save vendor
-            </Button>
-          </form>
-        </section>
-      )}
-
-      {/* Vendor secure job link (canAssign only). Only offered once a vendor is
-          assigned — the link is a capability FOR that vendor. */}
-      {canAssign && ticket.assigned_vendor_id && (
-        <section className="flex flex-col gap-3 rounded-lg border p-4">
-          <h2 className="text-sm font-semibold">Vendor job link</h2>
-          {jobLinkUrl ? (
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="joblink">Share this link with the vendor</Label>
-              <Input id="joblink" readOnly value={jobLinkUrl} />
-              <p className="text-xs text-muted-foreground">
-                The vendor can view and act on this job without logging in. It expires in 7
-                days. Share it only with the assigned vendor.
-              </p>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-2">
-              <p className="text-sm text-muted-foreground">
-                Generate a no-login link the assigned vendor can use to accept, decline, or
-                complete this job.
-              </p>
-              <form action={boundGenerateVendorLink}>
-                <Button type="submit" variant="outline" size="sm">
-                  Generate vendor job link
-                </Button>
-              </form>
-            </div>
-          )}
-        </section>
-      )}
-
-      {/* Read-only assignment display when the viewer cannot assign (e.g. accountant) */}
-      {!canAssign && (
-        <section className="grid gap-3 text-sm sm:grid-cols-2">
-          <div>
-            <dt className="text-muted-foreground">Assigned operator</dt>
-            <dd>{assignedOperator?.full_name ?? assignedOperator?.id ?? 'Unassigned'}</dd>
-          </div>
-          <div>
-            <dt className="text-muted-foreground">Assigned vendor</dt>
-            <dd>{assignedVendor?.company_name ?? 'Unassigned'}</dd>
-          </div>
-        </section>
-      )}
-
-      {/* 5. Comments timeline */}
-      <section className="flex flex-col gap-4">
-        <h2 className="text-sm font-semibold">Comments</h2>
-        {comments.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No comments yet.</p>
-        ) : (
-          <ul className="flex flex-col gap-3">
-            {comments.map((c) => (
-              <li key={c.id} className="rounded-md border p-3 text-sm">
-                <div className="mb-1 flex flex-wrap items-center gap-2">
-                  <span className="font-medium">{displayName(c.author_user_id)}</span>
-                  <Badge variant={c.visibility === 'INTERNAL' ? 'secondary' : 'outline'}>
-                    {c.visibility === 'INTERNAL' ? 'Internal' : 'Public'}
-                  </Badge>
-                  <span className="text-muted-foreground">{formatDateTime(c.created_at)}</span>
-                </div>
-                <p className="whitespace-pre-wrap">{c.body}</p>
-              </li>
-            ))}
-          </ul>
-        )}
-
-        {/* Add-comment form is canWrite-gated: accountant (tickets:read only) is read-only. */}
-        {canWrite && (
-          <form action={boundAddComment} className="flex flex-col gap-2">
-            <Label htmlFor="body">Add a comment</Label>
-            <Textarea id="body" name="body" required />
-            <div className="flex items-center gap-2">
-              <select
-                name="visibility"
-                defaultValue="PUBLIC"
-                className="h-9 rounded-md border px-2 text-sm"
-              >
-                <option value="PUBLIC">Public</option>
-                {/* INTERNAL only offered to comment-internal holders (RLS also enforces). */}
-                {canInternal && <option value="INTERNAL">Internal</option>}
-              </select>
-              <Button type="submit" size="sm">
-                Post comment
-              </Button>
-            </div>
-          </form>
-        )}
-      </section>
-
-      {/* 5b. Attachments — list with signed download links + upload form (canWrite). */}
-      <section className="flex flex-col gap-4">
-        <h2 className="text-sm font-semibold">Attachments</h2>
-        {signedAttachments.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No attachments yet.</p>
-        ) : (
-          <ul className="flex flex-col gap-2">
-            {signedAttachments.map(({ att, url }) => (
-              <li
-                key={att.id}
-                className="flex flex-wrap items-center gap-2 rounded-md border p-3 text-sm"
-              >
-                <span className="font-medium">{att.file_name}</span>
-                <Badge variant="outline">{att.attachment_type}</Badge>
-                <span className="text-muted-foreground">{formatBytes(att.file_size)}</span>
-                {url ? (
-                  <a
-                    href={url}
-                    download={att.file_name}
-                    className="ml-auto underline underline-offset-2"
-                  >
-                    Download
-                  </a>
-                ) : (
-                  <span className="ml-auto text-muted-foreground">Link unavailable</span>
+      <div className="grid gap-6 lg:grid-cols-3">
+        {/* Left column: summary, comments, attachments, activity */}
+        <div className="flex flex-col gap-6 lg:col-span-2">
+          {/* Summary */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Summary</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <dl className="grid gap-4 sm:grid-cols-2">
+                <SummaryField label="Property">
+                  {property ? (
+                    <Link
+                      href={`/properties/${property.id}`}
+                      className="underline underline-offset-2"
+                    >
+                      {property.name}
+                    </Link>
+                  ) : (
+                    ticket.property_id
+                  )}
+                </SummaryField>
+                {unit && <SummaryField label="Unit">{unit.label}</SummaryField>}
+                <SummaryField label="Description" wide>
+                  <span className="whitespace-pre-wrap">{ticket.description}</span>
+                </SummaryField>
+                <SummaryField label="Reported by">
+                  {displayName(ticket.created_by_user_id)}
+                </SummaryField>
+                <SummaryField label="Created">{formatDateTime(ticket.created_at)}</SummaryField>
+                {ticket.scheduled_at && (
+                  <SummaryField label="Scheduled">
+                    {formatDateTime(ticket.scheduled_at)}
+                  </SummaryField>
                 )}
-              </li>
-            ))}
-          </ul>
-        )}
-        {canWrite && (
-          <form
-            action={boundUploadAttachment}
-            encType="multipart/form-data"
-            className="flex flex-wrap items-center gap-2"
-          >
-            <input
-              type="file"
-              name="file"
-              accept="image/jpeg,image/png,image/webp,application/pdf"
-              required
-              className="text-sm"
-            />
-            <Button type="submit" size="sm">
-              Upload
-            </Button>
-          </form>
-        )}
-      </section>
+                {ticket.estimated_cost != null && (
+                  <SummaryField label="Estimated cost">
+                    {formatMoney(ticket.estimated_cost)}
+                  </SummaryField>
+                )}
+                {ticket.actual_cost != null && (
+                  <SummaryField label="Actual cost">
+                    {formatMoney(ticket.actual_cost)}
+                  </SummaryField>
+                )}
+              </dl>
+            </CardContent>
+          </Card>
 
-      {/* 6. Audit timeline (read-only) */}
-      <section className="flex flex-col gap-4">
-        <h2 className="text-sm font-semibold">Activity</h2>
-        {events.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No activity recorded.</p>
-        ) : (
-          <ul className="flex flex-col gap-2">
-            {events.map((e) => {
-              const delta = eventDelta(e)
-              return (
-                <li key={e.id} className="flex flex-wrap items-baseline gap-2 text-sm">
-                  <span className="font-medium">{EVENT_LABELS[e.event_type] ?? e.event_type}</span>
-                  {delta && <span className="text-muted-foreground">{delta}</span>}
-                  <span className="text-muted-foreground">
-                    by {displayName(e.actor_user_id)} · {formatDateTime(e.created_at)}
-                  </span>
-                </li>
-              )
-            })}
-          </ul>
-        )}
-      </section>
+          {/* Comments */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Comments</CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4">
+              <CommentThread comments={threadComments} />
+
+              {/* Add-comment form is canWrite-gated: accountant is read-only. */}
+              {canWrite && (
+                <form action={boundAddComment} className="flex flex-col gap-2 border-t pt-4">
+                  <Label htmlFor="body">Add a comment</Label>
+                  <Textarea id="body" name="body" required placeholder="Write a comment" />
+                  <div className="flex flex-wrap items-center gap-2">
+                    <select name="visibility" defaultValue="PUBLIC" className={SELECT_CLASS + ' w-auto'}>
+                      <option value="PUBLIC">Public</option>
+                      {/* INTERNAL only offered to comment-internal holders (RLS also enforces). */}
+                      {canInternal && <option value="INTERNAL">Internal</option>}
+                    </select>
+                    <SubmitButton size="sm" pendingLabel="Posting">
+                      Post comment
+                    </SubmitButton>
+                  </div>
+                </form>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Attachments */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Attachments</CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4">
+              {signedAttachments.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No attachments yet.</p>
+              ) : (
+                <ul className="flex flex-col gap-2">
+                  {signedAttachments.map(({ att, url }) => (
+                    <li
+                      key={att.id}
+                      className="flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2.5 text-sm"
+                    >
+                      <span className="font-medium">{att.file_name}</span>
+                      <Badge variant="outline" className="capitalize">
+                        {att.attachment_type.replace(/_/g, ' ').toLowerCase()}
+                      </Badge>
+                      <span className="text-muted-foreground">{formatBytes(att.file_size)}</span>
+                      {url ? (
+                        <a
+                          href={url}
+                          download={att.file_name}
+                          className="ml-auto underline underline-offset-2"
+                        >
+                          Download
+                        </a>
+                      ) : (
+                        <span className="ml-auto text-muted-foreground">Link unavailable</span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {canWrite && (
+                <form
+                  action={boundUploadAttachment}
+                  encType="multipart/form-data"
+                  className="flex flex-wrap items-center gap-2 border-t pt-4"
+                >
+                  <input
+                    type="file"
+                    name="file"
+                    accept="image/jpeg,image/png,image/webp,application/pdf"
+                    required
+                    className="text-sm"
+                  />
+                  <SubmitButton size="sm" pendingLabel="Uploading">
+                    Upload
+                  </SubmitButton>
+                </form>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Activity */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Activity</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ActivityTimeline events={timelineEvents} />
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Right column: status flow + assignment */}
+        <div className="flex flex-col gap-6">
+          {/* Status flow */}
+          {canWrite && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Status</CardTitle>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-3">
+                {transitions.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    This ticket is {ticket.status.replace(/_/g, ' ').toLowerCase()}.
+                  </p>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {transitions.map((next) => (
+                      <form key={next} action={boundTransition}>
+                        <input type="hidden" name="nextStatus" value={next} />
+                        <input
+                          type="hidden"
+                          name="expectedCurrentStatus"
+                          value={ticket.status}
+                        />
+                        <SubmitButton variant="outline" size="sm" pendingLabel="Saving">
+                          Mark {next.replace(/_/g, ' ').toLowerCase()}
+                        </SubmitButton>
+                      </form>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Assignment (canAssign) */}
+          {canAssign && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Assignment</CardTitle>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-5">
+                <form action={boundAssignOperator} className="flex flex-col gap-2">
+                  <Label htmlFor="operatorId">Operator</Label>
+                  <select
+                    id="operatorId"
+                    name="operatorId"
+                    defaultValue={ticket.assigned_operator_id ?? ''}
+                    className={SELECT_CLASS}
+                  >
+                    <option value="">Unassigned</option>
+                    {operators.map((op) => (
+                      <option key={op.id} value={op.id}>
+                        {op.full_name ?? op.id}
+                      </option>
+                    ))}
+                  </select>
+                  <SubmitButton
+                    variant="outline"
+                    size="sm"
+                    className="self-start"
+                    pendingLabel="Saving"
+                  >
+                    Save operator
+                  </SubmitButton>
+                </form>
+
+                <form action={boundAssignVendor} className="flex flex-col gap-2">
+                  <Label htmlFor="vendorId">Vendor</Label>
+                  <select
+                    id="vendorId"
+                    name="vendorId"
+                    defaultValue={ticket.assigned_vendor_id ?? ''}
+                    className={SELECT_CLASS}
+                  >
+                    <option value="">Unassigned</option>
+                    {vendors.map((v) => (
+                      <option key={v.id} value={v.id}>
+                        {v.company_name}
+                      </option>
+                    ))}
+                  </select>
+                  <SubmitButton
+                    variant="outline"
+                    size="sm"
+                    className="self-start"
+                    pendingLabel="Saving"
+                  >
+                    Save vendor
+                  </SubmitButton>
+                </form>
+
+                {/* Vendor secure job link — only once a vendor is assigned. */}
+                {ticket.assigned_vendor_id && (
+                  <div className="flex flex-col gap-2 border-t pt-4">
+                    <Label>Vendor job link</Label>
+                    {jobLinkUrl ? (
+                      <>
+                        <Input id="joblink" readOnly value={jobLinkUrl} />
+                        <p className="text-xs text-muted-foreground">
+                          The vendor can view and act on this job without logging in. It
+                          expires in 7 days. Share it only with the assigned vendor.
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-sm text-muted-foreground">
+                          Generate a no-login link the assigned vendor can use to accept,
+                          decline, or complete this job.
+                        </p>
+                        <form action={boundGenerateVendorLink}>
+                          <SubmitButton
+                            variant="outline"
+                            size="sm"
+                            pendingLabel="Generating"
+                          >
+                            Generate job link
+                          </SubmitButton>
+                        </form>
+                      </>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Read-only assignment display for viewers who cannot assign (e.g. accountant) */}
+          {!canAssign && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Assignment</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <dl className="grid gap-4">
+                  <SummaryField label="Operator">
+                    {assignedOperator?.full_name ?? assignedOperator?.id ?? 'Unassigned'}
+                  </SummaryField>
+                  <SummaryField label="Vendor">
+                    {assignedVendor?.company_name ?? 'Unassigned'}
+                  </SummaryField>
+                </dl>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
