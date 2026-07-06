@@ -6,6 +6,7 @@ import {
   LayoutDashboard,
   Building2,
   DoorOpen,
+  CalendarClock,
   Wrench,
   Ticket,
   Inbox,
@@ -14,18 +15,23 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { isTenantRole } from '@/lib/auth/permissions'
+import { can, isTenantRole, type Permission } from '@/lib/auth/permissions'
 import type { Role } from '@/types/domain'
 
-type NavItem = { href: string; label: string; icon: LucideIcon }
+// A nav item may declare a `permission` — when set, the link only renders for roles
+// that hold it. Items without one show for every operator-surface role (dashboard etc.).
+type NavItem = { href: string; label: string; icon: LucideIcon; permission?: Permission }
 
 // Operator nav — the full portfolio surface. Tenants/guests hold NONE of the
 // permissions these pages gate on (properties/units/vendors/tickets), so showing them
 // these links would only lead to permission errors. They get TENANT_NAV instead.
+// Occupancy sits between Units and Vendors and is gated on occupancy:read — managers +
+// accountant see it; it stays hidden from any operator-surface role that lacks it.
 const OPERATOR_NAV: NavItem[] = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/properties', label: 'Properties', icon: Building2 },
   { href: '/units', label: 'Units', icon: DoorOpen },
+  { href: '/occupancy', label: 'Occupancy', icon: CalendarClock, permission: 'occupancy:read' },
   { href: '/vendors', label: 'Vendors', icon: Wrench },
   { href: '/tickets', label: 'Tickets', icon: Ticket },
 ]
@@ -46,7 +52,9 @@ function isActive(pathname: string, href: string): boolean {
 
 export function Sidebar({ role }: { role: Role }) {
   const pathname = usePathname()
-  const nav = isTenantRole(role) ? TENANT_NAV : OPERATOR_NAV
+  const nav = isTenantRole(role)
+    ? TENANT_NAV
+    : OPERATOR_NAV.filter((item) => !item.permission || can(role, item.permission))
 
   return (
     <nav className="flex h-full w-56 flex-col border-r bg-sidebar">
