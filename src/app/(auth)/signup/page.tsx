@@ -1,37 +1,75 @@
+import Link from 'next/link'
+import { MailCheck } from 'lucide-react'
+
+import { AuthCard } from '@/components/auth/AuthCard'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { AuthPageShell } from '@/components/common/AuthPageShell'
 import { signUpWithPassword } from '../actions'
 
 export default async function SignupPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>
+  searchParams: Promise<{ error?: string; confirmEmailSent?: string }>
 }) {
   const params = await searchParams
 
+  if (params.confirmEmailSent) {
+    return (
+      <AuthCard title="Check your email">
+        <div className="flex flex-col items-center gap-4 py-2 text-center">
+          <div className="flex size-11 items-center justify-center rounded-full bg-muted text-foreground">
+            <MailCheck className="size-5" aria-hidden />
+          </div>
+          <p className="text-sm text-muted-foreground">
+            We sent a confirmation link to your inbox. Open it to activate your account, then sign
+            in.
+          </p>
+          <Button render={<Link href="/login" />} size="lg" className="w-full">
+            Back to sign in
+          </Button>
+        </div>
+      </AuthCard>
+    )
+  }
+
   return (
-    <AuthPageShell title="Create account" error={params.error}>
-      <form action={signUpWithPassword} className="flex flex-col gap-3">
-        <div>
+    <AuthCard
+      title="Create account"
+      description="Set up your property operations workspace."
+      error={params.error}
+    >
+      <form action={signUpWithPassword} className="flex flex-col gap-4">
+        <div className="flex flex-col gap-1.5">
           <Label htmlFor="fullName">Full name</Label>
-          <Input id="fullName" name="fullName" required />
+          <Input id="fullName" name="fullName" autoComplete="name" required />
         </div>
-        <div>
+        <div className="flex flex-col gap-1.5">
           <Label htmlFor="email">Email</Label>
-          <Input id="email" name="email" type="email" required />
+          <Input id="email" name="email" type="email" autoComplete="email" required />
         </div>
-        <div>
+        <div className="flex flex-col gap-1.5">
           <Label htmlFor="password">Password</Label>
-          <Input id="password" name="password" type="password" minLength={8} required />
+          <Input
+            id="password"
+            name="password"
+            type="password"
+            autoComplete="new-password"
+            minLength={8}
+            required
+          />
         </div>
-        <Button type="submit">Create account</Button>
+        <Button type="submit" size="lg" className="w-full">
+          Create account
+        </Button>
       </form>
 
-      <p className="text-center text-sm text-muted-foreground">
-        Already have an account? <a href="/login" className="underline">Sign in</a>
+      <p className="mt-6 text-center text-sm text-muted-foreground">
+        Already have an account?{' '}
+        <Link href="/login" className="font-medium text-foreground underline-offset-4 hover:underline">
+          Sign in
+        </Link>
       </p>
-    </AuthPageShell>
+    </AuthCard>
   )
 }

@@ -1,54 +1,83 @@
+import Link from 'next/link'
+
+import { AuthCard } from '@/components/auth/AuthCard'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { AuthPageShell } from '@/components/common/AuthPageShell'
 import { signInWithPassword, signInWithMagicLink, signInWithGoogle } from '../actions'
 
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; magicLinkSent?: string; confirmEmailSent?: string }>
+  searchParams: Promise<{ error?: string; magicLinkSent?: string }>
 }) {
   const params = await searchParams
-  const notice = params.magicLinkSent
-    ? 'Check your email for a sign-in link.'
-    : params.confirmEmailSent
-      ? 'Check your email to confirm your account.'
-      : undefined
 
   return (
-    <AuthPageShell title="Sign in" error={params.error} notice={notice}>
-      <form action={signInWithPassword} className="flex flex-col gap-3">
-        <div>
+    <AuthCard
+      title="Sign in"
+      description="Access your property operations workspace."
+      error={params.error}
+    >
+      {params.magicLinkSent && (
+        <div
+          role="status"
+          className="mb-4 rounded-lg bg-muted px-3 py-2 text-sm text-muted-foreground"
+        >
+          Check your email for a sign-in link.
+        </div>
+      )}
+
+      <form action={signInWithPassword} className="flex flex-col gap-4">
+        <div className="flex flex-col gap-1.5">
           <Label htmlFor="email">Email</Label>
-          <Input id="email" name="email" type="email" required />
+          <Input id="email" name="email" type="email" autoComplete="email" required />
         </div>
-        <div>
+        <div className="flex flex-col gap-1.5">
           <Label htmlFor="password">Password</Label>
-          <Input id="password" name="password" type="password" required />
+          <Input
+            id="password"
+            name="password"
+            type="password"
+            autoComplete="current-password"
+            required
+          />
         </div>
-        <Button type="submit">Sign in</Button>
-      </form>
-
-      <form action={signInWithMagicLink} className="flex flex-col gap-3">
-        <div>
-          <Label htmlFor="magic-email">Email for magic link</Label>
-          <Input id="magic-email" name="email" type="email" required />
-        </div>
-        <Button type="submit" variant="secondary">
-          Send magic link
+        <Button type="submit" size="lg" className="w-full">
+          Sign in
         </Button>
       </form>
 
-      <form action={signInWithGoogle}>
-        <Button type="submit" variant="outline" className="w-full">
-          Continue with Google
-        </Button>
-      </form>
+      <div className="my-5 flex items-center gap-3 text-xs text-muted-foreground">
+        <span className="h-px flex-1 bg-border" />
+        <span>or</span>
+        <span className="h-px flex-1 bg-border" />
+      </div>
 
-      <p className="text-center text-sm text-muted-foreground">
-        No account? <a href="/signup" className="underline">Sign up</a>
+      <div className="flex flex-col gap-2.5">
+        <form action={signInWithMagicLink} className="flex flex-col gap-1.5">
+          <Label htmlFor="magic-email" className="text-muted-foreground">
+            Email for magic link
+          </Label>
+          <Input id="magic-email" name="email" type="email" autoComplete="email" required />
+          <Button type="submit" variant="outline" size="lg" className="mt-1 w-full">
+            Send magic link
+          </Button>
+        </form>
+
+        <form action={signInWithGoogle}>
+          <Button type="submit" variant="outline" size="lg" className="w-full">
+            Continue with Google
+          </Button>
+        </form>
+      </div>
+
+      <p className="mt-6 text-center text-sm text-muted-foreground">
+        No account?{' '}
+        <Link href="/signup" className="font-medium text-foreground underline-offset-4 hover:underline">
+          Sign up
+        </Link>
       </p>
-    </AuthPageShell>
+    </AuthCard>
   )
 }
