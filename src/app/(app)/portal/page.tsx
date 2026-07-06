@@ -1,15 +1,23 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
+import { Inbox, ChevronRight } from 'lucide-react'
 import { requireWorkspace } from '@/lib/auth/session'
 import { isTenantRole } from '@/lib/auth/permissions'
 import { createClient } from '@/lib/supabase/server'
 import { listTickets } from '@/lib/data/tickets'
-import { TicketStatusBadge } from '@/components/tickets/TicketBadges'
+import { StatusBadge } from '@/components/ui/badge'
+import { PageHeader } from '@/components/layout/PageHeader'
 import { EmptyState } from '@/components/common/EmptyState'
+import { ErrorToast } from '@/components/common/ErrorToast'
 import { Button } from '@/components/ui/button'
+import { Card } from '@/components/ui/card'
 
 function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString()
+  return new Date(iso).toLocaleDateString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  })
 }
 
 export default async function PortalPage() {
@@ -24,38 +32,50 @@ export default async function PortalPage() {
   const tickets = await listTickets(supabase, user.workspaceId)
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">My Requests</h1>
-        <Button render={<Link href="/portal/new" />}>Report an issue</Button>
-      </div>
+    <div className="flex flex-col">
+      <ErrorToast />
+
+      <PageHeader
+        title="My requests"
+        subtitle="Track the maintenance requests you've reported."
+        actions={
+          <Button render={<Link href="/portal/new" />}>Report an issue</Button>
+        }
+      />
 
       {tickets.length === 0 ? (
         <EmptyState
+          icon={<Inbox />}
           title="No requests yet"
-          description="Report an issue and it'll show up here."
-          actionLabel="Report an issue"
-          actionHref="/portal/new"
+          body="Report a maintenance issue and follow its progress here."
+          action={<Button render={<Link href="/portal/new" />}>Report an issue</Button>}
         />
       ) : (
-        <ul className="flex flex-col divide-y rounded-lg border">
-          {tickets.map((t) => (
-            <li key={t.id}>
-              <Link
-                href={`/portal/${t.id}`}
-                className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 hover:bg-accent"
-              >
-                <div className="flex flex-col gap-1">
-                  <span className="text-sm font-medium">{t.title}</span>
-                  <span className="text-xs text-muted-foreground">
-                    {t.category.replace(/_/g, ' ')} · {formatDate(t.created_at)}
-                  </span>
-                </div>
-                <TicketStatusBadge status={t.status} />
-              </Link>
-            </li>
-          ))}
-        </ul>
+        <Card className="p-0">
+          <ul className="divide-y divide-border">
+            {tickets.map((t) => (
+              <li key={t.id}>
+                <Link
+                  href={`/portal/${t.id}`}
+                  className="flex items-center gap-3 px-4 py-3.5 transition-colors hover:bg-muted/40"
+                >
+                  <div className="flex min-w-0 flex-col gap-1">
+                    <span className="truncate text-sm font-medium text-foreground">
+                      {t.title}
+                    </span>
+                    <span className="text-xs text-muted-foreground capitalize">
+                      {t.category.replace(/_/g, ' ').toLowerCase()} · {formatDate(t.created_at)}
+                    </span>
+                  </div>
+                  <div className="ml-auto flex shrink-0 items-center gap-2">
+                    <StatusBadge kind="ticket_status" value={t.status} />
+                    <ChevronRight className="size-4 text-muted-foreground" />
+                  </div>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </Card>
       )}
     </div>
   )

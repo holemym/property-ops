@@ -22,7 +22,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { ErrorToast } from '@/components/tickets/ErrorToast'
+import { FileInput } from '@/components/ui/file-input'
+import { ErrorToast } from '@/components/common/ErrorToast'
 import { SubmitButton } from '@/components/tickets/SubmitButton'
 import { ActivityTimeline } from '@/components/tickets/ActivityTimeline'
 import { CommentThread } from '@/components/tickets/CommentThread'
@@ -345,12 +346,10 @@ export default async function TicketDetailPage({
                   encType="multipart/form-data"
                   className="flex flex-wrap items-center gap-2 border-t pt-4"
                 >
-                  <input
-                    type="file"
+                  <FileInput
                     name="file"
                     accept="image/jpeg,image/png,image/webp,application/pdf"
                     required
-                    className="text-sm"
                   />
                   <SubmitButton size="sm" pendingLabel="Uploading">
                     Upload
