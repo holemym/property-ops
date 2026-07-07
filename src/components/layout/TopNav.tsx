@@ -12,6 +12,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { WorkspaceSwitcher } from './WorkspaceSwitcher'
+import { CommandPalette } from '@/components/search/CommandPalette'
+import { isTenantRole } from '@/lib/auth/permissions'
 import type { Role } from '@/types/domain'
 
 // Initials for the avatar chip — first letters of up to two words, upper-cased. Falls
@@ -36,6 +38,9 @@ export function TopNav({
   return (
     <header className="flex h-14 shrink-0 items-center justify-between gap-4 border-b bg-background px-6">
       <WorkspaceSwitcher role={role} workspaceName={workspaceName} />
+
+      {/* Global search (⌘K) — operator surface only; tenants use the portal. */}
+      {!isTenantRole(role) && <CommandPalette />}
 
       <DropdownMenu>
         <DropdownMenuTrigger
