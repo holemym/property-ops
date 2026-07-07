@@ -11,7 +11,7 @@ import { statusBadge } from '@/lib/status'
 import { nextStatuses } from '@/lib/tickets/status-flow'
 import { moveTicketStatusAction } from '@/app/(app)/tickets/board/actions'
 import type { Ticket } from '@/lib/data/tickets'
-import type { TicketStatus } from '@/types/domain'
+import type { TicketStatus, TicketPriority } from '@/types/domain'
 
 // Column order follows the ticket lifecycle (status-flow.ts): the happy path left→right,
 // with the two off-path states (waiting for info, cancelled) trailing. Each column maps to
@@ -33,6 +33,14 @@ type BoardTicket = Pick<Ticket, 'id' | 'title' | 'priority' | 'status' | 'proper
 }
 
 const statusLabel = (s: TicketStatus) => statusBadge('ticket_status', s).label
+
+// Left color-spine on each card so urgency reads at a glance across the board.
+const PRIORITY_SPINE: Record<TicketPriority, string> = {
+  URGENT: 'border-l-red-500',
+  HIGH: 'border-l-amber-500',
+  NORMAL: 'border-l-transparent',
+  LOW: 'border-l-transparent',
+}
 
 export function KanbanBoard({
   tickets,
@@ -154,27 +162,40 @@ export function KanbanBoard({
 
             <div className="flex min-h-24 flex-col gap-2 px-2 pb-2">
               {cards.length === 0 ? (
-                <p className="px-1 py-6 text-center text-xs text-muted-foreground">
+                <p
+                  className={cn(
+                    'rounded-md px-1 py-6 text-center text-xs text-muted-foreground',
+                    isActiveOver && 'border-2 border-dashed border-primary/50 text-primary',
+                  )}
+                >
                   {isActiveOver ? 'Drop to move here' : 'No tickets'}
                 </p>
               ) : (
-                cards.map((t) => (
-                  <BoardCard
-                    key={t.id}
-                    ticket={t}
-                    propertyName={propertyNames[t.property_id]}
-                    unitLabel={t.unit_id ? unitLabels[t.unit_id] : undefined}
-                    operatorName={t.assigned_operator_id ? operatorNames[t.assigned_operator_id] : undefined}
-                    canWrite={canWrite}
-                    isDragging={dragId === t.id}
-                    isPending={isPending && overrides[t.id] === status}
-                    onDragStart={() => setDragId(t.id)}
-                    onDragEnd={() => {
-                      setDragId(null)
-                      setOverColumn(null)
-                    }}
-                  />
-                ))
+                <>
+                  {cards.map((t) => (
+                    <BoardCard
+                      key={t.id}
+                      ticket={t}
+                      propertyName={propertyNames[t.property_id]}
+                      unitLabel={t.unit_id ? unitLabels[t.unit_id] : undefined}
+                      operatorName={t.assigned_operator_id ? operatorNames[t.assigned_operator_id] : undefined}
+                      canWrite={canWrite}
+                      isDragging={dragId === t.id}
+                      isPending={isPending && overrides[t.id] === status}
+                      onDragStart={() => setDragId(t.id)}
+                      onDragEnd={() => {
+                        setDragId(null)
+                        setOverColumn(null)
+                      }}
+                    />
+                  ))}
+                  {/* Insertion placeholder while dragging over a non-empty legal column. */}
+                  {isActiveOver && (
+                    <div className="rounded-lg border-2 border-dashed border-primary/50 px-3 py-4 text-center text-xs font-medium text-primary">
+                      Drop to move here
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </section>
@@ -209,7 +230,8 @@ function BoardCard({
   return (
     <div
       className={cn(
-        'group relative flex flex-col gap-2 rounded-lg bg-card p-3 text-sm ring-1 ring-foreground/10 motion-safe:transition-shadow',
+        'group relative flex flex-col gap-2 rounded-lg border-l-2 bg-card p-3 text-sm ring-1 ring-foreground/10 motion-safe:transition-shadow',
+        PRIORITY_SPINE[ticket.priority],
         isDragging && 'opacity-50',
         isPending && 'opacity-70',
         !isDragging && 'hover:ring-foreground/20',

@@ -8,7 +8,19 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { StatusBadge } from '@/components/ui/badge'
+import { cn } from '@/lib/utils'
+import { relativeDay } from '@/lib/relative-date'
 import type { Ticket } from '@/lib/data/tickets'
+import type { TicketPriority } from '@/types/domain'
+
+// A left color-spine so urgency reads at a glance while scanning the list — red for
+// URGENT, amber for HIGH, transparent (keeps alignment) otherwise.
+const PRIORITY_SPINE: Record<TicketPriority, string> = {
+  URGENT: 'border-l-red-500',
+  HIGH: 'border-l-amber-500',
+  NORMAL: 'border-l-transparent',
+  LOW: 'border-l-transparent',
+}
 
 // listTickets returns raw rows (property_id, not a joined property name), so the page
 // fetches properties once and passes an id->name map. The Property column reads from it,
@@ -41,7 +53,10 @@ export function TicketTable({
         </TableHeader>
         <TableBody>
           {tickets.map((t) => (
-            <TableRow key={t.id} className="group relative cursor-pointer">
+            <TableRow
+              key={t.id}
+              className={cn('group relative cursor-pointer border-l-2', PRIORITY_SPINE[t.priority])}
+            >
               <TableCell className="px-4 py-3 font-medium">
                 <Link
                   href={`/tickets/${t.id}`}
@@ -63,7 +78,9 @@ export function TicketTable({
                 <StatusBadge kind="ticket_status" value={t.status} />
               </TableCell>
               <TableCell className="px-4 py-3 text-muted-foreground">
-                {new Date(t.created_at).toLocaleDateString()}
+                <span title={new Date(t.created_at).toLocaleString()}>
+                  {relativeDay(t.created_at)}
+                </span>
               </TableCell>
             </TableRow>
           ))}
