@@ -203,6 +203,7 @@ export default async function TicketDetailPage({
     body: c.body,
     at: formatDateTime(c.created_at),
     internal: c.visibility === 'INTERNAL',
+    kind: c.type === 'AI_NOTE' ? ('ai' as const) : c.type === 'SYSTEM_NOTE' ? ('system' as const) : undefined,
   }))
 
   return (

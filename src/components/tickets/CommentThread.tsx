@@ -6,6 +6,9 @@ export type ThreadComment = {
   body: string
   at: string
   internal: boolean
+  // Machine-generated notes carry a kind so they read as system output, not a human note:
+  // 'ai' = Claude triage, 'system' = the offline heuristic. Undefined = a normal comment.
+  kind?: 'ai' | 'system'
 }
 
 // The comment thread, oldest-first. Internal comments are visually set apart from public
@@ -30,6 +33,7 @@ export function CommentThread({ comments }: { comments: ThreadComment[] }) {
         >
           <div className="mb-1.5 flex flex-wrap items-center gap-2">
             <span className="font-medium">{c.author}</span>
+            {c.kind ? <Badge variant="muted">{c.kind === 'ai' ? 'AI triage' : 'Auto-triage'}</Badge> : null}
             {c.internal ? (
               <Badge variant="amber">Internal</Badge>
             ) : (

@@ -20,6 +20,7 @@ import {
 } from '@/lib/data/tickets'
 import { appendTicketEvent } from '@/lib/data/ticket-events'
 import { createTicketComment } from '@/lib/data/ticket-comments'
+import { runAutoTriage } from '@/lib/ai/triage-service'
 import { createVendorJobToken } from '@/lib/data/vendor-tokens'
 import { getProperty } from '@/lib/data/properties'
 import { getUnit } from '@/lib/data/units'
@@ -100,6 +101,23 @@ export async function createTicketAction(formData: FormData) {
   } catch (e) {
     console.error('Failed to log TICKET_CREATED event for ticket', ticketId, e)
   }
+
+  // AI ticket triage (Phase 4) — best-effort, non-blocking. Suggests a category/priority
+  // and writes an internal note + AI_CLASSIFICATION_GENERATED event. DISCONNECTED BY
+  // DEFAULT: with no ANTHROPIC_API_KEY set, this runs a deterministic offline heuristic
+  // (zero cost, no API call). Add the key (+ `npm i @anthropic-ai/sdk`) to switch to a
+  // Claude Haiku classification. runAutoTriage swallows its own errors, so triage can
+  // never fail the create — awaited here only so the suggestion note is present when the
+  // manager lands on the detail page.
+  await runAutoTriage(createServiceClient(), {
+    workspaceId: user.workspaceId,
+    ticketId,
+    createdByUserId: user.id,
+    title,
+    description,
+    filedCategory: category,
+    filedPriority: priority,
+  })
 
   revalidatePath('/tickets')
   redirect(`/tickets/${ticketId}`)
