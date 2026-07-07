@@ -992,5 +992,122 @@ create policy "expense_records_update_finance"
 -- No DELETE policy on either finance table — default-deny.
 
 -- =============================================================================
--- DONE. Verify: select count(*) from pg_tables where schemaname='public';  -- expect 13
+-- DOCUMENTS HUB (0018) — general documents repo attached to any entity via per-entity
+-- nullable composite-FK columns (property/unit/tenancy/vendor/ticket) — NO polymorphic
+-- entity_id, to preserve multi-tenant integrity. PRIVATE Storage bucket + storage RLS.
+-- Role-gated SELECT (SUPER_ADMIN/OWNER/OPERATOR/ACCOUNTANT); writes via
+-- is_workspace_manager() (managers incl. OPERATOR; ACCOUNTANT is read-only here — the
+-- inverse of finance). No DELETE. Path: workspace_id/<uuid>-<file>.
+-- =============================================================================
+
+-- PREREQUISITE: tenancies needs unique(id, workspace_id) for the (tenancy_id,
+-- workspace_id) composite FK below. Wrapped in a DO block that swallows
+-- duplicate_object/duplicate_table so a re-run (constraint already present) is a no-op.
+do $do$ begin
+  alter table public.tenancies
+    add constraint tenancies_id_workspace_unique unique (id, workspace_id);
+exception when duplicate_object or duplicate_table then null; end $do$;
+
+do $do$ begin
+  create type public.document_type as enum
+    ('LEASE','CONTRACT','PERMIT','CERTIFICATE','INSURANCE','ID','INVOICE','OTHER');
+exception when duplicate_object then null; end $do$;
+
+create table if not exists public.documents (
+  id uuid primary key default gen_random_uuid(),
+  workspace_id uuid not null references public.workspaces (id) on delete cascade,
+  property_id uuid,
+  unit_id uuid,
+  tenancy_id uuid,
+  vendor_id uuid,
+  ticket_id uuid,
+  document_type public.document_type not null default 'OTHER',
+  title text not null,
+  storage_path text not null unique,
+  file_type text not null,
+  file_size bigint not null,
+  expires_at date,
+  notes text,
+  uploaded_by_user_id uuid references public.profiles (id),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint documents_property_fk
+    foreign key (property_id, workspace_id)
+    references public.properties (id, workspace_id) on delete cascade,
+  constraint documents_unit_fk
+    foreign key (unit_id, workspace_id)
+    references public.units (id, workspace_id) on delete cascade,
+  constraint documents_tenancy_fk
+    foreign key (tenancy_id, workspace_id)
+    references public.tenancies (id, workspace_id) on delete cascade,
+  constraint documents_vendor_fk
+    foreign key (vendor_id, workspace_id)
+    references public.vendors (id, workspace_id) on delete cascade,
+  constraint documents_ticket_fk
+    foreign key (ticket_id, workspace_id)
+    references public.tickets (id, workspace_id) on delete cascade
+);
+
+create index if not exists documents_workspace_id_idx on public.documents (workspace_id);
+
+drop trigger if exists documents_set_updated_at on public.documents;
+create trigger documents_set_updated_at
+  before update on public.documents
+  for each row execute function public.set_updated_at();
+
+alter table public.documents enable row level security;
+
+-- SELECT: role-gated (SUPER_ADMIN/OWNER/OPERATOR/ACCOUNTANT) + SUPER_ADMIN platform
+-- read override. TENANT/GUEST/VENDOR get zero rows.
+drop policy if exists "documents_select_manager_or_accountant" on public.documents;
+create policy "documents_select_manager_or_accountant"
+  on public.documents for select
+  using (
+    (workspace_id = public.current_workspace_id()
+       and public.current_role() in ('SUPER_ADMIN','OWNER','OPERATOR','ACCOUNTANT'))
+    or public.current_role() = 'SUPER_ADMIN'
+  );
+
+-- INSERT/UPDATE: is_workspace_manager() (SUPER_ADMIN/OWNER/OPERATOR — accountant is
+-- read-only here, the inverse of finance). EXPLICIT WITH CHECK blocks workspace-hop.
+drop policy if exists "documents_insert_manager" on public.documents;
+create policy "documents_insert_manager"
+  on public.documents for insert
+  with check (workspace_id = public.current_workspace_id() and public.is_workspace_manager());
+
+drop policy if exists "documents_update_manager" on public.documents;
+create policy "documents_update_manager"
+  on public.documents for update
+  using (workspace_id = public.current_workspace_id() and public.is_workspace_manager())
+  with check (workspace_id = public.current_workspace_id() and public.is_workspace_manager());
+
+-- No DELETE policy — default-deny.
+
+-- Private Storage bucket.
+insert into storage.buckets (id, name, public)
+values ('documents', 'documents', false)
+on conflict (id) do nothing;
+
+-- storage.objects RLS — keyed on object PATH: workspace_id/<uuid>-<file>. First segment
+-- = workspace_id (the cross-workspace lock). SELECT: manager+accountant; INSERT: manager.
+drop policy if exists "documents_objects_select" on storage.objects;
+create policy "documents_objects_select"
+  on storage.objects for select
+  using (
+    bucket_id = 'documents'
+    and (storage.foldername(name))[1] = public.current_workspace_id()::text
+    and public.current_role() in ('SUPER_ADMIN','OWNER','OPERATOR','ACCOUNTANT')
+  );
+
+drop policy if exists "documents_objects_insert" on storage.objects;
+create policy "documents_objects_insert"
+  on storage.objects for insert
+  with check (
+    bucket_id = 'documents'
+    and (storage.foldername(name))[1] = public.current_workspace_id()::text
+    and public.is_workspace_manager()
+  );
+
+-- =============================================================================
+-- DONE. Verify: select count(*) from pg_tables where schemaname='public';  -- expect 14
 -- =============================================================================

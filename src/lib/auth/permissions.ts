@@ -18,6 +18,8 @@ export type Permission =
   | 'analytics:read'
   | 'finance:read'
   | 'finance:write'
+  | 'documents:read'
+  | 'documents:write'
 
 const MANAGER_PERMISSIONS: Permission[] = [
   'properties:read',
@@ -46,6 +48,15 @@ const MANAGER_PERMISSIONS: Permission[] = [
   // below). finance:WRITE, however, is the finance role-inversion: it is NOT granted
   // here (would give OPERATOR write) — it lives in ADMIN_PERMISSIONS + ACCOUNTANT only.
   'finance:read',
+  // documents:read / documents:write — the documents hub (leases/contracts/permits/
+  // insurance/IDs/invoices). Managers (OPERATOR + OWNER/SUPER_ADMIN via ADMIN) both READ
+  // and WRITE, so both live here. ACCOUNTANT is READ-ONLY (documents:read granted below,
+  // documents:write withheld) — the INVERSE of finance (where the accountant writes).
+  // This matches the RLS in migration 0018: SELECT is manager+accountant, but
+  // INSERT/UPDATE is is_workspace_manager() (excludes ACCOUNTANT). Tenants/guests/vendors
+  // are excluded entirely.
+  'documents:read',
+  'documents:write',
 ]
 
 const ADMIN_PERMISSIONS: Permission[] = [
@@ -73,6 +84,10 @@ const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     // ACCOUNTANT owns the books — its FIRST write permission.
     'finance:read',
     'finance:write',
+    // documents:read only — the accountant reads leases/invoices/insurance for oversight
+    // but does NOT manage documents (no documents:write). Matches the 0018 RLS: SELECT
+    // includes ACCOUNTANT, but INSERT/UPDATE is is_workspace_manager() (excludes it).
+    'documents:read',
   ],
   TENANT: [],
   GUEST: [],

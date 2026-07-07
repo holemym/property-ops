@@ -142,3 +142,43 @@ export type ExpenseRecord = {
   created_at: string
   updated_at: string
 }
+
+// Document type (migration 0018). The kind of stored document, for display / filtering.
+export type DocumentType =
+  | 'LEASE'
+  | 'CONTRACT'
+  | 'PERMIT'
+  | 'CERTIFICATE'
+  | 'INSURANCE'
+  | 'ID'
+  | 'INVOICE'
+  | 'OTHER'
+
+// A document metadata row (migration 0018). A general documents repo: the BYTES live in
+// the private 'documents' Storage bucket (path workspace_id/<uuid>-<file>); this row
+// links the stored object to AT MOST ONE entity (property / unit / tenancy / vendor /
+// ticket) — or none (a workspace-level document). Each entity link is a NULLABLE
+// composite FK to (id, workspace_id), so a non-NULL link is pinned to this document's
+// workspace (multi-tenant integrity; no polymorphic entity_id). title is the display
+// name; storage_path is the unique object key; expires_at is an optional expiry (e.g.
+// insurance/permit validity). SELECT is role-gated to managers + accountant via RLS;
+// writes are is_workspace_manager() (accountant is read-only here).
+export type Document = {
+  id: string
+  workspace_id: string
+  property_id: string | null
+  unit_id: string | null
+  tenancy_id: string | null
+  vendor_id: string | null
+  ticket_id: string | null
+  document_type: DocumentType
+  title: string
+  storage_path: string
+  file_type: string
+  file_size: number
+  expires_at: string | null
+  notes: string | null
+  uploaded_by_user_id: string | null
+  created_at: string
+  updated_at: string
+}
