@@ -7,6 +7,7 @@ import {
   Building2,
   DoorOpen,
   CalendarClock,
+  ReceiptText,
   Wrench,
   Ticket,
   ChartColumn,
@@ -34,6 +35,8 @@ const OPERATOR_NAV: NavItem[] = [
   { href: '/properties', label: 'Properties', icon: Building2 },
   { href: '/units', label: 'Units', icon: DoorOpen },
   { href: '/occupancy', label: 'Occupancy', icon: CalendarClock, permission: 'occupancy:read' },
+  // Rent roll shares occupancy's gate (tenant PII + rent) — managers + accountant see it.
+  { href: '/rent-roll', label: 'Rent roll', icon: ReceiptText, permission: 'occupancy:read' },
   { href: '/vendors', label: 'Vendors', icon: Wrench },
   { href: '/tickets', label: 'Tickets', icon: Ticket },
   // Insights sits after Tickets, gated on analytics:read — managers + accountant see the
