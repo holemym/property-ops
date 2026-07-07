@@ -56,6 +56,18 @@ describe('can', () => {
     expect(can('ACCOUNTANT', 'tickets:comment-internal')).toBe(false)
   })
 
+  it('grants analytics:read to every manager role and to ACCOUNTANT', () => {
+    for (const role of ['SUPER_ADMIN', 'OWNER', 'OPERATOR', 'ACCOUNTANT'] as const) {
+      expect(can(role, 'analytics:read')).toBe(true)
+    }
+  })
+
+  it('denies analytics:read to TENANT, GUEST and VENDOR', () => {
+    for (const role of ['TENANT', 'GUEST', 'VENDOR'] as const) {
+      expect(can(role, 'analytics:read')).toBe(false)
+    }
+  })
+
   it('denies TENANT, GUEST and VENDOR every ticket matrix permission', () => {
     for (const role of ['TENANT', 'GUEST', 'VENDOR'] as const) {
       expect(can(role, 'tickets:read')).toBe(false)

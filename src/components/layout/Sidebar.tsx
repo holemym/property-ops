@@ -9,6 +9,7 @@ import {
   CalendarClock,
   Wrench,
   Ticket,
+  ChartColumn,
   Inbox,
   CirclePlus,
   Building,
@@ -34,6 +35,9 @@ const OPERATOR_NAV: NavItem[] = [
   { href: '/occupancy', label: 'Occupancy', icon: CalendarClock, permission: 'occupancy:read' },
   { href: '/vendors', label: 'Vendors', icon: Wrench },
   { href: '/tickets', label: 'Tickets', icon: Ticket },
+  // Insights sits after Tickets, gated on analytics:read — managers + accountant see the
+  // cost/vendor/unit/cycle dashboard; it stays hidden from any role that lacks it.
+  { href: '/insights', label: 'Insights', icon: ChartColumn, permission: 'analytics:read' },
 ]
 
 // Minimal tenant/guest nav — the P3.7 self-service portal only.

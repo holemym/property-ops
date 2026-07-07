@@ -15,6 +15,7 @@ export type Permission =
   | 'tickets:write'
   | 'tickets:assign'
   | 'tickets:comment-internal'
+  | 'analytics:read'
 
 const MANAGER_PERMISSIONS: Permission[] = [
   'properties:read',
@@ -34,6 +35,10 @@ const MANAGER_PERMISSIONS: Permission[] = [
   'tickets:write',
   'tickets:assign',
   'tickets:comment-internal',
+  // analytics:read — the insights dashboard (cost/vendor/unit/cycle metrics). Granted
+  // to every manager role here and to ACCOUNTANT below for read-only oversight. Tenants,
+  // guests and vendors are excluded (no reporting surface).
+  'analytics:read',
 ]
 
 const ADMIN_PERMISSIONS: Permission[] = [
@@ -47,7 +52,14 @@ const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   SUPER_ADMIN: ADMIN_PERMISSIONS,
   OWNER: ADMIN_PERMISSIONS,
   OPERATOR: [...MANAGER_PERMISSIONS],
-  ACCOUNTANT: ['properties:read', 'units:read', 'occupancy:read', 'vendors:read', 'tickets:read'],
+  ACCOUNTANT: [
+    'properties:read',
+    'units:read',
+    'occupancy:read',
+    'vendors:read',
+    'tickets:read',
+    'analytics:read',
+  ],
   TENANT: [],
   GUEST: [],
   VENDOR: [],
