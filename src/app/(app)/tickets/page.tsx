@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { Search, Ticket as TicketIcon } from 'lucide-react'
+import { Ticket as TicketIcon } from 'lucide-react'
 import { requirePermission } from '@/lib/auth/session'
 import { can } from '@/lib/auth/permissions'
 import { createClient } from '@/lib/supabase/server'
@@ -7,18 +7,13 @@ import { listTickets } from '@/lib/data/tickets'
 import { listProperties } from '@/lib/data/properties'
 import { ticketStatusEnum, ticketPriorityEnum } from '@/lib/validation/ticket'
 import { TicketTable } from '@/components/tickets/TicketTable'
+import { TicketFilters } from '@/components/tickets/TicketFilters'
 import { EmptyState } from '@/components/common/EmptyState'
 import { PageHeader } from '@/components/layout/PageHeader'
-import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import type { TicketPriority, TicketStatus } from '@/types/domain'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-const STATUSES = ticketStatusEnum.options
-const PRIORITIES = ticketPriorityEnum.options
-
-const SELECT_CLASS =
-  'h-8 rounded-lg border border-border bg-background px-2.5 text-sm text-foreground'
 
 export default async function TicketsPage({
   searchParams,
@@ -57,39 +52,7 @@ export default async function TicketsPage({
         }
       />
 
-      <form className="flex flex-wrap items-center gap-2">
-        <select name="status" defaultValue={status ?? ''} className={SELECT_CLASS}>
-          <option value="">All statuses</option>
-          {STATUSES.map((s) => (
-            <option key={s} value={s}>
-              {s.replace(/_/g, ' ')}
-            </option>
-          ))}
-        </select>
-        <select name="priority" defaultValue={priority ?? ''} className={SELECT_CLASS}>
-          <option value="">All priorities</option>
-          {PRIORITIES.map((p) => (
-            <option key={p} value={p}>
-              {p.replace(/_/g, ' ')}
-            </option>
-          ))}
-        </select>
-        <select name="propertyId" defaultValue={propertyId ?? ''} className={SELECT_CLASS}>
-          <option value="">All properties</option>
-          {properties.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name}
-            </option>
-          ))}
-        </select>
-        <div className="relative w-full max-w-xs">
-          <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input name="q" placeholder="Search by title" defaultValue={q ?? ''} className="pl-8" />
-        </div>
-        <Button type="submit" variant="outline">
-          Filter
-        </Button>
-      </form>
+      <TicketFilters properties={properties.map((p) => ({ id: p.id, name: p.name }))} />
 
       {tickets.length === 0 ? (
         <EmptyState
