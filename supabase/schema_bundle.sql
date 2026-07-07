@@ -187,6 +187,14 @@ returns boolean language sql stable security definer set search_path = public as
      and coalesce(public.current_is_active(), false)
 $$;
 
+-- (0017): finance write helper. INVERTED role set vs. is_workspace_manager —
+-- INCLUDES ACCOUNTANT (owns the books), EXCLUDES OPERATOR (read-only). is_active-aware.
+create or replace function public.can_manage_finance()
+returns boolean language sql stable security definer set search_path = public as $$
+  select public.current_role() in ('SUPER_ADMIN','OWNER','ACCOUNTANT')
+     and coalesce(public.current_is_active(), false)
+$$;
+
 -- =============================================================================
 -- RLS: workspaces + profiles (0002, profiles_update_self FINAL from 0007)
 -- =============================================================================
@@ -853,5 +861,136 @@ create policy "tenancies_update_manager"
 -- No DELETE policy — end a tenancy via end_date; default-deny delete.
 
 -- =============================================================================
--- DONE. Verify: select count(*) from pg_tables where schemaname='public';  -- expect 11
+-- FINANCE (0017) — income_records + expense_records. Nullable composite FKs to
+-- properties/units (+ tickets on expenses). Role-gated SELECT (SUPER_ADMIN/OWNER/
+-- OPERATOR/ACCOUNTANT); writes via can_manage_finance() (INCLUDES ACCOUNTANT,
+-- EXCLUDES OPERATOR — the inverse of manager writes). No DELETE.
+-- =============================================================================
+do $do$ begin
+  create type public.income_category as enum ('RENT','DEPOSIT','FEE','OTHER');
+exception when duplicate_object then null; end $do$;
+
+do $do$ begin
+  create type public.expense_category as enum
+    ('MAINTENANCE','UTILITIES','TAX','INSURANCE','MANAGEMENT','OTHER');
+exception when duplicate_object then null; end $do$;
+
+create table if not exists public.income_records (
+  id uuid primary key default gen_random_uuid(),
+  workspace_id uuid not null references public.workspaces (id) on delete cascade,
+  property_id uuid,
+  unit_id uuid,
+  amount numeric not null,
+  currency text not null default 'EUR',
+  category public.income_category not null default 'RENT',
+  period_start date not null,
+  period_end date,
+  notes text,
+  created_by_user_id uuid not null references public.profiles (id),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint income_records_property_fk
+    foreign key (property_id, workspace_id)
+    references public.properties (id, workspace_id)
+    on delete set null,
+  constraint income_records_unit_fk
+    foreign key (unit_id, workspace_id)
+    references public.units (id, workspace_id)
+    on delete set null
+);
+
+create index if not exists income_records_workspace_id_idx
+  on public.income_records (workspace_id);
+
+drop trigger if exists income_records_set_updated_at on public.income_records;
+create trigger income_records_set_updated_at
+  before update on public.income_records
+  for each row execute function public.set_updated_at();
+
+create table if not exists public.expense_records (
+  id uuid primary key default gen_random_uuid(),
+  workspace_id uuid not null references public.workspaces (id) on delete cascade,
+  property_id uuid,
+  unit_id uuid,
+  ticket_id uuid,
+  amount numeric not null,
+  currency text not null default 'EUR',
+  category public.expense_category not null default 'MAINTENANCE',
+  incurred_on date not null,
+  notes text,
+  created_by_user_id uuid not null references public.profiles (id),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint expense_records_property_fk
+    foreign key (property_id, workspace_id)
+    references public.properties (id, workspace_id)
+    on delete set null,
+  constraint expense_records_unit_fk
+    foreign key (unit_id, workspace_id)
+    references public.units (id, workspace_id)
+    on delete set null,
+  constraint expense_records_ticket_fk
+    foreign key (ticket_id, workspace_id)
+    references public.tickets (id, workspace_id)
+    on delete set null
+);
+
+create index if not exists expense_records_workspace_id_idx
+  on public.expense_records (workspace_id);
+
+drop trigger if exists expense_records_set_updated_at on public.expense_records;
+create trigger expense_records_set_updated_at
+  before update on public.expense_records
+  for each row execute function public.set_updated_at();
+
+alter table public.income_records  enable row level security;
+alter table public.expense_records enable row level security;
+
+-- SELECT: role-gated (SUPER_ADMIN/OWNER/OPERATOR/ACCOUNTANT) + SUPER_ADMIN platform
+-- read override. OPERATOR reads (cost visibility) but does NOT write (see below).
+drop policy if exists "income_records_select_finance" on public.income_records;
+create policy "income_records_select_finance"
+  on public.income_records for select
+  using (
+    (workspace_id = public.current_workspace_id()
+       and public.current_role() in ('SUPER_ADMIN','OWNER','OPERATOR','ACCOUNTANT'))
+    or public.current_role() = 'SUPER_ADMIN'
+  );
+
+-- INSERT/UPDATE: can_manage_finance() (SUPER_ADMIN/OWNER/ACCOUNTANT, NOT OPERATOR).
+drop policy if exists "income_records_insert_finance" on public.income_records;
+create policy "income_records_insert_finance"
+  on public.income_records for insert
+  with check (workspace_id = public.current_workspace_id() and public.can_manage_finance());
+
+drop policy if exists "income_records_update_finance" on public.income_records;
+create policy "income_records_update_finance"
+  on public.income_records for update
+  using (workspace_id = public.current_workspace_id() and public.can_manage_finance())
+  with check (workspace_id = public.current_workspace_id() and public.can_manage_finance());
+
+drop policy if exists "expense_records_select_finance" on public.expense_records;
+create policy "expense_records_select_finance"
+  on public.expense_records for select
+  using (
+    (workspace_id = public.current_workspace_id()
+       and public.current_role() in ('SUPER_ADMIN','OWNER','OPERATOR','ACCOUNTANT'))
+    or public.current_role() = 'SUPER_ADMIN'
+  );
+
+drop policy if exists "expense_records_insert_finance" on public.expense_records;
+create policy "expense_records_insert_finance"
+  on public.expense_records for insert
+  with check (workspace_id = public.current_workspace_id() and public.can_manage_finance());
+
+drop policy if exists "expense_records_update_finance" on public.expense_records;
+create policy "expense_records_update_finance"
+  on public.expense_records for update
+  using (workspace_id = public.current_workspace_id() and public.can_manage_finance())
+  with check (workspace_id = public.current_workspace_id() and public.can_manage_finance());
+
+-- No DELETE policy on either finance table — default-deny.
+
+-- =============================================================================
+-- DONE. Verify: select count(*) from pg_tables where schemaname='public';  -- expect 13
 -- =============================================================================

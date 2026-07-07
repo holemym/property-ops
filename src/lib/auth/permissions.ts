@@ -16,6 +16,8 @@ export type Permission =
   | 'tickets:assign'
   | 'tickets:comment-internal'
   | 'analytics:read'
+  | 'finance:read'
+  | 'finance:write'
 
 const MANAGER_PERMISSIONS: Permission[] = [
   'properties:read',
@@ -39,6 +41,11 @@ const MANAGER_PERMISSIONS: Permission[] = [
   // to every manager role here and to ACCOUNTANT below for read-only oversight. Tenants,
   // guests and vendors are excluded (no reporting surface).
   'analytics:read',
+  // finance:read — the bookkeeping surface (income/expense, profit-per-unit). Operators
+  // need cost visibility, so read is granted to every manager role here (+ ACCOUNTANT
+  // below). finance:WRITE, however, is the finance role-inversion: it is NOT granted
+  // here (would give OPERATOR write) — it lives in ADMIN_PERMISSIONS + ACCOUNTANT only.
+  'finance:read',
 ]
 
 const ADMIN_PERMISSIONS: Permission[] = [
@@ -46,6 +53,10 @@ const ADMIN_PERMISSIONS: Permission[] = [
   'workspace:manage',
   'users:invite',
   'users:manage',
+  // finance:write — SUPER_ADMIN/OWNER (here) and ACCOUNTANT (below) keep the books;
+  // OPERATOR is deliberately excluded (has finance:read via MANAGER only). Matches the
+  // can_manage_finance() RLS helper in migration 0017.
+  'finance:write',
 ]
 
 const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
@@ -59,6 +70,9 @@ const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     'vendors:read',
     'tickets:read',
     'analytics:read',
+    // ACCOUNTANT owns the books — its FIRST write permission.
+    'finance:read',
+    'finance:write',
   ],
   TENANT: [],
   GUEST: [],
