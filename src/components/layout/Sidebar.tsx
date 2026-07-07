@@ -14,6 +14,7 @@ import {
   CalendarDays,
   ChartColumn,
   Wallet,
+  Receipt,
   FileText,
   Inbox,
   CirclePlus,
@@ -53,6 +54,9 @@ const OPERATOR_NAV: NavItem[] = [
   // Finance sits after Insights, gated on finance:read — managers + accountant see the
   // bookkeeping/income-expense surface; it stays hidden from any role that lacks it.
   { href: '/finance', label: 'Finance', icon: Wallet, permission: 'finance:read' },
+  // Invoices sits right after Finance, gated on finance:read — the same finance roles see
+  // the outbound/inbound billing surface; writes reuse finance:write (can_manage_finance).
+  { href: '/invoices', label: 'Invoices', icon: Receipt, permission: 'finance:read' },
   // Documents sits after Finance, gated on documents:read — managers + accountant see the
   // leases/contracts/permits/certificates repository; hidden from any role that lacks it.
   { href: '/documents', label: 'Documents', icon: FileText, permission: 'documents:read' },
