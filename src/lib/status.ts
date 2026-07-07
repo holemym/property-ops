@@ -1,5 +1,6 @@
 import type {
   EntityStatus,
+  InvoiceStatus,
   TicketPriority,
   TicketStatus,
   UnitStatus,
@@ -34,6 +35,7 @@ export type StatusBadgeInput =
   | { kind: 'ticket_priority'; value: TicketPriority }
   | { kind: 'unit_status'; value: UnitStatus }
   | { kind: 'entity_status'; value: EntityStatus }
+  | { kind: 'invoice_status'; value: InvoiceStatus }
   | { kind: 'vendor_is_active'; value: boolean }
 
 const TICKET_STATUS: Record<TicketStatus, StatusBadgeSpec> = {
@@ -67,6 +69,15 @@ const ENTITY_STATUS: Record<EntityStatus, StatusBadgeSpec> = {
   ARCHIVED: { label: 'Archived', tone: 'neutral' },
 }
 
+const INVOICE_STATUS: Record<InvoiceStatus, StatusBadgeSpec> = {
+  DRAFT: { label: 'Draft', tone: 'muted' },
+  SENT: { label: 'Sent', tone: 'blue' },
+  PARTIAL: { label: 'Partially paid', tone: 'amber' },
+  PAID: { label: 'Paid', tone: 'green' },
+  OVERDUE: { label: 'Overdue', tone: 'red' },
+  VOID: { label: 'Void', tone: 'neutral' },
+}
+
 const VENDOR_IS_ACTIVE: Record<'true' | 'false', StatusBadgeSpec> = {
   true: { label: 'Active', tone: 'green' },
   false: { label: 'Inactive', tone: 'muted' },
@@ -81,6 +92,7 @@ export function statusBadge(kind: 'ticket_status', value: TicketStatus): StatusB
 export function statusBadge(kind: 'ticket_priority', value: TicketPriority): StatusBadgeSpec
 export function statusBadge(kind: 'unit_status', value: UnitStatus): StatusBadgeSpec
 export function statusBadge(kind: 'entity_status', value: EntityStatus): StatusBadgeSpec
+export function statusBadge(kind: 'invoice_status', value: InvoiceStatus): StatusBadgeSpec
 export function statusBadge(kind: 'vendor_is_active', value: boolean): StatusBadgeSpec
 export function statusBadge(kind: StatusBadgeInput['kind'], value: string | boolean): StatusBadgeSpec {
   switch (kind) {
@@ -92,6 +104,8 @@ export function statusBadge(kind: StatusBadgeInput['kind'], value: string | bool
       return UNIT_STATUS[value as UnitStatus]
     case 'entity_status':
       return ENTITY_STATUS[value as EntityStatus]
+    case 'invoice_status':
+      return INVOICE_STATUS[value as InvoiceStatus]
     case 'vendor_is_active':
       return VENDOR_IS_ACTIVE[value ? 'true' : 'false']
   }

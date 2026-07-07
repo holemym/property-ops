@@ -182,3 +182,54 @@ export type Document = {
   created_at: string
   updated_at: string
 }
+
+// Invoicing (migration 0019). ONE flexible model for owner statements, tenant rent
+// invoices, and inbound vendor bills — the party is a discriminator, not a separate table.
+export type InvoicePartyType = 'OWNER' | 'TENANT' | 'VENDOR' | 'OTHER'
+// OUTBOUND = we bill the party (owner/tenant); INBOUND = the party bills us (vendor).
+export type InvoiceDirection = 'OUTBOUND' | 'INBOUND'
+export type InvoiceStatus = 'DRAFT' | 'SENT' | 'PARTIAL' | 'PAID' | 'OVERDUE' | 'VOID'
+
+// An invoice header (migration 0019). party_type + party_name identify WHO is billed;
+// the five nullable ids are OPTIONAL attribution (composite FKs, each pinned to this
+// invoice's workspace). tax_rate is a single percentage (0..100); the money total is
+// derived from the line items in the data layer, never stored. paid_at is stamped when
+// status enters PAID. SELECT is role-gated to managers + accountant + operator via RLS;
+// writes are can_manage_finance() (OWNER/ACCOUNTANT own the books).
+export type Invoice = {
+  id: string
+  workspace_id: string
+  invoice_number: string
+  party_type: InvoicePartyType
+  party_name: string
+  direction: InvoiceDirection
+  status: InvoiceStatus
+  property_id: string | null
+  unit_id: string | null
+  tenancy_id: string | null
+  vendor_id: string | null
+  ticket_id: string | null
+  currency: string
+  tax_rate: number
+  issue_date: string
+  due_date: string | null
+  paid_at: string | null
+  notes: string | null
+  created_by_user_id: string
+  created_at: string
+  updated_at: string
+}
+
+// A billed line on an invoice (migration 0019). amount is a GENERATED column (quantity ×
+// unit_amount) — never set directly. Lines cascade-delete with their invoice.
+export type InvoiceLineItem = {
+  id: string
+  workspace_id: string
+  invoice_id: string
+  description: string
+  quantity: number
+  unit_amount: number
+  amount: number
+  sort_order: number
+  created_at: string
+}
