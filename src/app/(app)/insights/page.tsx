@@ -100,6 +100,8 @@ export default async function InsightsPage() {
       sublabel: `${formatCount(p.count)} ${p.count === 1 ? 'ticket' : 'tickets'}`,
       value: p.total,
       display: formatMoney(p.total),
+      // Drill into this property's tickets (the tickets page validates ?propertyId=).
+      href: `/tickets?propertyId=${p.propertyId}`,
     }))
 
   const unitRows: RankBarRow[] = units5.map((u) => ({
@@ -108,6 +110,8 @@ export default async function InsightsPage() {
     sublabel: `${u.propertyName} · ${formatMoney(u.totalCost)}`,
     value: u.ticketCount,
     display: `${formatCount(u.ticketCount)} ${u.ticketCount === 1 ? 'ticket' : 'tickets'}`,
+    // Drill into the unit hub for the full maintenance history.
+    href: `/units/${u.unitId}`,
   }))
 
   return (
