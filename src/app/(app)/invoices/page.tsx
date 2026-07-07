@@ -3,7 +3,7 @@ import { ReceiptText } from 'lucide-react'
 import { requirePermission } from '@/lib/auth/session'
 import { can } from '@/lib/auth/permissions'
 import { createClient } from '@/lib/supabase/server'
-import { listInvoices, listLineItemsForWorkspace } from '@/lib/data/invoices'
+import { listInvoicesPage, listLineItemsForInvoices } from '@/lib/data/invoices'
 import { invoiceTotals } from '@/lib/invoices/compute'
 import {
   invoiceStatusEnum,
@@ -13,6 +13,7 @@ import {
 import { PageHeader } from '@/components/layout/PageHeader'
 import { EmptyState } from '@/components/common/EmptyState'
 import { ErrorToast } from '@/components/common/ErrorToast'
+import { Pagination } from '@/components/common/Pagination'
 import { Button } from '@/components/ui/button'
 import { InvoiceTable } from '@/components/invoices/InvoiceTable'
 import { InvoiceFilters } from '@/components/invoices/InvoiceFilters'
@@ -23,11 +24,11 @@ const money = new Intl.NumberFormat('en-IE', { style: 'currency', currency: 'EUR
 export default async function InvoicesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; partyType?: string; direction?: string }>
+  searchParams: Promise<{ status?: string; partyType?: string; direction?: string; page?: string }>
 }) {
   const user = await requirePermission('finance:read')
   const canWrite = can(user.role, 'finance:write')
-  const { status: rawStatus, partyType: rawPartyType, direction: rawDirection } = await searchParams
+  const { status: rawStatus, partyType: rawPartyType, direction: rawDirection, page: rawPage } = await searchParams
 
   // Validate enum params before passing to listInvoices — a garbage ?status= would 400 at
   // PostgREST and crash the error boundary. Invalid values are ignored (same guard as the
@@ -40,17 +41,23 @@ export default async function InvoicesPage({
     ? (rawDirection as InvoiceDirection)
     : undefined
 
-  const supabase = await createClient()
-  const [invoices, allLines] = await Promise.all([
-    listInvoices(supabase, user.workspaceId, { status, partyType, direction }),
-    listLineItemsForWorkspace(supabase, user.workspaceId),
-  ])
+  const requestedPage = Math.max(1, Number.parseInt(rawPage ?? '1', 10) || 1)
 
-  // Group the workspace's line items by invoice_id once, then compute each invoice's total in
-  // JS via invoiceTotals (one round-trip instead of N per-invoice queries). Currency is
-  // per-invoice; we display totals in the invoice's own currency below.
+  const supabase = await createClient()
+  const invoicePage = await listInvoicesPage(supabase, user.workspaceId, {
+    filters: { status, partyType, direction },
+    page: requestedPage,
+  })
+  const invoices = invoicePage.rows
+  // Fetch line items for THIS PAGE's invoices only, then compute each total in JS via
+  // invoiceTotals. Currency is per-invoice; totals display in the invoice's own currency.
+  const pageLines = await listLineItemsForInvoices(
+    supabase,
+    user.workspaceId,
+    invoices.map((inv) => inv.id),
+  )
   const linesByInvoice = new Map<string, InvoiceLineItem[]>()
-  for (const line of allLines) {
+  for (const line of pageLines) {
     const list = linesByInvoice.get(line.invoice_id)
     if (list) list.push(line)
     else linesByInvoice.set(line.invoice_id, [line])
@@ -85,7 +92,7 @@ export default async function InvoicesPage({
 
       <InvoiceFilters />
 
-      {invoices.length === 0 ? (
+      {invoicePage.total === 0 ? (
         <EmptyState
           icon={<ReceiptText />}
           title={isFiltered ? 'No matching invoices' : 'No invoices yet'}
@@ -99,7 +106,20 @@ export default async function InvoicesPage({
           action={canWrite && !isFiltered ? newButton ?? undefined : undefined}
         />
       ) : (
-        <InvoiceTable invoices={invoices} totalFor={totalFor} />
+        <div className="flex flex-col gap-4">
+          <InvoiceTable invoices={invoices} totalFor={totalFor} />
+          <Pagination
+            page={invoicePage.page}
+            pageCount={invoicePage.pageCount}
+            total={invoicePage.total}
+            baseParams={{
+              ...(status ? { status } : {}),
+              ...(partyType ? { partyType } : {}),
+              ...(direction ? { direction } : {}),
+            }}
+            basePath="/invoices"
+          />
+        </div>
       )}
     </div>
   )

@@ -3,13 +3,14 @@ import { Ticket as TicketIcon } from 'lucide-react'
 import { requirePermission } from '@/lib/auth/session'
 import { can } from '@/lib/auth/permissions'
 import { createClient } from '@/lib/supabase/server'
-import { listTickets } from '@/lib/data/tickets'
+import { listTicketsPage } from '@/lib/data/tickets'
 import { listProperties } from '@/lib/data/properties'
 import { ticketStatusEnum, ticketPriorityEnum } from '@/lib/validation/ticket'
-import { sortTickets, isSortColumn, type SortDir } from '@/lib/tickets/sort'
+import { isSortColumn, TICKET_DB_COLUMN, type SortDir } from '@/lib/tickets/sort'
 import { TicketTable } from '@/components/tickets/TicketTable'
 import { TicketFilters } from '@/components/tickets/TicketFilters'
 import { EmptyState } from '@/components/common/EmptyState'
+import { Pagination } from '@/components/common/Pagination'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Button } from '@/components/ui/button'
 import type { TicketPriority, TicketStatus } from '@/types/domain'
@@ -26,6 +27,7 @@ export default async function TicketsPage({
     q?: string
     sort?: string
     dir?: string
+    page?: string
   }>
 }) {
   const user = await requirePermission('tickets:read')
@@ -37,6 +39,7 @@ export default async function TicketsPage({
     q,
     sort: rawSort,
     dir: rawDir,
+    page: rawPage,
   } = await searchParams
 
   // Validate enum/uuid params before passing to listTickets — a garbage ?status= or a
@@ -50,22 +53,29 @@ export default async function TicketsPage({
 
   const sort = isSortColumn(rawSort) ? rawSort : 'created'
   const dir: SortDir = rawDir === 'asc' ? 'asc' : 'desc'
+  const requestedPage = Math.max(1, Number.parseInt(rawPage ?? '1', 10) || 1)
 
   const supabase = await createClient()
-  const [tickets, properties] = await Promise.all([
-    listTickets(supabase, user.workspaceId, { status, priority, propertyId, search: q }),
+  // Tickets are DB-sorted + paged (bounded query + payload); properties feed the filter
+  // select (small set, fetched whole).
+  const [ticketPage, properties] = await Promise.all([
+    listTicketsPage(supabase, user.workspaceId, {
+      filters: { status, priority, propertyId, search: q },
+      orderBy: TICKET_DB_COLUMN[sort],
+      ascending: dir === 'asc',
+      page: requestedPage,
+    }),
     listProperties(supabase, user.workspaceId),
   ])
   const propertyNames = Object.fromEntries(properties.map((p) => [p.id, p.name]))
 
-  const sortedTickets = sortTickets(tickets, sort, dir)
-
-  // The active filters, so column-sort links preserve them.
-  const baseParams: Record<string, string> = {}
-  if (status) baseParams.status = status
-  if (priority) baseParams.priority = priority
-  if (propertyId) baseParams.propertyId = propertyId
-  if (q) baseParams.q = q
+  // The active filters, so column-sort links preserve them (sort links reset to page 1 by
+  // omitting page). Pagination additionally preserves the current sort.
+  const filterParams: Record<string, string> = {}
+  if (status) filterParams.status = status
+  if (priority) filterParams.priority = priority
+  if (propertyId) filterParams.propertyId = propertyId
+  if (q) filterParams.q = q
 
   const isFiltered = Boolean(status || priority || propertyId || q)
 
@@ -81,7 +91,7 @@ export default async function TicketsPage({
 
       <TicketFilters properties={properties.map((p) => ({ id: p.id, name: p.name }))} />
 
-      {tickets.length === 0 ? (
+      {ticketPage.total === 0 ? (
         <EmptyState
           icon={<TicketIcon />}
           title={isFiltered ? 'No matching tickets' : 'No tickets yet'}
@@ -97,13 +107,22 @@ export default async function TicketsPage({
           }
         />
       ) : (
-        <TicketTable
-          tickets={sortedTickets}
-          propertyNames={propertyNames}
-          sort={sort}
-          dir={dir}
-          baseParams={baseParams}
-        />
+        <div className="flex flex-col gap-4">
+          <TicketTable
+            tickets={ticketPage.rows}
+            propertyNames={propertyNames}
+            sort={sort}
+            dir={dir}
+            baseParams={filterParams}
+          />
+          <Pagination
+            page={ticketPage.page}
+            pageCount={ticketPage.pageCount}
+            total={ticketPage.total}
+            baseParams={{ ...filterParams, sort, dir }}
+            basePath="/tickets"
+          />
+        </div>
       )}
     </div>
   )

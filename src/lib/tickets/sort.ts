@@ -1,11 +1,6 @@
-import type { Ticket } from '@/lib/data/tickets'
-import type { TicketPriority, TicketStatus } from '@/types/domain'
-
-// Client-facing table sort for the ticket list. Kept pure + DB-free so it's testable and
-// so the page can sort the already-fetched list without a second query (MVP scale). The
-// URL carries ?sort=<column>&dir=asc|desc; ascending is the "natural" low→high order and
-// `desc` reverses it, so the sensible defaults fall out: created desc = newest first,
-// priority desc = most urgent first, status desc = latest lifecycle stage first.
+// Ticket-list sort spec. The URL carries ?sort=<column>&dir=asc|desc; the tickets page
+// pushes this to the database (ORDER BY + range pagination) rather than sorting a
+// full-table fetch in JS. `dir` "asc" is the natural low→high order and "desc" reverses.
 
 export const SORT_COLUMNS = ['created', 'title', 'priority', 'status'] as const
 export type SortColumn = (typeof SORT_COLUMNS)[number]
@@ -15,31 +10,15 @@ export function isSortColumn(v: unknown): v is SortColumn {
   return typeof v === 'string' && (SORT_COLUMNS as readonly string[]).includes(v)
 }
 
-// Ascending rank: LOW → URGENT (so desc surfaces URGENT first).
-const PRIORITY_RANK: Record<TicketPriority, number> = { LOW: 0, NORMAL: 1, HIGH: 2, URGENT: 3 }
-
-// Ascending rank following the lifecycle order.
-const STATUS_RANK: Record<TicketStatus, number> = {
-  NEW: 0, TRIAGE: 1, WAITING_FOR_INFO: 2, ASSIGNED: 3, SCHEDULED: 4,
-  IN_PROGRESS: 5, RESOLVED: 6, CLOSED: 7, CANCELLED: 8,
-}
-
-function ascendingCompare(a: Ticket, b: Ticket, sort: SortColumn): number {
-  switch (sort) {
-    case 'title':
-      return a.title.localeCompare(b.title)
-    case 'priority':
-      return PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority]
-    case 'status':
-      return STATUS_RANK[a.status] - STATUS_RANK[b.status]
-    case 'created':
-    default:
-      return a.created_at.localeCompare(b.created_at)
-  }
-}
-
-/** Return a new, sorted copy of the tickets. Stable input order is preserved on ties. */
-export function sortTickets(tickets: Ticket[], sort: SortColumn, dir: SortDir): Ticket[] {
-  const sorted = [...tickets].sort((a, b) => ascendingCompare(a, b, sort))
-  return dir === 'desc' ? sorted.reverse() : sorted
+// Map a sort column to the DB column PostgREST orders on. `priority` and `status` are
+// Postgres enum columns, and Postgres orders enums by their DECLARATION order — which for
+// ticket_priority ('LOW','NORMAL','HIGH','URGENT') and ticket_status
+// ('NEW',…,'CANCELLED') is exactly the intended low→high order. So `ascending: false`
+// surfaces URGENT / the latest lifecycle stage first, matching the header defaults.
+// (Verified against the enum definitions in migration 0011 / schema_bundle.sql.)
+export const TICKET_DB_COLUMN: Record<SortColumn, string> = {
+  created: 'created_at',
+  title: 'title',
+  priority: 'priority',
+  status: 'status',
 }

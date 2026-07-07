@@ -43,6 +43,7 @@ export function InvoiceFilters() {
     const next = new URLSearchParams(searchParams.toString())
     if (value) next.set(key, value)
     else next.delete(key)
+    next.delete('page') // a changed filter resets to the first page
     const qs = next.toString()
     startTransition(() => router.push(qs ? `${pathname}?${qs}` : pathname))
   }

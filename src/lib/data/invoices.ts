@@ -74,6 +74,72 @@ export async function listLineItemsForWorkspace(
   return data as InvoiceLineItem[]
 }
 
+// Line items for a specific set of invoices (the current page) — bounds the fetch to the
+// visible rows instead of pulling every line in the workspace.
+export async function listLineItemsForInvoices(
+  supabase: SupabaseClient,
+  workspaceId: string,
+  invoiceIds: string[],
+): Promise<InvoiceLineItem[]> {
+  if (invoiceIds.length === 0) return []
+  const { data, error } = await supabase
+    .from('invoice_line_items')
+    .select('*')
+    .eq('workspace_id', workspaceId)
+    .in('invoice_id', invoiceIds)
+  if (error) throw error
+  return data as InvoiceLineItem[]
+}
+
+export type InvoicePage = {
+  rows: Invoice[]
+  total: number
+  page: number
+  pageSize: number
+  pageCount: number
+}
+
+const DEFAULT_INVOICE_PAGE_SIZE = 25
+
+/**
+ * Paginated invoice list (created_at desc). Counts + windows at the DB so the list — and
+ * the follow-up per-page line-item fetch — stay bounded. Page is clamped to range.
+ */
+export async function listInvoicesPage(
+  supabase: SupabaseClient,
+  workspaceId: string,
+  params: { filters?: InvoiceFilters; page?: number; pageSize?: number } = {},
+): Promise<InvoicePage> {
+  const pageSize = params.pageSize ?? DEFAULT_INVOICE_PAGE_SIZE
+  const f = params.filters ?? {}
+
+  let countQuery = supabase
+    .from('invoices')
+    .select('id', { count: 'exact', head: true })
+    .eq('workspace_id', workspaceId)
+  if (f.status) countQuery = countQuery.eq('status', f.status)
+  if (f.partyType) countQuery = countQuery.eq('party_type', f.partyType)
+  if (f.direction) countQuery = countQuery.eq('direction', f.direction)
+  if (f.propertyId) countQuery = countQuery.eq('property_id', f.propertyId)
+  const { count, error: countError } = await countQuery
+  if (countError) throw countError
+  const total = count ?? 0
+  const pageCount = Math.max(1, Math.ceil(total / pageSize))
+  const page = Math.min(Math.max(1, params.page ?? 1), pageCount)
+  const from = (page - 1) * pageSize
+  const to = from + pageSize - 1
+
+  let query = supabase.from('invoices').select('*').eq('workspace_id', workspaceId)
+  if (f.status) query = query.eq('status', f.status)
+  if (f.partyType) query = query.eq('party_type', f.partyType)
+  if (f.direction) query = query.eq('direction', f.direction)
+  if (f.propertyId) query = query.eq('property_id', f.propertyId)
+  const { data, error } = await query.order('created_at', { ascending: false }).range(from, to)
+  if (error) throw error
+
+  return { rows: (data ?? []) as Invoice[], total, page, pageSize, pageCount }
+}
+
 export type CreateInvoiceLineInput = {
   description: string
   quantity: number

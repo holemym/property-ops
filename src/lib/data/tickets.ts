@@ -37,11 +37,29 @@ export type TicketFilters = {
   search?: string
 }
 
+// The eq/ilike filter predicates as PostgREST query-string fragments, reused by both
+// ticket-list queries (kept as a fragment list rather than a generic builder helper to
+// avoid Supabase builder-type variance friction). Applied via .or()-free chained .eq.
+type FilterPair = [column: string, value: string]
+function ticketFilterPairs(filters: TicketFilters): FilterPair[] {
+  const pairs: FilterPair[] = []
+  if (filters.status) pairs.push(['status', filters.status])
+  if (filters.priority) pairs.push(['priority', filters.priority])
+  if (filters.category) pairs.push(['category', filters.category])
+  if (filters.propertyId) pairs.push(['property_id', filters.propertyId])
+  if (filters.unitId) pairs.push(['unit_id', filters.unitId])
+  if (filters.assignedOperatorId) pairs.push(['assigned_operator_id', filters.assignedOperatorId])
+  if (filters.assignedVendorId) pairs.push(['assigned_vendor_id', filters.assignedVendorId])
+  if (filters.createdByUserId) pairs.push(['created_by_user_id', filters.createdByUserId])
+  return pairs
+}
+
 /**
  * Manager/operator inbox query. RLS already scopes WHICH rows come back per role
  * (managers/accountant see all workspace tickets; tenants see only their own via
  * 0011's split SELECT policies), so this layer just applies the workspace scope +
- * optional UI filters. Ordered newest-first.
+ * optional UI filters. Ordered newest-first. UNBOUNDED — use listTicketsPage for the
+ * paged inbox; this stays for the curated dashboard/portal slices where the set is small.
  */
 export async function listTickets(
   supabase: SupabaseClient,
@@ -49,18 +67,78 @@ export async function listTickets(
   filters: TicketFilters = {}
 ): Promise<Ticket[]> {
   let query = supabase.from('tickets').select('*').eq('workspace_id', workspaceId)
-  if (filters.status) query = query.eq('status', filters.status)
-  if (filters.priority) query = query.eq('priority', filters.priority)
-  if (filters.category) query = query.eq('category', filters.category)
-  if (filters.propertyId) query = query.eq('property_id', filters.propertyId)
-  if (filters.unitId) query = query.eq('unit_id', filters.unitId)
-  if (filters.assignedOperatorId) query = query.eq('assigned_operator_id', filters.assignedOperatorId)
-  if (filters.assignedVendorId) query = query.eq('assigned_vendor_id', filters.assignedVendorId)
-  if (filters.createdByUserId) query = query.eq('created_by_user_id', filters.createdByUserId)
+  for (const [col, val] of ticketFilterPairs(filters)) query = query.eq(col, val)
   if (filters.search) query = query.ilike('title', `%${filters.search}%`)
   const { data, error } = await query.order('created_at', { ascending: false })
   if (error) throw error
   return data as Ticket[]
+}
+
+export type TicketPage = {
+  rows: Ticket[]
+  total: number
+  page: number
+  pageSize: number
+  pageCount: number
+}
+
+export type ListTicketsPageParams = {
+  filters?: TicketFilters
+  // A `tickets` column to ORDER BY (defaults to created_at). Pass the value from
+  // TICKET_DB_COLUMN — enum columns sort by declaration order (see sort.ts).
+  orderBy?: string
+  ascending?: boolean
+  page?: number // 1-based
+  pageSize?: number
+}
+
+const DEFAULT_PAGE_SIZE = 25
+
+/**
+ * Paginated + DB-sorted ticket inbox. Pushes ORDER BY and the row window to Postgres
+ * (`.order().range()` with an exact count) instead of fetching the whole workspace table
+ * and sorting/slicing in JS — bounding both the query and the payload as ticket volume
+ * grows. A non-created sort adds created_at as a stable tiebreaker. The requested page is
+ * clamped to the available range so an out-of-range ?page= never returns a confusing empty
+ * table past the end.
+ */
+export async function listTicketsPage(
+  supabase: SupabaseClient,
+  workspaceId: string,
+  params: ListTicketsPageParams = {}
+): Promise<TicketPage> {
+  const pageSize = params.pageSize ?? DEFAULT_PAGE_SIZE
+  const orderBy = params.orderBy ?? 'created_at'
+  const ascending = params.ascending ?? false
+
+  // First get the exact count (cheap head request) so we can clamp the page and report
+  // the page count, then fetch just the requested window.
+  const filters = params.filters ?? {}
+  const pairs = ticketFilterPairs(filters)
+
+  let countQuery = supabase
+    .from('tickets')
+    .select('id', { count: 'exact', head: true })
+    .eq('workspace_id', workspaceId)
+  for (const [col, val] of pairs) countQuery = countQuery.eq(col, val)
+  if (filters.search) countQuery = countQuery.ilike('title', `%${filters.search}%`)
+  const { count, error: countError } = await countQuery
+  if (countError) throw countError
+  const total = count ?? 0
+  const pageCount = Math.max(1, Math.ceil(total / pageSize))
+  const page = Math.min(Math.max(1, params.page ?? 1), pageCount)
+  const from = (page - 1) * pageSize
+  const to = from + pageSize - 1
+
+  let query = supabase.from('tickets').select('*').eq('workspace_id', workspaceId)
+  for (const [col, val] of pairs) query = query.eq(col, val)
+  if (filters.search) query = query.ilike('title', `%${filters.search}%`)
+  query = query.order(orderBy, { ascending })
+  if (orderBy !== 'created_at') query = query.order('created_at', { ascending: false })
+  const { data, error } = await query.range(from, to)
+  if (error) throw error
+
+  return { rows: (data ?? []) as Ticket[], total, page, pageSize, pageCount }
 }
 
 export async function getTicket(

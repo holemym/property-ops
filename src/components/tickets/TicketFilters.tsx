@@ -55,6 +55,7 @@ export function TicketFilters({
     const next = new URLSearchParams(searchParams.toString())
     if (value) next.set(key, value)
     else next.delete(key)
+    next.delete('page') // a changed filter resets to the first page
     pushParams(next)
   }
 
