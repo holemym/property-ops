@@ -15,6 +15,7 @@ import {
   ChartColumn,
   Wallet,
   Receipt,
+  Users,
   FileText,
   Inbox,
   CirclePlus,
@@ -57,6 +58,9 @@ const OPERATOR_NAV: NavItem[] = [
   // Invoices sits right after Finance, gated on finance:read — the same finance roles see
   // the outbound/inbound billing surface; writes reuse finance:write (can_manage_finance).
   { href: '/invoices', label: 'Invoices', icon: Receipt, permission: 'finance:read' },
+  // Owners sits after Invoices, gated on finance:read — per-owner statements rolled up
+  // from OWNER-party invoices (billed / paid / outstanding); same finance audience.
+  { href: '/owners', label: 'Owners', icon: Users, permission: 'finance:read' },
   // Documents sits after Finance, gated on documents:read — managers + accountant see the
   // leases/contracts/permits/certificates repository; hidden from any role that lacks it.
   { href: '/documents', label: 'Documents', icon: FileText, permission: 'documents:read' },
