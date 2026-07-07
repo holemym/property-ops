@@ -12,6 +12,7 @@ import {
   Ticket,
   ChartColumn,
   Wallet,
+  FileText,
   Inbox,
   CirclePlus,
   Building,
@@ -45,6 +46,9 @@ const OPERATOR_NAV: NavItem[] = [
   // Finance sits after Insights, gated on finance:read — managers + accountant see the
   // bookkeeping/income-expense surface; it stays hidden from any role that lacks it.
   { href: '/finance', label: 'Finance', icon: Wallet, permission: 'finance:read' },
+  // Documents sits after Finance, gated on documents:read — managers + accountant see the
+  // leases/contracts/permits/certificates repository; hidden from any role that lacks it.
+  { href: '/documents', label: 'Documents', icon: FileText, permission: 'documents:read' },
 ]
 
 // Minimal tenant/guest nav — the P3.7 self-service portal only.
