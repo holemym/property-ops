@@ -9,8 +9,9 @@ import { getProperty } from '@/lib/data/properties'
 import { getUnit } from '@/lib/data/units'
 import { listTicketComments } from '@/lib/data/ticket-comments'
 import { listAttachments, ATTACHMENTS_BUCKET } from '@/lib/data/attachments'
-import { StatusBadge } from '@/components/ui/badge'
 import { Badge } from '@/components/ui/badge'
+import { RequestProgress } from '@/components/portal/RequestProgress'
+import { tenantStatusLabel } from '@/lib/portal-status'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
@@ -120,7 +121,7 @@ export default async function PortalTicketDetailPage({
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">
             {ticket.title}
           </h1>
-          <StatusBadge kind="ticket_status" value={ticket.status} />
+          <Badge variant="outline">{tenantStatusLabel(ticket.status)}</Badge>
           <Badge variant="outline" className="capitalize">
             {ticket.category.replace(/_/g, ' ').toLowerCase()}
           </Badge>
@@ -245,16 +246,8 @@ export default async function PortalTicketDetailPage({
             <CardHeader>
               <CardTitle>Status</CardTitle>
             </CardHeader>
-            <CardContent className="flex flex-col gap-3">
-              <StatusBadge
-                kind="ticket_status"
-                value={ticket.status}
-                className="w-fit"
-              />
-              <p className="text-sm text-muted-foreground">
-                Your property manager updates this as work progresses. Add a message if you
-                have a question.
-              </p>
+            <CardContent>
+              <RequestProgress status={ticket.status} />
             </CardContent>
           </Card>
         </div>

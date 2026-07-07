@@ -5,7 +5,8 @@ import { requireWorkspace } from '@/lib/auth/session'
 import { isTenantRole } from '@/lib/auth/permissions'
 import { createClient } from '@/lib/supabase/server'
 import { listTickets } from '@/lib/data/tickets'
-import { StatusBadge } from '@/components/ui/badge'
+import { Badge } from '@/components/ui/badge'
+import { tenantStatusLabel } from '@/lib/portal-status'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { EmptyState } from '@/components/common/EmptyState'
 import { ErrorToast } from '@/components/common/ErrorToast'
@@ -68,7 +69,7 @@ export default async function PortalPage() {
                     </span>
                   </div>
                   <div className="ml-auto flex shrink-0 items-center gap-2">
-                    <StatusBadge kind="ticket_status" value={t.status} />
+                    <Badge variant="outline">{tenantStatusLabel(t.status)}</Badge>
                     <ChevronRight className="size-4 text-muted-foreground" />
                   </div>
                 </Link>
