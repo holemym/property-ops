@@ -8,6 +8,8 @@ import { listTickets, countTicketsByStatus, type Ticket } from '@/lib/data/ticke
 import { listProperties } from '@/lib/data/properties'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { StatusBadge } from '@/components/ui/badge'
+import { cn } from '@/lib/utils'
+import { relativeDay } from '@/lib/relative-date'
 import type { TicketStatus } from '@/types/domain'
 
 // Per-widget cap — the dashboard shows short curated slices, not the full inbox. Each
@@ -41,8 +43,13 @@ const STRIP_LABELS: Record<TicketStatus, string> = {
   CANCELLED: 'Cancelled',
 }
 
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString()
+// Aging tone for an open ticket's age — amber past 3 days, red past 7, so a queue that's
+// piling up reads at a glance ("nothing slips").
+function agingTone(iso: string): string {
+  const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000)
+  if (days > 7) return 'text-red-600 dark:text-red-400 font-medium'
+  if (days > 3) return 'text-amber-700 dark:text-amber-400'
+  return 'text-muted-foreground'
 }
 
 export default async function DashboardPage() {
@@ -212,7 +219,10 @@ function TicketWidget({
                 <div className="flex min-w-0 flex-col gap-0.5">
                   <span className="truncate text-sm font-medium text-foreground">{t.title}</span>
                   <span className="text-xs text-muted-foreground">
-                    {propertyNames[t.property_id] ?? '—'} · {formatDate(t.created_at)}
+                    {propertyNames[t.property_id] ?? '—'} ·{' '}
+                    <span className={cn(agingTone(t.created_at))} title={new Date(t.created_at).toLocaleString()}>
+                      {relativeDay(t.created_at)}
+                    </span>
                   </span>
                 </div>
                 <div className="flex shrink-0 items-center gap-1.5">

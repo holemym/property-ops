@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { ArrowDown, ArrowUp, ChevronsUpDown } from 'lucide-react'
 import {
   Table,
   TableBody,
@@ -10,8 +11,49 @@ import {
 import { StatusBadge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import { relativeDay } from '@/lib/relative-date'
+import type { SortColumn, SortDir } from '@/lib/tickets/sort'
 import type { Ticket } from '@/lib/data/tickets'
 import type { TicketPriority } from '@/types/domain'
+
+// A clickable sort header. Clicking the active column flips direction; clicking a new one
+// starts at its natural default (newest / most-urgent first for date & priority, else A→Z).
+function SortableHead({
+  column,
+  label,
+  sort,
+  dir,
+  baseParams,
+  align = 'left',
+}: {
+  column: SortColumn
+  label: string
+  sort: SortColumn
+  dir: SortDir
+  baseParams: Record<string, string>
+  align?: 'left' | 'right'
+}) {
+  const active = sort === column
+  const defaultDir: SortDir = column === 'created' || column === 'priority' ? 'desc' : 'asc'
+  const nextDir: SortDir = active ? (dir === 'asc' ? 'desc' : 'asc') : defaultDir
+  const params = new URLSearchParams({ ...baseParams, sort: column, dir: nextDir })
+  const Icon = active ? (dir === 'asc' ? ArrowUp : ArrowDown) : ChevronsUpDown
+  return (
+    <TableHead className="px-4">
+      <Link
+        href={`/tickets?${params.toString()}`}
+        className={cn(
+          'group inline-flex items-center gap-1 transition-colors hover:text-foreground',
+          align === 'right' && 'flex-row-reverse',
+          active ? 'text-foreground' : 'text-muted-foreground',
+        )}
+        aria-label={`Sort by ${label}${active ? (dir === 'asc' ? ', ascending' : ', descending') : ''}`}
+      >
+        {label}
+        <Icon className={cn('size-3.5', active ? 'opacity-100' : 'opacity-40 group-hover:opacity-70')} />
+      </Link>
+    </TableHead>
+  )
+}
 
 // A left color-spine so urgency reads at a glance while scanning the list — red for
 // URGENT, amber for HIGH, transparent (keeps alignment) otherwise.
@@ -34,21 +76,28 @@ const PRIORITY_SPINE: Record<TicketPriority, string> = {
 export function TicketTable({
   tickets,
   propertyNames,
+  sort,
+  dir,
+  baseParams,
 }: {
   tickets: Ticket[]
   propertyNames: Record<string, string>
+  sort: SortColumn
+  dir: SortDir
+  baseParams: Record<string, string>
 }) {
+  const headProps = { sort, dir, baseParams }
   return (
     <div className="overflow-hidden rounded-lg border">
       <Table>
         <TableHeader>
           <TableRow className="bg-muted/40 hover:bg-muted/40">
-            <TableHead className="px-4">Title</TableHead>
+            <SortableHead column="title" label="Title" {...headProps} />
             <TableHead className="px-4">Property</TableHead>
             <TableHead className="px-4">Category</TableHead>
-            <TableHead className="px-4">Priority</TableHead>
-            <TableHead className="px-4">Status</TableHead>
-            <TableHead className="px-4">Created</TableHead>
+            <SortableHead column="priority" label="Priority" {...headProps} />
+            <SortableHead column="status" label="Status" {...headProps} />
+            <SortableHead column="created" label="Created" {...headProps} />
           </TableRow>
         </TableHeader>
         <TableBody>

@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/server'
 import { listTickets } from '@/lib/data/tickets'
 import { listProperties } from '@/lib/data/properties'
 import { ticketStatusEnum, ticketPriorityEnum } from '@/lib/validation/ticket'
+import { sortTickets, isSortColumn, type SortDir } from '@/lib/tickets/sort'
 import { TicketTable } from '@/components/tickets/TicketTable'
 import { TicketFilters } from '@/components/tickets/TicketFilters'
 import { EmptyState } from '@/components/common/EmptyState'
@@ -18,11 +19,25 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 export default async function TicketsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; priority?: string; propertyId?: string; q?: string }>
+  searchParams: Promise<{
+    status?: string
+    priority?: string
+    propertyId?: string
+    q?: string
+    sort?: string
+    dir?: string
+  }>
 }) {
   const user = await requirePermission('tickets:read')
   const canWrite = can(user.role, 'tickets:write')
-  const { status: rawStatus, priority: rawPriority, propertyId: rawPropertyId, q } = await searchParams
+  const {
+    status: rawStatus,
+    priority: rawPriority,
+    propertyId: rawPropertyId,
+    q,
+    sort: rawSort,
+    dir: rawDir,
+  } = await searchParams
 
   // Validate enum/uuid params before passing to listTickets — a garbage ?status= or a
   // non-uuid ?propertyId= would 400 at PostgREST and crash the error boundary. Invalid
@@ -33,12 +48,24 @@ export default async function TicketsPage({
     : undefined
   const propertyId = rawPropertyId && UUID_RE.test(rawPropertyId) ? rawPropertyId : undefined
 
+  const sort = isSortColumn(rawSort) ? rawSort : 'created'
+  const dir: SortDir = rawDir === 'asc' ? 'asc' : 'desc'
+
   const supabase = await createClient()
   const [tickets, properties] = await Promise.all([
     listTickets(supabase, user.workspaceId, { status, priority, propertyId, search: q }),
     listProperties(supabase, user.workspaceId),
   ])
   const propertyNames = Object.fromEntries(properties.map((p) => [p.id, p.name]))
+
+  const sortedTickets = sortTickets(tickets, sort, dir)
+
+  // The active filters, so column-sort links preserve them.
+  const baseParams: Record<string, string> = {}
+  if (status) baseParams.status = status
+  if (priority) baseParams.priority = priority
+  if (propertyId) baseParams.propertyId = propertyId
+  if (q) baseParams.q = q
 
   const isFiltered = Boolean(status || priority || propertyId || q)
 
@@ -70,7 +97,13 @@ export default async function TicketsPage({
           }
         />
       ) : (
-        <TicketTable tickets={tickets} propertyNames={propertyNames} />
+        <TicketTable
+          tickets={sortedTickets}
+          propertyNames={propertyNames}
+          sort={sort}
+          dir={dir}
+          baseParams={baseParams}
+        />
       )}
     </div>
   )
