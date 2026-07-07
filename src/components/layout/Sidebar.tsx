@@ -10,6 +10,8 @@ import {
   ReceiptText,
   Wrench,
   Ticket,
+  LayoutGrid,
+  CalendarDays,
   ChartColumn,
   Wallet,
   FileText,
@@ -40,6 +42,11 @@ const OPERATOR_NAV: NavItem[] = [
   { href: '/rent-roll', label: 'Rent roll', icon: ReceiptText, permission: 'occupancy:read' },
   { href: '/vendors', label: 'Vendors', icon: Wrench },
   { href: '/tickets', label: 'Tickets', icon: Ticket },
+  // Board + Calendar are ticket-centric views gated on tickets:read (managers +
+  // accountant). Board is the drag-to-triage kanban; Calendar overlays scheduled work,
+  // lease move-in/out, and document expiries.
+  { href: '/tickets/board', label: 'Board', icon: LayoutGrid, permission: 'tickets:read' },
+  { href: '/calendar', label: 'Calendar', icon: CalendarDays, permission: 'tickets:read' },
   // Insights sits after Tickets, gated on analytics:read — managers + accountant see the
   // cost/vendor/unit/cycle dashboard; it stays hidden from any role that lacks it.
   { href: '/insights', label: 'Insights', icon: ChartColumn, permission: 'analytics:read' },
