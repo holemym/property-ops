@@ -64,11 +64,11 @@ const TENANT_NAV: NavItem[] = [
   { href: '/portal/new', label: 'Report an issue', icon: CirclePlus },
 ]
 
-// A nav link is "active" when the current path is that link or nested under it, so
+// A nav href "matches" when the current path is that link or nested under it, so
 // /properties/123 keeps the Properties item lit. The exact "/" guard keeps a bare
 // /portal from lighting up when on /portal/new (both share the prefix), by requiring
 // the next char to be a boundary.
-function isActive(pathname: string, href: string): boolean {
+function matchesPath(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`)
 }
 
@@ -77,6 +77,13 @@ export function Sidebar({ role }: { role: Role }) {
   const nav = isTenantRole(role)
     ? TENANT_NAV
     : OPERATOR_NAV.filter((item) => !item.permission || can(role, item.permission))
+
+  // The active item is the one whose href is the LONGEST matching prefix of the current
+  // path, so a nested route with its own item (e.g. /tickets/board) lights only that item
+  // ("Board"), not also its parent ("Tickets").
+  const activeHref = nav
+    .filter((item) => matchesPath(pathname, item.href))
+    .sort((a, b) => b.href.length - a.href.length)[0]?.href
 
   return (
     <nav className="flex h-full w-56 flex-col border-r bg-sidebar">
@@ -92,7 +99,7 @@ export function Sidebar({ role }: { role: Role }) {
 
       <div className="flex flex-1 flex-col gap-0.5 p-3">
         {nav.map((item) => {
-          const active = isActive(pathname, item.href)
+          const active = item.href === activeHref
           const Icon = item.icon
           return (
             <Link
