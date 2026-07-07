@@ -1,4 +1,9 @@
+'use client'
+
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import Link from 'next/link'
+import { Minus, Plus, Maximize2, Crosshair } from 'lucide-react'
 import { StatusBadge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import type { OccupancySegment, OccupancyState, DateWindow } from '@/lib/occupancy/timeline'
@@ -7,13 +12,17 @@ import type { Property } from '@/lib/data/properties'
 import type { Ticket } from '@/lib/data/tickets'
 import type { TicketPriority } from '@/types/domain'
 
-// The read-only tape chart: a units × time grid. The left column holds unit labels
-// (grouped under property sub-headers); the right area is a proportional time track
-// spanning the window, with month gridlines across the top, occupancy spans colored by
-// state, and open-ticket dots pinned by date. Everything is positioned by DATE PROPORTION
-// over the half-open window [from, to): a date d maps to (d − from) / (to − from). Dates
-// are ISO `YYYY-MM-DD`; we parse them as UTC midnight so positioning is timezone-stable
-// and matches the timeline builder (which compares the same ISO strings lexically).
+// The tape chart: a units × time grid. The left column holds unit labels (grouped under
+// property sub-headers, sticky so they stay put while panning); the right area is a
+// proportional time track spanning the window, with month gridlines, occupancy spans
+// colored by state, and open-ticket dots pinned by date. Everything is positioned by DATE
+// PROPORTION over the half-open window [from, to): a date d maps to (d − from) / (to − from).
+//
+// ZOOM/PAN (UX upgrade): the time track has a controllable pixel width. The chart fills its
+// container at scale 1 (the whole window fits); Ctrl/⌘ + wheel (and trackpad pinch) zooms
+// IN toward the cursor's date, and the container scrolls to pan. A toolbar offers zoom
+// in/out, fit, and jump-to-today. All the fraction math below is unchanged — percentages
+// are just resolved against a wider track when zoomed.
 
 // --- geometry -------------------------------------------------------------------------
 
@@ -30,15 +39,9 @@ function fractionOf(iso: string, fromMs: number, spanMs: number): number {
 }
 
 function pct(n: number): string {
-  // Round to 2 dp — enough for pixel-accurate placement at full width, and keeps the
-  // inline style strings short/stable.
   return `${Math.round(n * 10000) / 100}%`
 }
 
-// The month columns spanning the window: one entry per whole month from `from` up to
-// (but not including) `to`. left% is the month's start fraction; each label sits at the
-// top of the track. Derived from the window so it stays in sync with defaultWindow's
-// 6-month default without hard-coding a count.
 type MonthColumn = { key: string; label: string; leftPct: string }
 
 function monthColumns(window: DateWindow, fromMs: number, spanMs: number): MonthColumn[] {
@@ -47,7 +50,6 @@ function monthColumns(window: DateWindow, fromMs: number, spanMs: number): Month
   let year = start.getUTCFullYear()
   let month = start.getUTCMonth()
   const endMs = toMs(window.to)
-  // Walk month-by-month until we reach the window's end.
   for (let guard = 0; guard < 60; guard++) {
     const colStartMs = Date.UTC(year, month, 1)
     if (colStartMs >= endMs) break
@@ -72,10 +74,6 @@ function monthColumns(window: DateWindow, fromMs: number, spanMs: number): Month
 
 // --- state tones ----------------------------------------------------------------------
 
-// Segment fill per occupancy state. Tints mirror the StatusBadge status tones
-// (src/lib/status.ts: OCCUPIED→blue, VACANT→amber, MAINTENANCE→amber, BLOCKED→red) so the
-// chart reads consistently with the badges elsewhere. MAINTENANCE is distinguished from
-// VACANT by a subtle diagonal hatch (both amber) so out-of-service reads apart from empty.
 const SEGMENT_TONE: Record<OccupancyState, string> = {
   OCCUPIED: 'bg-blue-100 text-blue-900 dark:bg-blue-500/25 dark:text-blue-200',
   VACANT: 'bg-amber-50 text-amber-900 dark:bg-amber-500/10 dark:text-amber-200',
@@ -91,7 +89,6 @@ const SEGMENT_LABEL: Record<OccupancyState, string> = {
   BLOCKED: 'Blocked',
 }
 
-// Ticket marker dot color by priority (URGENT red, HIGH amber, else neutral).
 const MARKER_TONE: Record<TicketPriority, string> = {
   URGENT: 'bg-red-500 ring-red-500/30',
   HIGH: 'bg-amber-500 ring-amber-500/30',
@@ -112,11 +109,34 @@ export type PropertyGroup = {
   rows: UnitRow[]
 }
 
-// --- component ------------------------------------------------------------------------
+// --- zoom constants -------------------------------------------------------------------
 
-// Left label column width — a CSS var so the header ruler and every row share one
-// alignment origin.
 const LABEL_COL = '11rem'
+const LABEL_COL_PX = 176 // 11rem × 16 — the sticky left column width, excluded from the time area.
+const MIN_SCALE = 1 // scale 1 = the whole window fits the container (can't zoom out past the data).
+const MAX_SCALE = 12
+const WHEEL_STEP = 1.12
+const BUTTON_STEP = 1.5
+const MIN_TIME_WIDTH = 320 // floor so a narrow container still renders a usable track.
+
+// useLayoutEffect on the client, useEffect on the server — avoids the SSR warning while
+// keeping the cursor-anchored scroll adjustment flash-free in the browser.
+const useIsoLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect
+
+const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n))
+
+// Capture the zoom anchor: the fraction of the time area under the pointer, and the
+// pointer's pixel offset from the container's left edge. Restoring scrollLeft to keep
+// this fraction at this offset makes zoom pivot around the cursor.
+function anchorFor(el: HTMLElement, clientX: number | undefined, timeAreaWidth: number) {
+  const rect = el.getBoundingClientRect()
+  const offset = clientX == null ? rect.width / 2 : clientX - rect.left
+  const pointerInTime = el.scrollLeft + offset - LABEL_COL_PX
+  const fraction = clamp(pointerInTime / timeAreaWidth, 0, 1)
+  return { fraction, offset }
+}
+
+// --- component ------------------------------------------------------------------------
 
 export function TapeChart({
   groups,
@@ -130,18 +150,134 @@ export function TapeChart({
   const fromMs = toMs(window.from)
   const spanMs = toMs(window.to) - fromMs
   const months = monthColumns(window, fromMs, spanMs)
-  // The "today" line only shows when today falls inside the window. We keep the raw
-  // fraction (0..1) so the overlay can be offset past the label column via a CSS calc.
   const todayLeft = todayIso >= window.from && todayIso < window.to
   const todayFraction = todayLeft ? fractionOf(todayIso, fromMs, spanMs) : 0
 
+  const scrollRef = useRef<HTMLDivElement>(null)
+  // baseTimeWidth = the time-area width that makes the whole window fill the container at
+  // scale 1. Measured from the container; 0 until mounted (SSR falls back to a min-width).
+  const [baseTimeWidth, setBaseTimeWidth] = useState(0)
+  const [scale, setScale] = useState(1)
+  // Pending cursor anchor: { fraction of the time area, pixel offset from the container's
+  // left edge } — applied to scrollLeft after a zoom re-renders, so the anchored date stays
+  // under the cursor.
+  const anchorRef = useRef<{ fraction: number; offset: number } | null>(null)
+
+  const timeWidth = baseTimeWidth > 0 ? baseTimeWidth * scale : 0
+
+  // Measure the fit width on mount and whenever the container resizes.
+  useIsoLayoutEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const measure = () => {
+      const w = Math.max(MIN_TIME_WIDTH, el.clientWidth - LABEL_COL_PX)
+      setBaseTimeWidth(w)
+    }
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
+  // After the time width changes (zoom or resize), restore the cursor-anchored scroll
+  // position so the pointer's date stays put.
+  useIsoLayoutEffect(() => {
+    const el = scrollRef.current
+    const anchor = anchorRef.current
+    if (!el || !anchor || timeWidth === 0) return
+    el.scrollLeft = LABEL_COL_PX + anchor.fraction * timeWidth - anchor.offset
+    anchorRef.current = null
+  }, [timeWidth])
+
+  // Zoom by `factor`, keeping the date at `clientX` fixed (defaults to container centre).
+  // Plain function — React Compiler handles memoization; the anchor is applied by the
+  // layout effect above once the new width renders.
+  function zoomAt(factor: number, clientX?: number) {
+    const el = scrollRef.current
+    if (!el || baseTimeWidth === 0) return
+    anchorRef.current = anchorFor(el, clientX, baseTimeWidth * scale)
+    setScale((s) => clamp(s * factor, MIN_SCALE, MAX_SCALE))
+  }
+
+  // Non-passive wheel listener so Ctrl/⌘ + wheel (and trackpad pinch, which arrives as a
+  // ctrlKey wheel) can preventDefault and zoom instead of scrolling the page. Depends on
+  // the primitives it captures so it re-binds only when they change.
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const onWheel = (e: WheelEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return
+      e.preventDefault()
+      if (baseTimeWidth === 0) return
+      anchorRef.current = anchorFor(el, e.clientX, baseTimeWidth * scale)
+      setScale((s) => clamp(s * (e.deltaY < 0 ? WHEEL_STEP : 1 / WHEEL_STEP), MIN_SCALE, MAX_SCALE))
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [baseTimeWidth, scale])
+
+  function fitAll() {
+    anchorRef.current = null
+    setScale(1)
+    if (scrollRef.current) scrollRef.current.scrollLeft = 0
+  }
+
+  // Centre "today" in the time viewport (zooming in a little if fully fit, so the jump is
+  // visible). No-op when today falls outside the window.
+  function jumpToday() {
+    const el = scrollRef.current
+    if (!el || !todayLeft || baseTimeWidth === 0) return
+    const targetScale = Math.max(scale, 3)
+    const width = baseTimeWidth * targetScale
+    const viewport = el.clientWidth - LABEL_COL_PX
+    const desired = Math.max(0, LABEL_COL_PX + todayFraction * width - viewport / 2)
+    if (targetScale !== scale) {
+      anchorRef.current = null
+      setScale(targetScale)
+      requestAnimationFrame(() => {
+        if (scrollRef.current) scrollRef.current.scrollLeft = desired
+      })
+    } else {
+      el.scrollLeft = desired
+    }
+  }
+
+  const trackStyle: CSSProperties = {
+    ['--label-col' as string]: LABEL_COL,
+    ...(timeWidth > 0 ? { width: LABEL_COL_PX + timeWidth } : {}),
+  }
+
   return (
     <div className="rounded-xl bg-card ring-1 ring-foreground/10">
-      {/* Horizontal scroll on narrow screens; the track keeps a comfortable min width. */}
-      <div className="overflow-x-auto">
-        <div className="relative min-w-[52rem]" style={{ ['--label-col' as string]: LABEL_COL }}>
-          {/* "today" line — spans all rows, positioned inside the track (offset past the
-              label column). Sits above the grid but below the ticket markers. */}
+      {/* Toolbar */}
+      <div className="flex items-center justify-between gap-2 border-b px-3 py-2">
+        <span className="text-xs text-muted-foreground">
+          Ctrl/⌘ + scroll to zoom · drag to pan
+        </span>
+        <div className="flex items-center gap-1">
+          <ToolbarButton onClick={() => zoomAt(1 / BUTTON_STEP)} label="Zoom out" disabled={scale <= MIN_SCALE}>
+            <Minus className="size-4" />
+          </ToolbarButton>
+          <span className="w-10 text-center text-xs tabular-nums text-muted-foreground">
+            {Math.round(scale * 100)}%
+          </span>
+          <ToolbarButton onClick={() => zoomAt(BUTTON_STEP)} label="Zoom in" disabled={scale >= MAX_SCALE}>
+            <Plus className="size-4" />
+          </ToolbarButton>
+          <ToolbarButton onClick={fitAll} label="Fit window" disabled={scale === 1}>
+            <Maximize2 className="size-4" />
+          </ToolbarButton>
+          {todayLeft && (
+            <ToolbarButton onClick={jumpToday} label="Jump to today">
+              <Crosshair className="size-4" />
+            </ToolbarButton>
+          )}
+        </div>
+      </div>
+
+      <div ref={scrollRef} className="overflow-x-auto">
+        <div className="relative min-w-[52rem]" style={trackStyle}>
+          {/* "today" line */}
           {todayLeft && (
             <div
               className="pointer-events-none absolute inset-y-0 z-[5] w-px bg-foreground/40"
@@ -151,7 +287,7 @@ export function TapeChart({
           )}
           {/* Month ruler */}
           <div className="flex items-stretch border-b">
-            <div className="w-[var(--label-col)] shrink-0 px-4 py-2 text-xs font-medium text-muted-foreground">
+            <div className="sticky left-0 z-30 w-[var(--label-col)] shrink-0 bg-card px-4 py-2 text-xs font-medium text-muted-foreground">
               Unit
             </div>
             <div className="relative flex-1 py-2">
@@ -171,15 +307,18 @@ export function TapeChart({
           {groups.map((group) => (
             <div key={group.property.id}>
               <div className="flex items-center border-b bg-muted/40">
-                <div className="w-[var(--label-col)] shrink-0 px-4 py-1.5 text-xs font-semibold tracking-tight text-foreground">
+                <div className="sticky left-0 z-30 w-[var(--label-col)] shrink-0 bg-muted px-4 py-1.5 text-xs font-semibold tracking-tight text-foreground">
                   {group.property.name}
                 </div>
                 <div className="flex-1" />
               </div>
 
               {group.rows.map((row) => (
-                <div key={row.unit.id} className="flex items-stretch border-b last:border-b-0">
-                  <div className="w-[var(--label-col)] shrink-0 px-4 py-2.5">
+                <div key={row.unit.id} className="group/row flex items-stretch border-b last:border-b-0">
+                  <Link
+                    href={`/units/${row.unit.id}`}
+                    className="sticky left-0 z-20 w-[var(--label-col)] shrink-0 bg-card px-4 py-2.5 transition-colors hover:bg-accent"
+                  >
                     <div className="truncate text-sm font-medium text-foreground">
                       {row.unit.label}
                     </div>
@@ -188,9 +327,9 @@ export function TapeChart({
                         Floor {row.unit.floor}
                       </div>
                     )}
-                  </div>
+                  </Link>
 
-                  <div className="relative min-h-[3.25rem] flex-1 py-2.5">
+                  <div className="relative min-h-[3.25rem] flex-1 py-2.5 group-hover/row:bg-accent/30">
                     {/* Month gridlines behind the spans */}
                     {months.map((m) => (
                       <div
@@ -210,23 +349,13 @@ export function TapeChart({
                         if (width <= 0) return null
                         const showName = seg.state === 'OCCUPIED' && seg.tenantName && width > 0.06
                         return (
-                          <div
+                          <OccupancySpan
                             key={`${seg.from}-${i}`}
-                            className={cn(
-                              'absolute inset-y-0 flex items-center overflow-hidden rounded-md px-2 text-xs font-medium',
-                              SEGMENT_TONE[seg.state]
-                            )}
-                            style={{ left: pct(left), width: pct(width) }}
-                            title={
-                              seg.state === 'OCCUPIED' && seg.tenantName
-                                ? `${seg.tenantName} · ${SEGMENT_LABEL[seg.state]}`
-                                : SEGMENT_LABEL[seg.state]
-                            }
-                          >
-                            <span className="truncate">
-                              {showName ? seg.tenantName : ''}
-                            </span>
-                          </div>
+                            seg={seg}
+                            leftPct={pct(left)}
+                            widthPct={pct(width)}
+                            showName={Boolean(showName)}
+                          />
                         )
                       })}
                     </div>
@@ -236,9 +365,7 @@ export function TapeChart({
                       const dateIso = (ticket.scheduled_at ?? ticket.created_at).slice(0, 10)
                       if (dateIso < window.from || dateIso >= window.to) return null
                       const left = pct(fractionOf(dateIso, fromMs, spanMs))
-                      return (
-                        <TicketMarker key={ticket.id} ticket={ticket} left={left} />
-                      )
+                      return <TicketMarker key={ticket.id} ticket={ticket} left={left} />
                     })}
                   </div>
                 </div>
@@ -251,8 +378,72 @@ export function TapeChart({
   )
 }
 
-// A single open-ticket marker: a priority-colored dot on the track with a group-hover
-// preview card, wrapped in a link to the ticket. Keyboard-focusable and labelled.
+function ToolbarButton({
+  onClick,
+  label,
+  disabled,
+  children,
+}: {
+  onClick: () => void
+  label: string
+  disabled?: boolean
+  children: ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={label}
+      title={label}
+      className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      {children}
+    </button>
+  )
+}
+
+// An occupancy span with a styled hover/focus preview (tenant + state), replacing the raw
+// native `title` tooltip.
+function OccupancySpan({
+  seg,
+  leftPct,
+  widthPct,
+  showName,
+}: {
+  seg: OccupancySegment
+  leftPct: string
+  widthPct: string
+  showName: boolean
+}) {
+  return (
+    <div
+      className="group/seg absolute inset-y-0"
+      style={{ left: leftPct, width: widthPct }}
+    >
+      <div
+        className={cn(
+          'flex h-full items-center overflow-hidden rounded-md px-2 text-xs font-medium',
+          SEGMENT_TONE[seg.state],
+        )}
+      >
+        <span className="truncate">{showName ? seg.tenantName : ''}</span>
+      </div>
+      <div className="pointer-events-none absolute bottom-full left-0 z-20 mb-1.5 hidden w-max max-w-[16rem] rounded-lg bg-popover p-2 text-xs text-popover-foreground ring-1 ring-foreground/10 group-hover/seg:block">
+        <div className="font-medium">{SEGMENT_LABEL[seg.state]}</div>
+        {seg.state === 'OCCUPIED' && seg.tenantName && (
+          <div className="mt-0.5 text-muted-foreground">{seg.tenantName}</div>
+        )}
+        <div className="mt-0.5 text-muted-foreground tabular-nums">
+          {seg.from} → {seg.to}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// A single open-ticket marker: a priority-colored dot on the track with a hover/focus
+// preview card, wrapped in a link to the ticket.
 function TicketMarker({ ticket, left }: { ticket: Ticket; left: string }) {
   return (
     <div className="group/marker absolute top-1/2 z-10 -translate-y-1/2" style={{ left }}>
@@ -264,12 +455,10 @@ function TicketMarker({ ticket, left }: { ticket: Ticket; left: string }) {
         <span
           className={cn(
             'block size-2.5 rounded-full ring-2 ring-offset-1 ring-offset-card',
-            MARKER_TONE[ticket.priority]
+            MARKER_TONE[ticket.priority],
           )}
         />
       </Link>
-      {/* Hover/focus preview — a lightweight popover. group-hover + focus-within so it
-          appears on both pointer hover and keyboard focus of the link. */}
       <div className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 hidden w-56 -translate-x-1/2 rounded-lg bg-popover p-2.5 text-popover-foreground ring-1 ring-foreground/10 group-hover/marker:block group-focus-within/marker:block">
         <div className="truncate text-sm font-medium">{ticket.title}</div>
         <div className="mt-1.5 flex flex-wrap items-center gap-1">
@@ -280,4 +469,3 @@ function TicketMarker({ ticket, left }: { ticket: Ticket; left: string }) {
     </div>
   )
 }
-
