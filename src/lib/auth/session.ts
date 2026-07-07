@@ -1,3 +1,4 @@
+import { cache } from 'react'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { redirectWithError } from '@/lib/redirect-with-error'
@@ -13,7 +14,10 @@ export type CurrentUser = {
   isActive: boolean
 }
 
-export async function getCurrentUser(): Promise<CurrentUser | null> {
+// Wrapped in React cache() so the auth.getUser() + profile lookup runs ONCE per request
+// even though the (app) layout and every page call the require* chain — collapsing the
+// repeated round-trips that made each navigation do redundant auth work.
+export const getCurrentUser = cache(async function getCurrentUser(): Promise<CurrentUser | null> {
   const supabase = await createClient()
   const {
     data: { user },
@@ -40,7 +44,7 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
     workspaceId: profile.workspace_id,
     isActive: profile.is_active,
   }
-}
+})
 
 export async function requireUser(): Promise<CurrentUser> {
   const user = await getCurrentUser()
