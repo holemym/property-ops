@@ -21,6 +21,13 @@ import {
 import { appendTicketEvent } from '@/lib/data/ticket-events'
 import { createTicketComment } from '@/lib/data/ticket-comments'
 import { runAutoTriage } from '@/lib/ai/triage-service'
+import {
+  notifyTicketStatusChanged,
+  notifyOperatorAssigned,
+  notifyVendorAssigned,
+  notifyVendorJobLink,
+  notifyTicketCreated,
+} from '@/lib/email/notify'
 import { createVendorJobToken } from '@/lib/data/vendor-tokens'
 import { getProperty } from '@/lib/data/properties'
 import { getUnit } from '@/lib/data/units'
@@ -119,6 +126,26 @@ export async function createTicketAction(formData: FormData) {
     filedPriority: priority,
   })
 
+  // Best-effort confirmation email to the tenant a ticket was filed ON BEHALF OF. This
+  // operator-create path does not currently set created_for_user_id (it's always null
+  // here), so notifyTicketCreated resolves no recipient and skips quietly — the wiring is
+  // in place for the P3.7 tenant-self-report / file-on-behalf path that will set it.
+  // Own try/catch, never blocks the redirect. Disconnected-safe.
+  const createdForUserId = (parsed.data as { createdForUserId?: string | null }).createdForUserId ?? null
+  if (createdForUserId) {
+    try {
+      await notifyTicketCreated(createServiceClient(), {
+        ticketId,
+        title,
+        category,
+        priority,
+        reporterUserId: createdForUserId,
+      })
+    } catch (e) {
+      console.error('Failed to send ticket-created email for ticket', ticketId, e)
+    }
+  }
+
   revalidatePath('/tickets')
   redirect(`/tickets/${ticketId}`)
 }
@@ -184,6 +211,23 @@ export async function transitionTicketStatusAction(id: string, formData: FormDat
     console.error('Failed to log STATUS_CHANGED event for ticket', id, e)
   }
 
+  // Best-effort email to the reporter (tenant filed-for, else the creator). Mirrors the
+  // audit block: own try/catch, service-role client for the auth.admin email lookup,
+  // never blocks the redirect. Disconnected-safe (no-op with no RESEND_API_KEY).
+  try {
+    await notifyTicketStatusChanged(createServiceClient(), {
+      ticketId: id,
+      title: ticket.title,
+      category: ticket.category,
+      priority: ticket.priority,
+      reporterUserId: ticket.created_for_user_id ?? ticket.created_by_user_id,
+      fromStatus: ticket.status,
+      toStatus: nextStatus,
+    })
+  } catch (e) {
+    console.error('Failed to send status-changed email for ticket', id, e)
+  }
+
   revalidatePath(detailPath)
   redirect(detailPath)
 }
@@ -237,6 +281,22 @@ export async function assignOperatorAction(id: string, formData: FormData) {
     console.error('Failed to log OPERATOR_ASSIGNED event for ticket', id, e)
   }
 
+  // Best-effort email to the newly-assigned operator. Only on an ASSIGN (operatorId set);
+  // an unassign (null) has no recipient to notify. Email resolved via auth.admin.
+  if (operatorId) {
+    try {
+      await notifyOperatorAssigned(createServiceClient(), {
+        ticketId: id,
+        title: ticket.title,
+        category: ticket.category,
+        priority: ticket.priority,
+        operatorUserId: operatorId,
+      })
+    } catch (e) {
+      console.error('Failed to send operator-assigned email for ticket', id, e)
+    }
+  }
+
   revalidatePath(detailPath)
   redirect(detailPath)
 }
@@ -257,8 +317,11 @@ export async function assignVendorAction(id: string, formData: FormData) {
   // double-scoped by workspace_id, so a null return means the vendor isn't in this
   // workspace — reject. (getVendor doesn't filter is_active; an inactive-but-in-workspace
   // vendor is an acceptable edge for MVP — the select only offers active ones anyway.)
+  // Declared at function scope so the post-assign notification can reuse the loaded row
+  // (its email column) without a second query.
+  let vendor: Awaited<ReturnType<typeof getVendor>> = null
   if (vendorId) {
-    const vendor = await getVendor(supabase, user.workspaceId, vendorId)
+    vendor = await getVendor(supabase, user.workspaceId, vendorId)
     if (!vendor) {
       redirectWithError(detailPath, 'Selected vendor is not in this workspace.')
     }
@@ -284,6 +347,24 @@ export async function assignVendorAction(id: string, formData: FormData) {
     console.error('Failed to log VENDOR_ASSIGNED event for ticket', id, e)
   }
 
+  // Best-effort heads-up email to the newly-assigned vendor (the secure job link is a
+  // separate action). Only on an ASSIGN; the vendor object (with its email column) was
+  // loaded above during the in-workspace check.
+  if (vendorId && vendor) {
+    try {
+      await notifyVendorAssigned({
+        ticketId: id,
+        title: ticket.title,
+        category: ticket.category,
+        priority: ticket.priority,
+        vendorEmail: vendor.email,
+        vendorName: vendor.contact_name ?? vendor.company_name,
+      })
+    } catch (e) {
+      console.error('Failed to send vendor-assigned email for ticket', id, e)
+    }
+  }
+
   revalidatePath(detailPath)
   redirect(detailPath)
 }
@@ -302,8 +383,13 @@ export async function assignVendorAction(id: string, formData: FormData) {
  * ONE-TIME-URL EXPOSURE — DELIBERATE, DOCUMENTED: the raw token appears once in the
  * MANAGER'S OWN browser URL (and their history). This is acceptable: the manager is a
  * trusted principal generating the link for themselves to copy and send. It is NOT stored
- * anywhere (only the hash is), and it is never shown to any other user. Phase 4 replaces
- * this with email delivery, which removes the URL exposure entirely.
+ * anywhere (only the hash is), and it is never shown to any other user.
+ *
+ * PHASE 4 EMAIL DELIVERY (this file): when connected (RESEND_API_KEY set), the full job
+ * link is now ALSO emailed straight to the vendor's own address via notifyVendorJobLink
+ * below — the vendor no longer depends on the manager copy-pasting from the URL. The
+ * ?joblink= redirect is kept as the manager's own copyable fallback (and is the only
+ * delivery path while disconnected, where the email is a logging no-op).
  */
 export async function generateVendorLinkAction(id: string) {
   const user = await requirePermission('tickets:assign')
@@ -363,7 +449,28 @@ export async function generateVendorLinkAction(id: string) {
     console.error('Failed to log job_link_generated event for ticket', id, e)
   }
 
-  // The raw token is returned to the manager ONCE via their own URL (see docstring).
+  // HIGHEST-VALUE NOTIFICATION: email the full secure job link straight to the vendor,
+  // so delivery no longer depends on the manager copy-pasting the ?joblink= URL. The link
+  // is `${NEXT_PUBLIC_SITE_URL}/job/<rawToken>` — the exact path the /job/[token] route
+  // serves. Best-effort: own try/catch, never blocks the redirect. Disconnected-safe.
+  try {
+    const base = process.env.NEXT_PUBLIC_SITE_URL
+    const jobUrl = base ? `${base}/job/${rawToken}` : `/job/${rawToken}`
+    await notifyVendorJobLink({
+      ticketId: id,
+      title: ticket.title,
+      category: ticket.category,
+      priority: ticket.priority,
+      vendorEmail: vendor.email,
+      vendorName: vendor.contact_name ?? vendor.company_name,
+      jobUrl,
+    })
+  } catch (e) {
+    console.error('Failed to send vendor job-link email for ticket', id, e)
+  }
+
+  // The raw token is ALSO returned to the manager ONCE via their own URL (fallback, and
+  // the sole delivery path while email is disconnected — see docstring).
   redirect(`${detailPath}?joblink=${encodeURIComponent(rawToken)}`)
 }
 
