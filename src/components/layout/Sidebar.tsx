@@ -10,6 +10,7 @@ import {
   Wrench,
   Ticket,
   ChartColumn,
+  Wallet,
   Inbox,
   CirclePlus,
   Building,
@@ -38,6 +39,9 @@ const OPERATOR_NAV: NavItem[] = [
   // Insights sits after Tickets, gated on analytics:read — managers + accountant see the
   // cost/vendor/unit/cycle dashboard; it stays hidden from any role that lacks it.
   { href: '/insights', label: 'Insights', icon: ChartColumn, permission: 'analytics:read' },
+  // Finance sits after Insights, gated on finance:read — managers + accountant see the
+  // bookkeeping/income-expense surface; it stays hidden from any role that lacks it.
+  { href: '/finance', label: 'Finance', icon: Wallet, permission: 'finance:read' },
 ]
 
 // Minimal tenant/guest nav — the P3.7 self-service portal only.

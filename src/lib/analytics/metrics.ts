@@ -2,7 +2,13 @@ import type { Ticket } from '@/lib/data/tickets'
 import type { Vendor } from '@/lib/data/vendors'
 import type { Unit } from '@/lib/data/units'
 import type { Property } from '@/lib/data/properties'
-import type { TicketCategory, TicketPriority, TicketStatus } from '@/types/domain'
+import type {
+  ExpenseRecord,
+  IncomeRecord,
+  TicketCategory,
+  TicketPriority,
+  TicketStatus,
+} from '@/types/domain'
 
 // Pure, DB-free analytics over already-fetched rows. Nothing here touches Supabase —
 // callers fetch tickets/vendors/units/properties (RLS-scoped) then hand the arrays in,
@@ -349,4 +355,86 @@ export function trends(tickets: Ticket[], now: Date = new Date(), months = 6): T
     resolved: resolved.get(month) ?? 0,
     spend: spend.get(month) ?? 0,
   }))
+}
+
+// ---------------------------------------------------------------------------
+// Profit per unit
+// ---------------------------------------------------------------------------
+
+export type UnitProfit = {
+  unitId: string
+  label: string
+  propertyName: string
+  income: number
+  cost: number
+  // income − cost. Can be negative (cost-only units with no income row).
+  profit: number
+}
+
+// Profit per unit = Σ income − Σ maintenance cost, per unit, sorted desc by profit.
+//
+// Income per unit: Σ income_records.amount whose unit_id matches.
+// Cost per unit: Σ expense_records.amount for the unit, PLUS Σ ticket.actual_cost for
+// the unit's tickets whose ticket_id is NOT already referenced by an expense_record.
+// The dedupe rule mirrors the analytics contract: a manual expense_record linked to a
+// ticket supersedes that ticket's actual_cost, so the same maintenance spend is never
+// counted twice. Records/tickets without a unit_id are ignored (no unit to attribute).
+//
+// A unit surfaces here if it carries any income OR any cost; a unit with cost but no
+// income shows as cost-only (negative profit). Units with neither are omitted.
+export function profitPerUnit(
+  income: IncomeRecord[],
+  expenses: ExpenseRecord[],
+  tickets: Ticket[],
+  units: Unit[],
+  properties: Property[]
+): UnitProfit[] {
+  const unitById = new Map(units.map((u) => [u.id, u]))
+  const propertyNameById = new Map(properties.map((p) => [p.id, p.name]))
+
+  // Ticket ids that an expense_record already accounts for — their actual_cost is
+  // superseded and must not be double-counted.
+  const supersededTicketIds = new Set<string>()
+  for (const e of expenses) {
+    if (e.ticket_id) supersededTicketIds.add(e.ticket_id)
+  }
+
+  const byUnit = new Map<string, { income: number; cost: number }>()
+  const bump = (unitId: string): { income: number; cost: number } => {
+    const entry = byUnit.get(unitId) ?? { income: 0, cost: 0 }
+    byUnit.set(unitId, entry)
+    return entry
+  }
+
+  for (const rec of income) {
+    if (!rec.unit_id) continue
+    bump(rec.unit_id).income += cost(rec.amount)
+  }
+
+  for (const e of expenses) {
+    if (!e.unit_id) continue
+    bump(e.unit_id).cost += cost(e.amount)
+  }
+
+  for (const t of tickets) {
+    if (!t.unit_id) continue
+    if (supersededTicketIds.has(t.id)) continue
+    bump(t.unit_id).cost += cost(t.actual_cost)
+  }
+
+  return [...byUnit.entries()]
+    .map(([unitId, { income: inc, cost: cst }]) => {
+      const unit = unitById.get(unitId)
+      return {
+        unitId,
+        label: unit?.label ?? 'Unknown unit',
+        propertyName: unit
+          ? propertyNameById.get(unit.property_id) ?? 'Unknown property'
+          : 'Unknown property',
+        income: inc,
+        cost: cst,
+        profit: inc - cst,
+      }
+    })
+    .sort((a, b) => b.profit - a.profit)
 }

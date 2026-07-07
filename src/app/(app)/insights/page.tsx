@@ -5,6 +5,7 @@ import { listTickets } from '@/lib/data/tickets'
 import { listVendors } from '@/lib/data/vendors'
 import { listUnits } from '@/lib/data/units'
 import { listProperties } from '@/lib/data/properties'
+import { listIncomeRecords, listExpenseRecords } from '@/lib/data/finance'
 import {
   costOverview,
   costByCategory,
@@ -13,7 +14,9 @@ import {
   problemUnits,
   cycleTimes,
   trends,
+  profitPerUnit,
 } from '@/lib/analytics/metrics'
+import { can } from '@/lib/auth/permissions'
 import type { TicketPriority } from '@/types/domain'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { EmptyState } from '@/components/common/EmptyState'
@@ -40,11 +43,16 @@ export default async function InsightsPage() {
   const user = await requirePermission('analytics:read')
 
   const supabase = await createClient()
-  const [tickets, vendors, units, properties] = await Promise.all([
+  // Finance rows drive profit-per-unit; only fetch them when the role can read finance
+  // (RLS would scope them anyway, but this skips the query for roles without the surface).
+  const canReadFinance = can(user.role, 'finance:read')
+  const [tickets, vendors, units, properties, income, expenses] = await Promise.all([
     listTickets(supabase, user.workspaceId),
     listVendors(supabase, user.workspaceId),
     listUnits(supabase, user.workspaceId),
     listProperties(supabase, user.workspaceId),
+    canReadFinance ? listIncomeRecords(supabase, user.workspaceId) : Promise.resolve([]),
+    canReadFinance ? listExpenseRecords(supabase, user.workspaceId) : Promise.resolve([]),
   ])
 
   if (tickets.length === 0) {
@@ -70,6 +78,9 @@ export default async function InsightsPage() {
   const units5 = problemUnits(tickets, units, properties, 5)
   const cycles = cycleTimes(tickets)
   const monthly = trends(tickets)
+  // Profit per unit = Σ income − Σ maintenance cost per unit. Empty until finance rows
+  // exist; a unit with cost but no income shows negative (cost-only).
+  const profit = canReadFinance ? profitPerUnit(income, expenses, tickets, units, properties) : []
 
   const categoryRows: RankBarRow[] = categories
     .filter((c) => c.total > 0)
@@ -182,6 +193,23 @@ export default async function InsightsPage() {
         </CardContent>
       </Card>
 
+      {/* Profit per unit — only shown to finance-readers, and only once finance rows
+          exist. Income − maintenance cost per unit; cost-only units read negative. */}
+      {canReadFinance && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Profit per unit</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {profit.length > 0 ? (
+              <ProfitTable rows={profit} />
+            ) : (
+              <NoData>No finance entries yet — add income and expenses to see profit.</NoData>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Cycle time by priority */}
       <Card>
         <CardHeader>
@@ -219,6 +247,60 @@ function Metric({ label, value }: { label: string; value: string }) {
 
 function NoData({ children }: { children: React.ReactNode }) {
   return <p className="py-4 text-sm text-muted-foreground">{children}</p>
+}
+
+function ProfitTable({
+  rows,
+}: {
+  rows: Array<{
+    unitId: string
+    label: string
+    propertyName: string
+    income: number
+    cost: number
+    profit: number
+  }>
+}) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b text-left text-xs text-muted-foreground">
+            <th className="pb-2 font-medium">Unit</th>
+            <th className="pb-2 text-right font-medium">Income</th>
+            <th className="pb-2 text-right font-medium">Cost</th>
+            <th className="pb-2 text-right font-medium">Profit</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((u) => (
+            <tr key={u.unitId} className="border-b last:border-b-0 align-top">
+              <td className="py-2 pr-2 font-medium text-foreground">
+                {u.label}
+                <span className="block text-xs font-normal text-muted-foreground">
+                  {u.propertyName}
+                </span>
+              </td>
+              <td className="py-2 text-right tabular-nums text-muted-foreground">
+                {formatMoney(u.income)}
+              </td>
+              <td className="py-2 text-right tabular-nums text-muted-foreground">
+                {formatMoney(u.cost)}
+              </td>
+              <td
+                className={
+                  'py-2 text-right tabular-nums font-medium ' +
+                  (u.profit < 0 ? 'text-red-600 dark:text-red-400' : 'text-green-700 dark:text-green-400')
+                }
+              >
+                {formatMoney(u.profit)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
 }
 
 function VendorTable({

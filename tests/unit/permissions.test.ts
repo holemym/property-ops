@@ -76,6 +76,33 @@ describe('can', () => {
       expect(can(role, 'tickets:comment-internal')).toBe(false)
     }
   })
+
+  // THE FINANCE ROLE INVERSION (migration 0017). Unlike every prior domain table, the
+  // OPERATOR gets read-only finance (cost visibility) while the ACCOUNTANT — read-only
+  // everywhere else — gets its FIRST write permission. OWNER/SUPER_ADMIN keep both.
+  it('grants OPERATOR finance:read but NOT finance:write (role inversion)', () => {
+    expect(can('OPERATOR', 'finance:read')).toBe(true)
+    expect(can('OPERATOR', 'finance:write')).toBe(false)
+  })
+
+  it('grants ACCOUNTANT both finance:read and finance:write (owns the books)', () => {
+    expect(can('ACCOUNTANT', 'finance:read')).toBe(true)
+    expect(can('ACCOUNTANT', 'finance:write')).toBe(true)
+  })
+
+  it('grants OWNER and SUPER_ADMIN both finance permissions', () => {
+    for (const role of ['OWNER', 'SUPER_ADMIN'] as const) {
+      expect(can(role, 'finance:read')).toBe(true)
+      expect(can(role, 'finance:write')).toBe(true)
+    }
+  })
+
+  it('denies TENANT, GUEST and VENDOR both finance permissions', () => {
+    for (const role of ['TENANT', 'GUEST', 'VENDOR'] as const) {
+      expect(can(role, 'finance:read')).toBe(false)
+      expect(can(role, 'finance:write')).toBe(false)
+    }
+  })
 })
 
 describe('isTenantRole', () => {

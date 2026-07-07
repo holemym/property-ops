@@ -91,3 +91,54 @@ export type Tenancy = {
   created_at: string
   updated_at: string
 }
+
+// Finance-light categories (migration 0017). income_category / expense_category enums.
+export type IncomeCategory = 'RENT' | 'DEPOSIT' | 'FEE' | 'OTHER'
+export type ExpenseCategory =
+  | 'MAINTENANCE'
+  | 'UTILITIES'
+  | 'TAX'
+  | 'INSURANCE'
+  | 'MANAGEMENT'
+  | 'OTHER'
+
+// A bookkeeping income entry (migration 0017). property_id / unit_id are OPTIONAL
+// attribution (NULLABLE composite FKs — book at property, unit, or neither). period_start
+// is the accounting period start (required); period_end null = point-in-time booking.
+// currency is a label (no multi-currency conversion — YAGNI), defaults to 'EUR'. SELECT
+// is role-gated to managers + accountant + operator via RLS; writes are can_manage_finance().
+export type IncomeRecord = {
+  id: string
+  workspace_id: string
+  property_id: string | null
+  unit_id: string | null
+  amount: number
+  currency: string
+  category: IncomeCategory
+  period_start: string
+  period_end: string | null
+  notes: string | null
+  created_by_user_id: string
+  created_at: string
+  updated_at: string
+}
+
+// A bookkeeping expense entry (migration 0017). Same shape as IncomeRecord with three
+// deltas: a single incurred_on (the day incurred, required) replaces the period pair; an
+// optional ticket_id links a manual expense back to the ticket it settles; category is
+// ExpenseCategory (default 'MAINTENANCE').
+export type ExpenseRecord = {
+  id: string
+  workspace_id: string
+  property_id: string | null
+  unit_id: string | null
+  ticket_id: string | null
+  amount: number
+  currency: string
+  category: ExpenseCategory
+  incurred_on: string
+  notes: string | null
+  created_by_user_id: string
+  created_at: string
+  updated_at: string
+}

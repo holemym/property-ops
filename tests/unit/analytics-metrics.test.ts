@@ -3,7 +3,13 @@ import type { Ticket } from '@/lib/data/tickets'
 import type { Vendor } from '@/lib/data/vendors'
 import type { Unit } from '@/lib/data/units'
 import type { Property } from '@/lib/data/properties'
-import type { TicketCategory, TicketPriority, TicketStatus } from '@/types/domain'
+import type {
+  ExpenseRecord,
+  IncomeRecord,
+  TicketCategory,
+  TicketPriority,
+  TicketStatus,
+} from '@/types/domain'
 import {
   costOverview,
   costByCategory,
@@ -12,6 +18,7 @@ import {
   problemUnits,
   cycleTimes,
   trends,
+  profitPerUnit,
 } from '@/lib/analytics/metrics'
 
 // Minimal ticket factory — only the fields the metrics read matter; the rest are filled
@@ -75,6 +82,42 @@ function unit(id: string, property_id: string, label: string): Unit {
     general_notes: null,
     created_at: '2026-01-01T00:00:00Z',
     updated_at: '2026-01-01T00:00:00Z',
+  }
+}
+
+function income(partial: Partial<IncomeRecord> & { id: string; amount: number }): IncomeRecord {
+  return {
+    workspace_id: 'ws-1',
+    property_id: null,
+    unit_id: null,
+    currency: 'EUR',
+    category: 'RENT',
+    period_start: '2026-06-01',
+    period_end: null,
+    notes: null,
+    created_by_user_id: 'user-1',
+    created_at: '2026-06-01T00:00:00Z',
+    updated_at: '2026-06-01T00:00:00Z',
+    ...partial,
+  }
+}
+
+function expense(
+  partial: Partial<ExpenseRecord> & { id: string; amount: number }
+): ExpenseRecord {
+  return {
+    workspace_id: 'ws-1',
+    property_id: null,
+    unit_id: null,
+    currency: 'EUR',
+    category: 'MAINTENANCE',
+    incurred_on: '2026-06-01',
+    ticket_id: null,
+    notes: null,
+    created_by_user_id: 'user-1',
+    created_at: '2026-06-01T00:00:00Z',
+    updated_at: '2026-06-01T00:00:00Z',
+    ...partial,
   }
 }
 
@@ -338,5 +381,84 @@ describe('trends', () => {
     const r = trends([], NOW, 6)
     expect(r).toHaveLength(6)
     expect(r.every((b) => b.opened === 0 && b.resolved === 0 && b.spend === 0)).toBe(true)
+  })
+})
+
+describe('profitPerUnit', () => {
+  const units = [unit('u1', 'p1', '1A'), unit('u2', 'p1', '2B')]
+  const props = [property('p1', 'Alpha')]
+
+  it('nets income minus expense + ticket cost per unit, sorted by profit desc', () => {
+    const incomes = [
+      income({ id: 'i1', unit_id: 'u1', amount: 1000 }),
+      income({ id: 'i2', unit_id: 'u1', amount: 200 }),
+      income({ id: 'i3', unit_id: 'u2', amount: 800 }),
+    ]
+    const expenses = [expense({ id: 'e1', unit_id: 'u1', amount: 150 })]
+    const tickets = [
+      ticket({ id: 't1', property_id: 'p1', unit_id: 'u1', actual_cost: 100 }),
+      ticket({ id: 't2', property_id: 'p1', unit_id: 'u2', actual_cost: 50 }),
+    ]
+    expect(profitPerUnit(incomes, expenses, tickets, units, props)).toEqual([
+      { unitId: 'u2', label: '2B', propertyName: 'Alpha', income: 800, cost: 50, profit: 750 },
+      { unitId: 'u1', label: '1A', propertyName: 'Alpha', income: 1200, cost: 250, profit: 950 - 0 },
+    ].sort((a, b) => b.profit - a.profit))
+  })
+
+  it('dedupes a ticket cost that an expense_record already accounts for', () => {
+    const incomes = [income({ id: 'i1', unit_id: 'u1', amount: 500 })]
+    // e1 links ticket t1 — its actual_cost is superseded, so only the 300 expense counts.
+    const expenses = [expense({ id: 'e1', unit_id: 'u1', amount: 300, ticket_id: 't1' })]
+    const tickets = [ticket({ id: 't1', property_id: 'p1', unit_id: 'u1', actual_cost: 999 })]
+    const r = profitPerUnit(incomes, expenses, tickets, units, props)
+    expect(r).toEqual([
+      { unitId: 'u1', label: '1A', propertyName: 'Alpha', income: 500, cost: 300, profit: 200 },
+    ])
+  })
+
+  it('counts a ticket cost when its expense links a different ticket', () => {
+    const expenses = [expense({ id: 'e1', unit_id: 'u1', amount: 100, ticket_id: 't-other' })]
+    const tickets = [ticket({ id: 't1', property_id: 'p1', unit_id: 'u1', actual_cost: 40 })]
+    const r = profitPerUnit([], expenses, tickets, units, props)
+    // 100 (expense) + 40 (unsuperseded ticket) = 140 cost, 0 income.
+    expect(r).toEqual([
+      { unitId: 'u1', label: '1A', propertyName: 'Alpha', income: 0, cost: 140, profit: -140 },
+    ])
+  })
+
+  it('shows a cost-only unit with negative profit and no income row', () => {
+    const tickets = [ticket({ id: 't1', property_id: 'p1', unit_id: 'u2', actual_cost: 75 })]
+    const r = profitPerUnit([], [], tickets, units, props)
+    expect(r).toEqual([
+      { unitId: 'u2', label: '2B', propertyName: 'Alpha', income: 0, cost: 75, profit: -75 },
+    ])
+  })
+
+  it('ignores income/expense/tickets with no unit_id', () => {
+    const incomes = [income({ id: 'i1', unit_id: null, amount: 500 })]
+    const expenses = [expense({ id: 'e1', unit_id: null, amount: 100 })]
+    const tickets = [ticket({ id: 't1', property_id: 'p1', unit_id: null, actual_cost: 40 })]
+    expect(profitPerUnit(incomes, expenses, tickets, units, props)).toEqual([])
+  })
+
+  it('treats null amounts/costs as zero (no NaN)', () => {
+    const incomes = [income({ id: 'i1', unit_id: 'u1', amount: 0 })]
+    const tickets = [ticket({ id: 't1', property_id: 'p1', unit_id: 'u1', actual_cost: null })]
+    const r = profitPerUnit(incomes, [], tickets, units, props)
+    expect(r).toEqual([
+      { unitId: 'u1', label: '1A', propertyName: 'Alpha', income: 0, cost: 0, profit: 0 },
+    ])
+    expect(Number.isNaN(r[0].profit)).toBe(false)
+  })
+
+  it('falls back to generic labels for an unknown unit', () => {
+    const incomes = [income({ id: 'i1', unit_id: 'ghost', amount: 100 })]
+    expect(profitPerUnit(incomes, [], [], [], [])).toEqual([
+      { unitId: 'ghost', label: 'Unknown unit', propertyName: 'Unknown property', income: 100, cost: 0, profit: 100 },
+    ])
+  })
+
+  it('returns empty for fully empty input', () => {
+    expect(profitPerUnit([], [], [], [], [])).toEqual([])
   })
 })
