@@ -88,8 +88,41 @@ export function TicketTable({
 }) {
   const headProps = { sort, dir, baseParams }
   return (
-    <div className="overflow-hidden rounded-lg border">
-      <Table>
+    <>
+      {/* Mobile: stacked cards (the table's columns don't fit a phone; below sm it hides). */}
+      <ul className="flex flex-col gap-2 sm:hidden">
+        {tickets.map((t) => (
+          <li key={t.id}>
+            <Link
+              href={`/tickets/${t.id}`}
+              className={cn(
+                'flex flex-col gap-2 rounded-lg border border-l-2 bg-card p-3',
+                PRIORITY_SPINE[t.priority],
+              )}
+            >
+              <span className="font-medium leading-snug">{t.title}</span>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <StatusBadge kind="ticket_priority" value={t.priority} />
+                <StatusBadge kind="ticket_status" value={t.status} />
+              </div>
+              <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                <span className="min-w-0 truncate capitalize">
+                  {(propertyNames[t.property_id] ?? '—') +
+                    ' · ' +
+                    t.category.replace(/_/g, ' ').toLowerCase()}
+                </span>
+                <span className="shrink-0" title={new Date(t.created_at).toLocaleString()}>
+                  {relativeDay(t.created_at)}
+                </span>
+              </div>
+            </Link>
+          </li>
+        ))}
+      </ul>
+
+      {/* Desktop: the full sortable table. */}
+      <div className="hidden overflow-hidden rounded-lg border sm:block">
+        <Table>
         <TableHeader>
           <TableRow className="bg-muted/40 hover:bg-muted/40">
             <SortableHead column="title" label="Title" {...headProps} />
@@ -134,7 +167,8 @@ export function TicketTable({
             </TableRow>
           ))}
         </TableBody>
-      </Table>
-    </div>
+        </Table>
+      </div>
+    </>
   )
 }

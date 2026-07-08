@@ -26,8 +26,40 @@ export function InvoiceTable({
   totalFor: (id: string) => string
 }) {
   return (
-    <div className="overflow-hidden rounded-lg border">
-      <Table>
+    <>
+      {/* Mobile: stacked cards. */}
+      <ul className="flex flex-col gap-2 sm:hidden">
+        {invoices.map((inv) => (
+          <li key={inv.id}>
+            <Link
+              href={`/invoices/${inv.id}`}
+              className="flex flex-col gap-2 rounded-lg border bg-card p-3"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-medium tabular-nums">{inv.invoice_number}</span>
+                <span className="font-medium tabular-nums">{totalFor(inv.id)}</span>
+              </div>
+              <div className="flex flex-wrap items-center gap-1.5 text-sm">
+                <span className="min-w-0 truncate">{inv.party_name}</span>
+                <Badge variant="outline" className="capitalize">
+                  {inv.party_type.toLowerCase()}
+                </Badge>
+              </div>
+              <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                <StatusBadge kind="invoice_status" value={inv.status} />
+                <span>
+                  {new Date(inv.issue_date).toLocaleDateString()}
+                  {inv.due_date ? ` · due ${new Date(inv.due_date).toLocaleDateString()}` : ''}
+                </span>
+              </div>
+            </Link>
+          </li>
+        ))}
+      </ul>
+
+      {/* Desktop: table. */}
+      <div className="hidden overflow-hidden rounded-lg border sm:block">
+        <Table>
         <TableHeader>
           <TableRow className="bg-muted/40 hover:bg-muted/40">
             <TableHead className="px-4">Number</TableHead>
@@ -72,7 +104,8 @@ export function InvoiceTable({
             </TableRow>
           ))}
         </TableBody>
-      </Table>
-    </div>
+        </Table>
+      </div>
+    </>
   )
 }
