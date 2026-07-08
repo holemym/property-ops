@@ -39,8 +39,8 @@ export function TopNav({
     <header className="flex h-14 shrink-0 items-center justify-between gap-4 border-b bg-background px-6">
       <WorkspaceSwitcher role={role} workspaceName={workspaceName} />
 
-      {/* Global search (⌘K) — operator surface only; tenants use the portal. */}
-      {!isTenantRole(role) && <CommandPalette />}
+      {/* Command palette (⌘K) — search + navigation; operator surface only. */}
+      {!isTenantRole(role) && <CommandPalette role={role} />}
 
       <DropdownMenu>
         <DropdownMenuTrigger
