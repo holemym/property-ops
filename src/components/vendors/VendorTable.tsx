@@ -13,7 +13,32 @@ import type { Vendor } from '@/lib/data/vendors'
 // Rows are clickable to the vendor detail page via a stretched Link on the company cell.
 export function VendorTable({ vendors }: { vendors: Vendor[] }) {
   return (
-    <div className="overflow-hidden rounded-lg border">
+    <>
+      {/* Mobile: stacked cards (the table's columns don't fit a phone; below sm it hides). */}
+      <ul className="flex flex-col gap-2 sm:hidden">
+        {vendors.map((v) => (
+          <li key={v.id}>
+            <Link
+              href={`/vendors/${v.id}`}
+              className="flex flex-col gap-2 rounded-lg border bg-card p-3"
+            >
+              <span className="font-medium leading-snug">{v.company_name}</span>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <StatusBadge kind="vendor_is_active" value={v.is_active} />
+              </div>
+              <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                <span className="min-w-0 truncate capitalize">
+                  {v.service_category.replace(/_/g, ' ')}
+                </span>
+                <span className="shrink-0">{v.contact_name ?? '—'}</span>
+              </div>
+            </Link>
+          </li>
+        ))}
+      </ul>
+
+      {/* Desktop: the full table. */}
+      <div className="hidden overflow-hidden rounded-lg border sm:block">
       <Table>
         <TableHeader>
           <TableRow className="bg-muted/40 hover:bg-muted/40">
@@ -47,6 +72,7 @@ export function VendorTable({ vendors }: { vendors: Vendor[] }) {
           ))}
         </TableBody>
       </Table>
-    </div>
+      </div>
+    </>
   )
 }

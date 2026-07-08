@@ -37,6 +37,38 @@ export default async function UsersSettingsPage({
         <Button type="submit">Invite</Button>
       </form>
 
+      {/* Mobile: stacked cards (the table's columns don't fit a phone; below sm it hides).
+          Rows carry an activate/deactivate form, so the card is a plain div (not a Link)
+          with the form's server action nested and unchanged. */}
+      <ul className="flex flex-col gap-2 sm:hidden">
+        {(users ?? []).map((u) => (
+          <li key={u.id} className="flex flex-col gap-2 rounded-lg border bg-card p-3">
+            <div className="flex items-center justify-between gap-2">
+              <span className="min-w-0 truncate font-medium leading-snug">{u.full_name || '—'}</span>
+              <span className="shrink-0 text-xs text-muted-foreground">{u.role}</span>
+            </div>
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs text-muted-foreground">
+                {u.is_active ? 'Active' : 'Deactivated'}
+              </span>
+              {u.id === admin.id ? (
+                <span className="text-sm text-muted-foreground">(you)</span>
+              ) : (
+                <form action={setUserActive}>
+                  <input type="hidden" name="userId" value={u.id} />
+                  <input type="hidden" name="isActive" value={String(!u.is_active)} />
+                  <Button type="submit" variant="outline" size="sm">
+                    {u.is_active ? 'Deactivate' : 'Activate'}
+                  </Button>
+                </form>
+              )}
+            </div>
+          </li>
+        ))}
+      </ul>
+
+      {/* Desktop: the full table. */}
+      <div className="hidden sm:block">
       <Table>
         <TableHeader>
           <TableRow>
@@ -69,6 +101,7 @@ export default async function UsersSettingsPage({
           ))}
         </TableBody>
       </Table>
+      </div>
     </div>
   )
 }

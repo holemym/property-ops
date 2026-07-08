@@ -58,7 +58,42 @@ export default async function OwnersPage() {
           body="Create an invoice with the party set to an owner, and each owner's statement will appear here."
         />
       ) : (
-        <div className="overflow-hidden rounded-lg border">
+        <>
+        {/* Mobile: stacked cards (the table's columns don't fit a phone; below sm it hides). */}
+        <ul className="flex flex-col gap-2 sm:hidden">
+          {owners.map((o) => (
+            <li key={o.name}>
+              <Link
+                href={`/owners/${encodeURIComponent(o.name)}`}
+                className="flex flex-col gap-2 rounded-lg border bg-card p-3"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="min-w-0 truncate font-medium leading-snug">{o.name}</span>
+                  <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                    {o.invoiceCount} {o.invoiceCount === 1 ? 'invoice' : 'invoices'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                  <span className="tabular-nums">
+                    Billed {eur.format(o.billed)} · Paid {eur.format(o.paid)}
+                  </span>
+                  <span
+                    className={
+                      o.outstanding > 0
+                        ? 'shrink-0 font-medium tabular-nums text-amber-700 dark:text-amber-400'
+                        : 'shrink-0 tabular-nums'
+                    }
+                  >
+                    {eur.format(o.outstanding)} due
+                  </span>
+                </div>
+              </Link>
+            </li>
+          ))}
+        </ul>
+
+        {/* Desktop: the full table. */}
+        <div className="hidden overflow-hidden rounded-lg border sm:block">
           <Table>
             <TableHeader>
               <TableRow className="bg-muted/40 hover:bg-muted/40">
@@ -101,6 +136,7 @@ export default async function OwnersPage() {
             </TableBody>
           </Table>
         </div>
+        </>
       )}
     </div>
   )

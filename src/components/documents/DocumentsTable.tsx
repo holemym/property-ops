@@ -29,7 +29,55 @@ export function DocumentsTable({
   maps: EntityMaps
 }) {
   return (
-    <div className="overflow-hidden rounded-lg border">
+    <>
+      {/* Mobile: stacked cards (the table's columns don't fit a phone; below sm it hides).
+          Rows have no detail page — each card is a plain div with the download link nested. */}
+      <ul className="flex flex-col gap-2 sm:hidden">
+        {rows.map(({ doc, url }) => {
+          const entity = attachedEntityLabel(doc, maps)
+          return (
+            <li key={doc.id} className="flex flex-col gap-2 rounded-lg border bg-card p-3">
+              <span className="font-medium leading-snug">{doc.title}</span>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <Badge variant={documentTypeTone(doc.document_type)}>
+                  {documentTypeLabel(doc.document_type)}
+                </Badge>
+                {url ? (
+                  <a
+                    href={url}
+                    download={doc.title}
+                    className="text-xs underline underline-offset-2 hover:text-foreground"
+                  >
+                    Download
+                  </a>
+                ) : (
+                  <span className="text-xs text-muted-foreground">Link unavailable</span>
+                )}
+              </div>
+              <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                <span className="min-w-0 truncate">
+                  {entity ? (
+                    <>
+                      <span className="text-foreground/70">{entity.kind}</span> · {entity.name}
+                    </>
+                  ) : (
+                    '—'
+                  )}
+                </span>
+                <span className="shrink-0">
+                  {new Date(doc.created_at).toLocaleDateString()} · {formatFileSize(doc.file_size)}
+                  {doc.expires_at
+                    ? ` · exp ${new Date(doc.expires_at).toLocaleDateString()}`
+                    : ''}
+                </span>
+              </div>
+            </li>
+          )
+        })}
+      </ul>
+
+      {/* Desktop: the full table. */}
+      <div className="hidden overflow-hidden rounded-lg border sm:block">
       <Table>
         <TableHeader>
           <TableRow className="bg-muted/40 hover:bg-muted/40">
@@ -89,6 +137,7 @@ export function DocumentsTable({
           })}
         </TableBody>
       </Table>
-    </div>
+      </div>
+    </>
   )
 }
