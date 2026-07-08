@@ -12,7 +12,9 @@ import {
   updateInvoice,
   replaceInvoiceLines,
   setInvoiceStatus,
+  listInvoiceLines,
 } from '@/lib/data/invoices'
+import { sendInvoiceEmail } from '@/lib/email/invoice'
 import { getProperty } from '@/lib/data/properties'
 import { getUnit } from '@/lib/data/units'
 import { getVendor } from '@/lib/data/vendors'
@@ -48,6 +50,7 @@ function parseInvoiceForm(formData: FormData) {
     issueDate: formData.get('issueDate'),
     // '' (no due date / no attribution chosen) → null so the nullable/optional checks pass.
     dueDate: (formData.get('dueDate') as string | null) || null,
+    recipientEmail: (formData.get('recipientEmail') as string | null) || null,
     notes: (formData.get('notes') as string | null) || null,
     propertyId: (formData.get('propertyId') as string | null) || null,
     unitId: (formData.get('unitId') as string | null) || null,
@@ -122,6 +125,7 @@ export async function createInvoiceAction(formData: FormData): Promise<void> {
       taxRate: parsed.data.taxRate,
       issueDate: parsed.data.issueDate,
       dueDate: parsed.data.dueDate ?? null,
+      recipientEmail: parsed.data.recipientEmail ?? null,
       notes: parsed.data.notes ?? null,
       propertyId: parsed.data.propertyId ?? null,
       unitId: parsed.data.unitId ?? null,
@@ -171,6 +175,7 @@ export async function updateInvoiceAction(id: string, formData: FormData): Promi
       taxRate: parsed.data.taxRate,
       issueDate: parsed.data.issueDate,
       dueDate: parsed.data.dueDate ?? null,
+      recipientEmail: parsed.data.recipientEmail ?? null,
       notes: parsed.data.notes ?? null,
       propertyId: parsed.data.propertyId ?? null,
       unitId: parsed.data.unitId ?? null,
@@ -220,4 +225,46 @@ export async function setInvoiceStatusAction(id: string, formData: FormData): Pr
   revalidatePath('/invoices')
   revalidatePath(detailPath)
   redirect(detailPath)
+}
+
+/**
+ * Email the invoice to its recipient. Requires a recipient_email on the invoice (set via
+ * Edit). Disconnected-safe: with no RESEND_API_KEY the send is a no-op and we tell the user
+ * email isn't connected yet. On a real send, a DRAFT invoice advances to SENT so its status
+ * reflects delivery. Gated on finance:write.
+ */
+export async function sendInvoiceAction(id: string): Promise<void> {
+  const user = await requirePermission('finance:write')
+  const detailPath = `/invoices/${id}`
+
+  const supabase = await createClient()
+  const invoice = await getInvoice(supabase, user.workspaceId, id)
+  if (!invoice) redirectWithError(detailPath, 'Invoice not found.')
+
+  const to = (invoice.recipient_email ?? '').trim()
+  if (!to) {
+    redirectWithError(detailPath, 'Add a recipient email (Edit the invoice) before sending.')
+  }
+
+  const lines = await listInvoiceLines(supabase, user.workspaceId, id)
+  // sendInvoiceEmail never throws (best-effort transport); branch on its result.
+  const result = await sendInvoiceEmail(invoice, lines, to)
+  if (result.status === 'disconnected') {
+    redirectWithError(detailPath, 'Email isn’t connected yet — set RESEND_API_KEY to send invoices.')
+  }
+  if (!result.sent) {
+    redirectWithError(detailPath, result.error ?? 'Could not send the invoice email.')
+  }
+
+  // Reflect delivery: a DRAFT becomes SENT once it's actually emailed.
+  if (invoice.status === 'DRAFT') {
+    try {
+      await setInvoiceStatus(supabase, user.workspaceId, id, 'SENT')
+    } catch (e) {
+      console.error('Failed to advance invoice to SENT after email', id, e)
+    }
+  }
+
+  revalidatePath(detailPath)
+  redirect(`${detailPath}?sent=1`)
 }

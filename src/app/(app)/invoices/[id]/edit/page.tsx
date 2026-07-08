@@ -44,6 +44,7 @@ export default async function EditInvoicePage({
     taxRate: String(invoice.tax_rate),
     issueDate: invoice.issue_date,
     dueDate: invoice.due_date ?? '',
+    recipientEmail: invoice.recipient_email ?? '',
     notes: invoice.notes ?? '',
     propertyId: invoice.property_id ?? '',
     unitId: invoice.unit_id ?? '',

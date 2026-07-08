@@ -1270,6 +1270,9 @@ create index if not exists documents_title_trgm on public.documents using gin (t
 create index if not exists tickets_workspace_created_idx on public.tickets (workspace_id, created_at desc);
 create index if not exists tickets_workspace_status_idx on public.tickets (workspace_id, status);
 
+-- INVOICE DELIVERY (0021) — optional recipient email so invoices can be emailed.
+alter table public.invoices add column if not exists recipient_email text;
+
 -- =============================================================================
 -- DONE. Verify: select count(*) from pg_tables where schemaname='public';  -- expect 16
 -- =============================================================================

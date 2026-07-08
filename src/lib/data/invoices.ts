@@ -157,6 +157,7 @@ export type CreateInvoiceInput = {
   taxRate: number
   issueDate: string
   dueDate?: string | null
+  recipientEmail?: string | null
   notes?: string | null
   propertyId?: string | null
   unitId?: string | null
@@ -209,6 +210,7 @@ export async function createInvoice(
         tax_rate: input.taxRate,
         issue_date: input.issueDate,
         due_date: input.dueDate ?? null,
+        recipient_email: input.recipientEmail ?? null,
         notes: input.notes ?? null,
         created_by_user_id: input.createdByUserId,
       })
@@ -254,6 +256,7 @@ export type UpdateInvoiceInput = {
   taxRate?: number
   issueDate?: string
   dueDate?: string | null
+  recipientEmail?: string | null
   notes?: string | null
   propertyId?: string | null
   unitId?: string | null
@@ -278,6 +281,7 @@ export async function updateInvoice(
   if (input.taxRate !== undefined) payload.tax_rate = input.taxRate
   if (input.issueDate !== undefined) payload.issue_date = input.issueDate
   if (input.dueDate !== undefined) payload.due_date = input.dueDate
+  if (input.recipientEmail !== undefined) payload.recipient_email = input.recipientEmail
   if (input.notes !== undefined) payload.notes = input.notes
   if (input.propertyId !== undefined) payload.property_id = input.propertyId
   if (input.unitId !== undefined) payload.unit_id = input.unitId

@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { Pencil } from 'lucide-react'
+import { Pencil, Mail } from 'lucide-react'
 import { requirePermission } from '@/lib/auth/session'
 import { can } from '@/lib/auth/permissions'
 import { createClient } from '@/lib/supabase/server'
@@ -22,9 +22,11 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { ErrorToast } from '@/components/common/ErrorToast'
+import { SubmitButton } from '@/components/tickets/SubmitButton'
 import { InvoiceStatusActions } from '@/components/invoices/InvoiceStatusActions'
 import { InvoicePrint, PrintInvoiceButton } from '@/components/invoices/InvoicePrint'
-import { setInvoiceStatusAction } from '../actions'
+import { SentToast } from '@/components/invoices/SentToast'
+import { setInvoiceStatusAction, sendInvoiceAction } from '../actions'
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString('en-IE', { day: 'numeric', month: 'short', year: 'numeric' })
@@ -41,10 +43,13 @@ function SummaryField({ label, children }: { label: string; children: React.Reac
 
 export default async function InvoiceDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>
+  searchParams: Promise<{ sent?: string }>
 }) {
   const { id } = await params
+  const { sent } = await searchParams
   const user = await requirePermission('finance:read')
   const canWrite = can(user.role, 'finance:write')
 
@@ -70,12 +75,14 @@ export default async function InvoiceDetailPage({
   })
 
   const boundSetStatus = setInvoiceStatusAction.bind(null, id)
+  const boundSend = sendInvoiceAction.bind(null, id)
 
   const hasLinks = property || unit || vendor || ticket || invoice.tenancy_id
 
   return (
     <div className="flex flex-col gap-6">
       <ErrorToast />
+      {sent && <SentToast />}
 
       {/* Print layout (hidden on screen, shown on paper). */}
       <InvoicePrint invoice={invoice} lines={lines} />
@@ -102,6 +109,14 @@ export default async function InvoiceDetailPage({
             </div>
             <div className="flex items-center gap-2">
               <PrintInvoiceButton />
+              {canWrite && invoice.status !== 'VOID' && (
+                <form action={boundSend}>
+                  <SubmitButton variant="outline" size="sm" pendingLabel="Sending">
+                    <Mail className="size-4" />
+                    Send
+                  </SubmitButton>
+                </form>
+              )}
               {canWrite && (
                 <Button variant="outline" size="sm" render={<Link href={`/invoices/${id}/edit`} />}>
                   <Pencil className="size-4" />
@@ -125,6 +140,9 @@ export default async function InvoiceDetailPage({
                   <SummaryField label="Issue date">{formatDate(invoice.issue_date)}</SummaryField>
                   <SummaryField label="Due date">
                     {invoice.due_date ? formatDate(invoice.due_date) : '—'}
+                  </SummaryField>
+                  <SummaryField label="Recipient email">
+                    {invoice.recipient_email || <span className="text-muted-foreground">Not set</span>}
                   </SummaryField>
                   {invoice.paid_at && (
                     <SummaryField label="Paid at">

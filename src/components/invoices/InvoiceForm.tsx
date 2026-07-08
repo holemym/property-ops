@@ -44,6 +44,7 @@ export type InvoiceFormDefaults = {
   taxRate?: string
   issueDate?: string
   dueDate?: string
+  recipientEmail?: string
   notes?: string
   propertyId?: string
   unitId?: string
@@ -207,6 +208,18 @@ export function InvoiceForm({
             onChange={(e) => setTaxRate(e.target.value)}
           />
         </div>
+      </div>
+
+      {/* Delivery */}
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="recipientEmail">Recipient email (optional)</Label>
+        <Input
+          id="recipientEmail"
+          name="recipientEmail"
+          type="email"
+          defaultValue={defaults.recipientEmail ?? ''}
+          placeholder="billing@client.com — enables Send"
+        />
       </div>
 
       {/* Optional attribution */}

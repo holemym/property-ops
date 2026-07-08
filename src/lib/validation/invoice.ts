@@ -27,6 +27,7 @@ export const invoiceFormSchema = z.object({
   taxRate: z.coerce.number().min(0, 'Tax rate cannot be negative').max(100, 'Tax rate cannot exceed 100%').default(0),
   issueDate: isoDate,
   dueDate: isoDate.nullable().optional(),
+  recipientEmail: z.string().email('Enter a valid email').max(200).nullable().optional(),
   notes: z.string().max(2000).nullable().optional(),
   propertyId: z.string().uuid('A valid property is required').nullable().optional(),
   unitId: z.string().uuid('A valid unit is required').nullable().optional(),

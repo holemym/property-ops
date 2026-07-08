@@ -214,6 +214,8 @@ export type Invoice = {
   issue_date: string
   due_date: string | null
   paid_at: string | null
+  // Optional delivery address (migration 0021) — where "Send" emails the invoice.
+  recipient_email: string | null
   notes: string | null
   created_by_user_id: string
   created_at: string
