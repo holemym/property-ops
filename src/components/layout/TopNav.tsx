@@ -12,6 +12,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { WorkspaceSwitcher } from './WorkspaceSwitcher'
+import { MobileNav } from './MobileNav'
 import { CommandPalette } from '@/components/search/CommandPalette'
 import { isTenantRole } from '@/lib/auth/permissions'
 import type { Role } from '@/types/domain'
@@ -36,8 +37,12 @@ export function TopNav({
   const glyph = initials(userName)
 
   return (
-    <header className="flex h-14 shrink-0 items-center justify-between gap-4 border-b bg-background px-6">
-      <WorkspaceSwitcher role={role} workspaceName={workspaceName} />
+    <header className="flex h-14 shrink-0 items-center justify-between gap-2 border-b bg-background px-4 sm:gap-4 sm:px-6">
+      <div className="flex min-w-0 items-center gap-2">
+        {/* Hamburger — mobile only; opens the nav drawer. */}
+        <MobileNav role={role} />
+        <WorkspaceSwitcher role={role} workspaceName={workspaceName} />
+      </div>
 
       {/* Command palette (⌘K) — search + navigation; operator surface only. */}
       {!isTenantRole(role) && <CommandPalette role={role} />}

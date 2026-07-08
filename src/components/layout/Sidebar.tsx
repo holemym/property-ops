@@ -95,7 +95,10 @@ function matchesPath(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`)
 }
 
-export function Sidebar({ role }: { role: Role }) {
+// The brand + grouped nav, reused by the desktop rail (Sidebar) and the mobile drawer
+// (MobileNav). `onNavigate` (optional) fires when a link is clicked — the drawer passes a
+// close handler so tapping a destination dismisses it.
+export function SidebarContent({ role, onNavigate }: { role: Role; onNavigate?: () => void }) {
   const pathname = usePathname()
 
   // Filter each group's items by permission, then drop groups left empty.
@@ -114,7 +117,7 @@ export function Sidebar({ role }: { role: Role }) {
     .sort((a, b) => b.href.length - a.href.length)[0]?.href
 
   return (
-    <nav className="flex h-full w-56 flex-col border-r bg-sidebar">
+    <>
       {/* Workspace mark — a graphite emblem block anchoring the shell. */}
       <div className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
         <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-foreground text-background">
@@ -137,6 +140,7 @@ export function Sidebar({ role }: { role: Role }) {
               <Link
                 key={item.href}
                 href={item.href}
+                onClick={onNavigate}
                 aria-current={item.href === activeHref ? 'page' : undefined}
                 className={cn(
                   'group flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-[--duration-fast] ease-[--ease-out]',
@@ -151,6 +155,15 @@ export function Sidebar({ role }: { role: Role }) {
           </div>
         ))}
       </div>
+    </>
+  )
+}
+
+// The desktop rail — hidden below md, where the MobileNav drawer takes over.
+export function Sidebar({ role }: { role: Role }) {
+  return (
+    <nav className="hidden h-full w-56 shrink-0 flex-col border-r bg-sidebar md:flex">
+      <SidebarContent role={role} />
     </nav>
   )
 }

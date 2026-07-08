@@ -275,10 +275,11 @@ export function CommandPalette({ role }: { role: Role }) {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="group flex h-8 w-56 items-center gap-2 rounded-lg border border-border bg-background px-2.5 text-sm text-muted-foreground transition-colors hover:border-foreground/20 hover:bg-accent"
+        aria-label="Search or jump to"
+        className="group flex size-9 items-center justify-center rounded-lg border border-border bg-background text-sm text-muted-foreground transition-colors hover:border-foreground/20 hover:bg-accent sm:h-8 sm:w-56 sm:justify-start sm:gap-2 sm:px-2.5"
       >
         <Search className="size-4 shrink-0" />
-        <span className="flex-1 text-left">Search or jump to…</span>
+        <span className="hidden flex-1 text-left sm:inline">Search or jump to…</span>
         <kbd className="hidden rounded border bg-muted px-1.5 font-sans text-[0.6875rem] text-muted-foreground sm:inline">
           ⌘K
         </kbd>

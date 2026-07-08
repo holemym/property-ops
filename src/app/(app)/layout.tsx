@@ -16,9 +16,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <div className="flex h-screen">
       <Sidebar role={user.role} />
-      <div className="flex flex-1 flex-col">
+      {/* min-w-0 lets the content column shrink below the sidebar width so wide tables
+          scroll inside it rather than pushing the layout on small screens. */}
+      <div className="flex min-w-0 flex-1 flex-col">
         <TopNav userName={user.fullName || user.email} role={user.role} workspaceName={workspace?.name ?? ''} />
-        <main className="flex-1 overflow-y-auto p-6">{children}</main>
+        <main className="flex-1 overflow-y-auto p-4 sm:p-6">{children}</main>
       </div>
       <Toaster />
     </div>
