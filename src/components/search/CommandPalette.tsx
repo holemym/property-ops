@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Search,
@@ -21,6 +21,7 @@ import {
   Users,
   CirclePlus,
   CornerDownLeft,
+  Clock,
   Loader2,
   type LucideIcon,
 } from 'lucide-react'
@@ -28,6 +29,7 @@ import { cn } from '@/lib/utils'
 import { can, type Permission } from '@/lib/auth/permissions'
 import type { Role } from '@/types/domain'
 import type { SearchResult, SearchResultType } from '@/lib/data/search'
+import { readRecents, pushRecent, type RecentItem } from '@/lib/recent-searches'
 
 // --- static commands (navigation + create) -----------------------------------
 type Command = {
@@ -84,6 +86,53 @@ type PaletteItem = {
   href: string
 }
 
+// Recents don't persist an icon; map one back from the group they were opened under, falling
+// back to a generic Clock for anything unrecognised (e.g. a renamed group).
+const ICON_BY_GROUP: Record<string, LucideIcon> = {
+  ...Object.fromEntries(COMMANDS.map((c) => [c.group, c.icon])),
+  ...Object.fromEntries(TYPE_ORDER.map((t) => [TYPE_META[t].label, TYPE_META[t].icon])),
+}
+
+function iconForGroup(group: string): LucideIcon {
+  return ICON_BY_GROUP[group] ?? Clock
+}
+
+// When re-opening an item already in the recent list, keep its stored group (not "Recent") so
+// the icon/context stays correct after it moves back to the top.
+function recentGroupFor(href: string, recents: RecentItem[]): string {
+  return recents.find((r) => r.href === href)?.group ?? 'Recent'
+}
+
+// Wrap the first case-insensitive match of `query` in the label with a subtle emphasis span
+// (semibold, no colour shift — keeps the graphite aesthetic). Pure; returns a ReactNode.
+function highlight(label: string, query: string): ReactNode {
+  const q = query.trim()
+  if (!q) return label
+  const idx = label.toLowerCase().indexOf(q.toLowerCase())
+  if (idx === -1) return label
+  const before = label.slice(0, idx)
+  const match = label.slice(idx, idx + q.length)
+  const after = label.slice(idx + q.length)
+  return (
+    <>
+      {before}
+      <span className="bg-transparent font-semibold text-foreground">{match}</span>
+      {after}
+    </>
+  )
+}
+
+// Rank commands so prefix matches beat mid-string matches, then alphabetical. Stable + simple.
+function rankCommands(list: Command[], lower: string): Command[] {
+  if (!lower) return list
+  return [...list].sort((a, b) => {
+    const ap = a.label.toLowerCase().startsWith(lower) ? 0 : 1
+    const bp = b.label.toLowerCase().startsWith(lower) ? 0 : 1
+    if (ap !== bp) return ap - bp
+    return a.label.localeCompare(b.label)
+  })
+}
+
 export function CommandPalette({ role }: { role: Role }) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
@@ -91,6 +140,8 @@ export function CommandPalette({ role }: { role: Role }) {
   const [results, setResults] = useState<SearchResult[]>([])
   const [loading, setLoading] = useState(false)
   const [activeIndex, setActiveIndex] = useState(0)
+  // Lazy init reads localStorage once on mount (client only) — safe: no setState in an effect.
+  const [recents, setRecents] = useState<RecentItem[]>(() => readRecents())
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const abortRef = useRef<AbortController | null>(null)
@@ -98,9 +149,25 @@ export function CommandPalette({ role }: { role: Role }) {
   const trimmed = query.trim()
   const lower = trimmed.toLowerCase()
 
-  // Commands the role may use, filtered by the typed query (label substring).
-  const commandItems: PaletteItem[] = COMMANDS.filter(
-    (c) => (!c.permission || can(role, c.permission)) && (!lower || c.label.toLowerCase().includes(lower)),
+  // Recents show only on an empty query, at the very top of the flat list.
+  const recentItems: PaletteItem[] =
+    trimmed === ''
+      ? recents.map((r) => ({
+          key: `recent-${r.href}`,
+          group: 'Recent',
+          label: r.label,
+          icon: iconForGroup(r.group),
+          href: r.href,
+        }))
+      : []
+
+  // Commands the role may use, filtered by the typed query (label substring), then ranked so
+  // prefix matches lead (see rankCommands).
+  const commandItems: PaletteItem[] = rankCommands(
+    COMMANDS.filter(
+      (c) => (!c.permission || can(role, c.permission)) && (!lower || c.label.toLowerCase().includes(lower)),
+    ),
+    lower,
   ).map((c) => ({ key: c.id, group: c.group, label: c.label, icon: c.icon, href: c.href }))
 
   const resultItems: PaletteItem[] = [...results]
@@ -114,7 +181,7 @@ export function CommandPalette({ role }: { role: Role }) {
       href: r.href,
     }))
 
-  const items = [...commandItems, ...resultItems]
+  const items = [...recentItems, ...commandItems, ...resultItems]
 
   function close() {
     setOpen(false)
@@ -173,6 +240,11 @@ export function CommandPalette({ role }: { role: Role }) {
   }
 
   function go(item: PaletteItem) {
+    // Record to the recent list (event handler — no setState-in-effect). Store just enough to
+    // re-render a row; the icon is mapped back from the group. Recents keep their original
+    // group so the icon stays meaningful when they resurface.
+    const group = item.group === 'Recent' ? recentGroupFor(item.href, recents) : item.group
+    setRecents(pushRecent({ label: item.label, href: item.href, group }))
     close()
     router.push(item.href)
   }
@@ -247,7 +319,13 @@ export function CommandPalette({ role }: { role: Role }) {
                   No matches for “{trimmed}”.
                 </p>
               ) : (
-                <PaletteList items={items} activeIndex={activeIndex} onPick={go} onHover={setActiveIndex} />
+                <PaletteList
+                  items={items}
+                  query={trimmed}
+                  activeIndex={activeIndex}
+                  onPick={go}
+                  onHover={setActiveIndex}
+                />
               )}
             </div>
 
@@ -267,11 +345,13 @@ export function CommandPalette({ role }: { role: Role }) {
 
 function PaletteList({
   items,
+  query,
   activeIndex,
   onPick,
   onHover,
 }: {
   items: PaletteItem[]
+  query: string
   activeIndex: number
   onPick: (item: PaletteItem) => void
   onHover: (i: number) => void
@@ -300,7 +380,9 @@ function PaletteList({
               )}
             >
               <Icon className="size-4 shrink-0 text-muted-foreground" />
-              <span className="min-w-0 flex-1 truncate">{item.label}</span>
+              <span className="min-w-0 flex-1 truncate">
+                {item.group === 'Recent' ? item.label : highlight(item.label, query)}
+              </span>
               {item.subtitle && (
                 <span className="max-w-[40%] shrink-0 truncate text-xs capitalize text-muted-foreground">
                   {item.subtitle}
