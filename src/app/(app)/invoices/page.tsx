@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { ReceiptText } from 'lucide-react'
+import { ReceiptText, Download } from 'lucide-react'
 import { requirePermission } from '@/lib/auth/session'
 import { can } from '@/lib/auth/permissions'
 import { createClient } from '@/lib/supabase/server'
@@ -79,7 +79,28 @@ export default async function InvoicesPage({
   const totalFor = (id: string) => totalStringById.get(id) ?? money.format(0)
 
   const isFiltered = Boolean(status || partyType || direction)
+
+  // Carry the CURRENT filters onto the export link so the CSV matches what's on screen.
+  const exportParams = new URLSearchParams({
+    ...(status ? { status } : {}),
+    ...(partyType ? { partyType } : {}),
+    ...(direction ? { direction } : {}),
+  }).toString()
+  const exportHref = exportParams ? `/invoices/export?${exportParams}` : '/invoices/export'
+
+  const exportButton = (
+    <Button variant="outline" render={<Link href={exportHref} />}>
+      <Download className="size-4" />
+      Export CSV
+    </Button>
+  )
   const newButton = canWrite ? <Button render={<Link href="/invoices/new" />}>New invoice</Button> : null
+  const headerActions = (
+    <div className="flex items-center gap-2">
+      {exportButton}
+      {newButton}
+    </div>
+  )
 
   return (
     <div className="flex flex-col gap-6">
@@ -87,7 +108,7 @@ export default async function InvoicesPage({
       <PageHeader
         title="Invoices"
         subtitle="Bills you send and bills you receive, across the portfolio."
-        actions={newButton ?? undefined}
+        actions={headerActions}
       />
 
       <InvoiceFilters />

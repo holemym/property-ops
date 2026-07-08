@@ -1,12 +1,13 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, Download } from 'lucide-react'
 import { requirePermission } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { listInvoices, listLineItemsForWorkspace } from '@/lib/data/invoices'
 import { invoiceTotals } from '@/lib/invoices/compute'
 import { summarizeOwners, type OwnerInvoiceRow } from '@/lib/invoices/owners'
 import { StatusBadge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import {
   Table,
@@ -88,7 +89,23 @@ export default async function OwnerStatementPage({
         Owners
       </Link>
 
-      <PageHeader title={name} subtitle="Owner statement" actions={<PrintStatementButton />} />
+      <PageHeader
+        title={name}
+        subtitle="Owner statement"
+        actions={
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              render={<Link href={`/owners/${encodeURIComponent(name)}/export`} />}
+            >
+              <Download className="size-4" />
+              Export CSV
+            </Button>
+            <PrintStatementButton />
+          </div>
+        }
+      />
 
       {/* Summary */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
