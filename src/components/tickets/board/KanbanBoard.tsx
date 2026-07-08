@@ -81,29 +81,19 @@ export function KanbanBoard({
   const draggedTicket = dragId ? tickets.find((t) => t.id === dragId) ?? null : null
   const legalTargets = draggedTicket ? nextStatuses(statusOf(draggedTicket)) : []
 
-  function handleDrop(target: TicketStatus) {
-    setOverColumn(null)
-    const id = dragId
-    setDragId(null)
-    if (!id) return
-    const ticket = tickets.find((t) => t.id === id)
-    if (!ticket) return
-    const from = statusOf(ticket)
+  // The one move path, shared by drag-and-drop (mouse) and the per-card "Move to…" select
+  // (touch + keyboard). Validates against the state machine, flips optimistically, then
+  // reconciles with the server and snaps back on rejection.
+  function moveTicket(id: string, from: TicketStatus, target: TicketStatus, title: string) {
     if (from === target) return
-
-    // The state machine is the authority. A drop onto a column not reachable from the
-    // card's current status is rejected outright — no optimistic flip, no server call.
     if (!nextStatuses(from).includes(target)) {
-      toast.error(`Can't move "${ticket.title}" from ${statusLabel(from)} to ${statusLabel(target)}.`)
+      toast.error(`Can't move "${title}" from ${statusLabel(from)} to ${statusLabel(target)}.`)
       return
     }
-
-    // Optimistic: move the card now, then confirm with the server.
     setOverrides((prev) => ({ ...prev, [id]: target }))
     startTransition(async () => {
       const result = await moveTicketStatusAction(id, target)
       if (!result.ok) {
-        // Snap back and surface the reason.
         setOverrides((prev) => {
           const next = { ...prev }
           delete next[id]
@@ -112,10 +102,20 @@ export function KanbanBoard({
         toast.error(result.error)
         return
       }
-      // Refresh so the server-rendered board (and revalidated list/detail) is the source of
-      // truth; once fresh props arrive the override for this id becomes a no-op.
+      // Refresh so the server-rendered board is the source of truth; once fresh props
+      // arrive the override for this id becomes a no-op.
       router.refresh()
     })
+  }
+
+  function handleDrop(target: TicketStatus) {
+    setOverColumn(null)
+    const id = dragId
+    setDragId(null)
+    if (!id) return
+    const ticket = tickets.find((t) => t.id === id)
+    if (!ticket) return
+    moveTicket(id, statusOf(ticket), target, ticket.title)
   }
 
   return (
@@ -182,6 +182,8 @@ export function KanbanBoard({
                       canWrite={canWrite}
                       isDragging={dragId === t.id}
                       isPending={isPending && overrides[t.id] === status}
+                      targets={nextStatuses(status)}
+                      onMove={(target) => moveTicket(t.id, status, target, t.title)}
                       onDragStart={() => setDragId(t.id)}
                       onDragEnd={() => {
                         setDragId(null)
@@ -213,6 +215,8 @@ function BoardCard({
   canWrite,
   isDragging,
   isPending,
+  targets,
+  onMove,
   onDragStart,
   onDragEnd,
 }: {
@@ -223,6 +227,8 @@ function BoardCard({
   canWrite: boolean
   isDragging: boolean
   isPending: boolean
+  targets: TicketStatus[]
+  onMove: (target: TicketStatus) => void
   onDragStart: () => void
   onDragEnd: () => void
 }) {
@@ -269,6 +275,27 @@ function BoardCard({
 
       {operatorName && (
         <p className="truncate text-xs text-muted-foreground">Assigned to {operatorName}</p>
+      )}
+
+      {/* Touch/keyboard move affordance — the drag handle above is mouse-only (HTML5 DnD
+          doesn't fire on touch), so this native select gives every input a way to move a
+          card. `value=""` keeps it a stateless "picker" that resets after each choice. */}
+      {canWrite && targets.length > 0 && (
+        <select
+          aria-label={`Move ${ticket.title} to another status`}
+          value=""
+          onChange={(e) => {
+            if (e.target.value) onMove(e.target.value as TicketStatus)
+          }}
+          className="relative z-10 h-7 rounded-md border border-border bg-background px-1.5 text-xs text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <option value="">Move to…</option>
+          {targets.map((s) => (
+            <option key={s} value={s}>
+              {statusLabel(s)}
+            </option>
+          ))}
+        </select>
       )}
     </div>
   )
