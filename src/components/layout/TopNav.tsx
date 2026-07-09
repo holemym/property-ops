@@ -49,6 +49,7 @@ export function TopNav({
 
       <DropdownMenu>
         <DropdownMenuTrigger
+          aria-label="Account menu"
           className={cn(
             'group flex items-center gap-2 rounded-md px-1.5 py-1 text-sm outline-none',
             'transition-colors duration-[--duration-fast] ease-[--ease-out]',

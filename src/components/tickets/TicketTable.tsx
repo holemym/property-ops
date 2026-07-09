@@ -142,7 +142,7 @@ export function TicketTable({
               <TableCell className="px-4 py-3 font-medium">
                 <Link
                   href={`/tickets/${t.id}`}
-                  className="after:absolute after:inset-0 group-hover:underline"
+                  className="after:absolute after:inset-0 group-hover:underline focus-visible:outline-none focus-visible:after:rounded-sm focus-visible:after:ring-2 focus-visible:after:ring-inset focus-visible:after:ring-ring"
                 >
                   {t.title}
                 </Link>

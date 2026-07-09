@@ -261,7 +261,7 @@ function BoardCard({
         )}
         <Link
           href={`/tickets/${ticket.id}`}
-          className="font-medium leading-snug after:absolute after:inset-0 group-hover:underline"
+          className="font-medium leading-snug after:absolute after:inset-0 group-hover:underline focus-visible:outline-none focus-visible:after:rounded-sm focus-visible:after:ring-2 focus-visible:after:ring-inset focus-visible:after:ring-ring"
         >
           {ticket.title}
         </Link>
