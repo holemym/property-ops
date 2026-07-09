@@ -41,7 +41,7 @@ export function MobileNav({ role }: { role: Role }) {
         type="button"
         onClick={() => setOpen(true)}
         aria-label="Open navigation"
-        className="flex size-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:hidden"
+        className="flex size-10 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:hidden"
       >
         <Menu className="size-5" />
       </button>

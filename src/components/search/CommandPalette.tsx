@@ -291,7 +291,7 @@ export function CommandPalette({ role }: { role: Role }) {
         type="button"
         onClick={() => setOpen(true)}
         aria-label="Search or jump to"
-        className="group flex size-9 items-center justify-center rounded-lg border border-border bg-background text-sm text-muted-foreground transition-colors hover:border-foreground/20 hover:bg-accent sm:h-8 sm:w-56 sm:justify-start sm:gap-2 sm:px-2.5"
+        className="group flex size-10 items-center justify-center rounded-lg border border-border bg-background text-sm text-muted-foreground transition-colors hover:border-foreground/20 hover:bg-accent sm:h-8 sm:w-56 sm:justify-start sm:gap-2 sm:px-2.5"
       >
         <Search className="size-4 shrink-0" />
         <span className="hidden flex-1 text-left sm:inline">Search or jump to…</span>
