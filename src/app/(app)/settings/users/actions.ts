@@ -28,9 +28,12 @@ export async function inviteUser(formData: FormData) {
 
   const { email, role } = parsed.data
 
+  // next=/auth/set-password: invited users have no password yet — the callback route
+  // already supports ?next= (defaults to /dashboard for every other flow) and lands
+  // them straight on the set-password form instead of a passwordless dashboard visit.
   const admin_client = createServiceClient()
   const { data, error } = await admin_client.auth.admin.inviteUserByEmail(email, {
-    redirectTo: AUTH_CALLBACK_URL,
+    redirectTo: `${AUTH_CALLBACK_URL}?next=${encodeURIComponent('/auth/set-password')}`,
   })
 
   if (error) throw error

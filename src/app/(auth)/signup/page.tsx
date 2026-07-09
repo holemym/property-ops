@@ -5,6 +5,7 @@ import { AuthCard } from '@/components/auth/AuthCard'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { isInviteOnly } from '@/lib/auth/signup-mode'
 import { signUpWithPassword } from '../actions'
 
 export default async function SignupPage({
@@ -13,6 +14,20 @@ export default async function SignupPage({
   searchParams: Promise<{ error?: string; confirmEmailSent?: string }>
 }) {
   const params = await searchParams
+
+  if (isInviteOnly()) {
+    return (
+      <AuthCard title="Accounts are by invitation" error={params.error}>
+        <p className="text-sm text-muted-foreground">
+          Ask your workspace administrator to invite you from Settings → Users. Already
+          have an invite?
+        </p>
+        <Button render={<Link href="/login" />} size="lg" className="mt-4 w-full">
+          Go to sign in
+        </Button>
+      </AuthCard>
+    )
+  }
 
   if (params.confirmEmailSent) {
     return (
