@@ -1,5 +1,8 @@
 # Property Ops — State Assessment & Roadmap (2026-07-08)
 
+> **SUPERSEDED 2026-07-09** by `2026-07-09-property-ops-roadmap-v2.md`.
+> All three tracks below (A develop, B polish, C mobile) are complete. Kept for history.
+
 ## 1. Where we are
 
 A multi-tenant property-management SaaS, **live on Vercel** (property-ops-sandy.vercel.app),
