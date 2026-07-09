@@ -382,7 +382,7 @@ function PaletteList({
         return (
           <li key={item.key}>
             {showHeader && (
-              <p className="px-2.5 pb-1 pt-2 text-[0.6875rem] font-semibold uppercase tracking-wide text-muted-foreground/70">
+              <p className="px-2.5 pb-1 pt-2 text-[0.6875rem] font-semibold uppercase tracking-wide text-muted-foreground">
                 {item.group}
               </p>
             )}

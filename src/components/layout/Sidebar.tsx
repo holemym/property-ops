@@ -132,7 +132,7 @@ export function SidebarContent({ role, onNavigate }: { role: Role; onNavigate?: 
         {groups.map((group, i) => (
           <div key={group.label || `group-${i}`} className="flex flex-col gap-0.5">
             {group.label && (
-              <p className="px-3 pb-1 text-[0.6875rem] font-semibold uppercase tracking-wide text-muted-foreground/70">
+              <p className="px-3 pb-1 text-[0.6875rem] font-semibold uppercase tracking-wide text-muted-foreground">
                 {group.label}
               </p>
             )}

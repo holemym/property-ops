@@ -41,7 +41,7 @@ export function IncomeTable({
                 </Badge>
               </td>
               <td className="py-2 pr-2 text-muted-foreground">
-                {labelFor(r) ?? <span className="text-muted-foreground/60">Portfolio</span>}
+                {labelFor(r) ?? <span className="text-muted-foreground">Portfolio</span>}
               </td>
               <td className="py-2 text-right tabular-nums font-medium text-foreground">
                 {formatMoney(r.amount)}
@@ -87,9 +87,9 @@ export function ExpenseTable({
                   </Badge>
                 </td>
                 <td className="py-2 pr-2 text-muted-foreground">
-                  <span>{labelFor(r) ?? <span className="text-muted-foreground/60">Portfolio</span>}</span>
+                  <span>{labelFor(r) ?? <span className="text-muted-foreground">Portfolio</span>}</span>
                   {ticket && (
-                    <span className="block truncate text-xs text-muted-foreground/70">
+                    <span className="block truncate text-xs text-muted-foreground">
                       Ticket · {ticket}
                     </span>
                   )}

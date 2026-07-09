@@ -63,7 +63,7 @@ export function MonthGrid({
                 <span
                   className={cn(
                     'inline-flex h-6 min-w-6 items-center justify-center rounded-full px-1 text-xs tabular-nums',
-                    cell.inMonth ? 'text-foreground' : 'text-muted-foreground/60',
+                    cell.inMonth ? 'text-foreground' : 'text-muted-foreground',
                     isToday && 'bg-primary font-semibold text-primary-foreground',
                   )}
                 >
