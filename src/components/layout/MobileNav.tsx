@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Menu } from 'lucide-react'
 import { SidebarContent } from './Sidebar'
 import type { Role } from '@/types/domain'
@@ -10,6 +10,7 @@ import type { Role } from '@/types/domain'
 // backdrop or Escape. Hidden entirely at md+, where the static rail is visible.
 export function MobileNav({ role }: { role: Role }) {
   const [open, setOpen] = useState(false)
+  const triggerRef = useRef<HTMLButtonElement | null>(null)
 
   // Escape closes (listener only — no setState in the effect body).
   useEffect(() => {
@@ -20,9 +21,23 @@ export function MobileNav({ role }: { role: Role }) {
     return () => window.removeEventListener('keydown', onKey)
   }, [])
 
+  // While open: lock background scroll and return focus to the hamburger on close (cleanup runs
+  // when `open` flips false or on unmount). DOM side effects only — no setState in the body.
+  useEffect(() => {
+    if (!open) return
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    const trigger = triggerRef.current
+    return () => {
+      document.body.style.overflow = prevOverflow
+      trigger?.focus()
+    }
+  }, [open])
+
   return (
     <>
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => setOpen(true)}
         aria-label="Open navigation"

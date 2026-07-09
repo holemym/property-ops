@@ -145,6 +145,7 @@ export function CommandPalette({ role }: { role: Role }) {
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const abortRef = useRef<AbortController | null>(null)
+  const triggerRef = useRef<HTMLButtonElement | null>(null)
 
   const trimmed = query.trim()
   const lower = trimmed.toLowerCase()
@@ -191,6 +192,19 @@ export function CommandPalette({ role }: { role: Role }) {
     if (debounceRef.current) clearTimeout(debounceRef.current)
     abortRef.current?.abort()
   }
+
+  // While open: lock background scroll and return focus to the trigger on close (cleanup runs
+  // when `open` flips false or on unmount). DOM side effects only — no setState in the body.
+  useEffect(() => {
+    if (!open) return
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    const trigger = triggerRef.current
+    return () => {
+      document.body.style.overflow = prevOverflow
+      trigger?.focus()
+    }
+  }, [open])
 
   // Global ⌘K / Ctrl+K to open (listener only toggles state — no setState in effect body).
   useEffect(() => {
@@ -273,6 +287,7 @@ export function CommandPalette({ role }: { role: Role }) {
   return (
     <>
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => setOpen(true)}
         aria-label="Search or jump to"
