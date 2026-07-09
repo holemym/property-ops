@@ -1,6 +1,8 @@
+import { headers } from 'next/headers'
 import { createServiceClient } from '@/lib/supabase/service'
 import { getValidVendorJob } from '@/lib/data/vendor-tokens'
 import { ATTACHMENTS_BUCKET } from '@/lib/data/attachments'
+import { checkRateLimit, clientIp } from '@/lib/rate-limit'
 import { Button } from '@/components/ui/button'
 import { FormError } from '@/components/common/FormError'
 import {
@@ -112,6 +114,13 @@ export default async function VendorJobPage({
 }) {
   const { token } = await params
   const { error } = await searchParams
+
+  // Throttle BEFORE the token lookup — this is the token-guessing surface (bearer
+  // capability, no session), so limit by IP ahead of the DB hit. A throttled request
+  // gets the SAME generic invalid page as a bad token — no oracle either way.
+  const ip = clientIp(await headers())
+  const allowed = await checkRateLimit(`job:${ip}`, 30, 5 * 60)
+  if (!allowed) return <InvalidLinkPage />
 
   const service = createServiceClient()
   const job = await getValidVendorJob(service, token)

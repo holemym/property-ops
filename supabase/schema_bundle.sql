@@ -1274,5 +1274,56 @@ create index if not exists tickets_workspace_status_idx on public.tickets (works
 alter table public.invoices add column if not exists recipient_email text;
 
 -- =============================================================================
--- DONE. Verify: select count(*) from pg_tables where schemaname='public';  -- expect 16
+-- RATE LIMITING (0022) — Postgres-backed fixed-window limiter for login/signup/
+-- search/job-token. RLS enabled with ZERO policies (default-deny for anon +
+-- authenticated, same lock as vendor_job_tokens/0014) — only service_role, via the
+-- SECURITY DEFINER function below, ever touches this table. DO NOT add policies.
+-- =============================================================================
+create table if not exists public.rate_limit_buckets (
+  key text primary key,
+  window_start timestamptz not null default now(),
+  count integer not null default 0
+);
+alter table public.rate_limit_buckets enable row level security;
+
+create or replace function public.check_rate_limit(
+  p_key text,
+  p_max integer,
+  p_window_seconds integer
+) returns boolean
+language plpgsql
+volatile
+security definer
+set search_path = public
+as $$
+declare
+  v_window_start timestamptz;
+  v_count integer;
+begin
+  delete from public.rate_limit_buckets where window_start < now() - interval '1 day';
+
+  insert into public.rate_limit_buckets (key, window_start, count)
+  values (p_key, now(), 1)
+  on conflict (key) do update
+    set window_start = case
+          when public.rate_limit_buckets.window_start < now() - make_interval(secs => p_window_seconds)
+          then now()
+          else public.rate_limit_buckets.window_start
+        end,
+        count = case
+          when public.rate_limit_buckets.window_start < now() - make_interval(secs => p_window_seconds)
+          then 1
+          else public.rate_limit_buckets.count + 1
+        end
+  returning window_start, count into v_window_start, v_count;
+
+  return v_count <= p_max;
+end;
+$$;
+
+revoke execute on function public.check_rate_limit(text, integer, integer) from public;
+grant execute on function public.check_rate_limit(text, integer, integer) to service_role;
+
+-- =============================================================================
+-- DONE. Verify: select count(*) from pg_tables where schemaname='public';  -- expect 17
 -- =============================================================================

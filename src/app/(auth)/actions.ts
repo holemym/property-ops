@@ -1,5 +1,6 @@
 'use server'
 
+import { headers } from 'next/headers'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { redirectWithError } from '@/lib/redirect-with-error'
@@ -7,8 +8,15 @@ import { AUTH_CALLBACK_URL } from '@/lib/urls'
 import { isInviteOnly } from '@/lib/auth/signup-mode'
 import { signupSchema, passwordSchema } from '@/lib/validation/auth'
 import { requireUser } from '@/lib/auth/session'
+import { checkRateLimit, clientIp } from '@/lib/rate-limit'
 
 export async function signInWithPassword(formData: FormData) {
+  const ip = clientIp(await headers())
+  const allowed = await checkRateLimit(`login:${ip}`, 10, 5 * 60)
+  if (!allowed) {
+    redirectWithError('/login', 'Too many attempts. Try again in a few minutes.')
+  }
+
   const email = String(formData.get('email') ?? '')
   const password = String(formData.get('password') ?? '')
 
@@ -56,6 +64,12 @@ export async function signOut() {
 }
 
 export async function signUpWithPassword(formData: FormData) {
+  const ip = clientIp(await headers())
+  const allowed = await checkRateLimit(`signup:${ip}`, 5, 60 * 60)
+  if (!allowed) {
+    redirectWithError('/signup', 'Too many attempts. Try again in a few minutes.')
+  }
+
   // Invite-only deployments reject self-signup here — the server action is the
   // enforcement boundary; the signup page merely stops offering the form.
   if (isInviteOnly()) {
