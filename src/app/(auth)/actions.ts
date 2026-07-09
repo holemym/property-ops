@@ -9,6 +9,7 @@ import { isInviteOnly } from '@/lib/auth/signup-mode'
 import { signupSchema, passwordSchema } from '@/lib/validation/auth'
 import { requireUser } from '@/lib/auth/session'
 import { checkRateLimit, clientIp } from '@/lib/rate-limit'
+import { friendlyAuthError } from '@/lib/auth/error-messages'
 
 export async function signInWithPassword(formData: FormData) {
   const ip = clientIp(await headers())
@@ -24,7 +25,7 @@ export async function signInWithPassword(formData: FormData) {
   const { error } = await supabase.auth.signInWithPassword({ email, password })
 
   if (error) {
-    redirectWithError('/login', error.message)
+    redirectWithError('/login', friendlyAuthError(error))
   }
   redirect('/dashboard')
 }
@@ -39,7 +40,7 @@ export async function signInWithMagicLink(formData: FormData) {
   })
 
   if (error) {
-    redirectWithError('/login', error.message)
+    redirectWithError('/login', friendlyAuthError(error))
   }
   redirect('/login?magicLinkSent=1')
 }
@@ -52,7 +53,7 @@ export async function signInWithGoogle() {
   })
 
   if (error || !data.url) {
-    redirectWithError('/login', error?.message ?? 'oauth_failed')
+    redirectWithError('/login', error ? friendlyAuthError(error) : 'Something went wrong. Please try again.')
   }
   redirect(data.url)
 }
@@ -100,7 +101,7 @@ export async function signUpWithPassword(formData: FormData) {
   })
 
   if (error) {
-    redirectWithError('/signup', error.message)
+    redirectWithError('/signup', friendlyAuthError(error))
   }
   redirect('/login?confirmEmailSent=1')
 }
@@ -120,7 +121,7 @@ export async function setPassword(formData: FormData) {
   const supabase = await createClient()
   const { error } = await supabase.auth.updateUser({ password: parsed.data })
   if (error) {
-    redirectWithError('/auth/set-password', error.message)
+    redirectWithError('/auth/set-password', friendlyAuthError(error))
   }
   redirect('/dashboard')
 }
