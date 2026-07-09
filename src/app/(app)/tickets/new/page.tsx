@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { Building2 } from 'lucide-react'
 import { requirePermission } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { listProperties } from '@/lib/data/properties'
@@ -10,6 +11,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { FormError } from '@/components/common/FormError'
+import { EmptyState } from '@/components/common/EmptyState'
 import { createTicketAction } from '../actions'
 
 const CATEGORIES = ticketCategoryEnum.options
@@ -37,12 +39,12 @@ export default async function NewTicketPage({
     return (
       <div className="flex flex-col gap-6">
         <PageHeader title="New ticket" />
-        <div className="flex flex-col items-start gap-3 rounded-lg border border-dashed p-6">
-          <p className="text-sm text-muted-foreground">
-            You need at least one active property before you can create a ticket.
-          </p>
-          <Button render={<Link href="/properties/new" />}>Add a property</Button>
-        </div>
+        <EmptyState
+          icon={<Building2 />}
+          title="Add a property first"
+          body="You need at least one active property before you can create a ticket."
+          action={<Button render={<Link href="/properties/new" />}>Add a property</Button>}
+        />
       </div>
     )
   }

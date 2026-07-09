@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { Building2 } from 'lucide-react'
 import { requirePermission } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { listProperties } from '@/lib/data/properties'
@@ -6,6 +7,7 @@ import { UnitForm } from '@/components/units/UnitForm'
 import { Button } from '@/components/ui/button'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { FormError } from '@/components/common/FormError'
+import { EmptyState } from '@/components/common/EmptyState'
 import { createUnitAction } from '../actions'
 
 export default async function NewUnitPage({
@@ -27,12 +29,12 @@ export default async function NewUnitPage({
       <FormError message={error} />
 
       {properties.length === 0 ? (
-        <div className="flex flex-col items-start gap-3 rounded-lg border border-dashed p-6">
-          <p className="text-sm text-muted-foreground">
-            You need at least one active property before you can add a unit.
-          </p>
-          <Button render={<Link href="/properties/new" />}>Add a property</Button>
-        </div>
+        <EmptyState
+          icon={<Building2 />}
+          title="Add a property first"
+          body="You need at least one active property before you can add a unit."
+          action={<Button render={<Link href="/properties/new" />}>Add a property</Button>}
+        />
       ) : (
         <UnitForm action={createUnitAction} properties={properties} submitLabel="Create unit" />
       )}
