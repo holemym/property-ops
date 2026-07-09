@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
+import { formatMoney, formatCount } from '@/lib/insights/format'
 
 // Lightweight, dependency-free chart primitives for the Insights dashboard. Everything
 // is inline SVG / CSS tuned to the graphite palette — no charting library, matching the
@@ -10,27 +11,11 @@ import { cn } from '@/lib/utils'
 // StatusBadge tone classes; bars use `bg-foreground` tints so saturated colour stays
 // reserved for status. RankBars rows and the TrendChart are interactive (hover/focus),
 // hence the client boundary — the primitives themselves render no server-only data.
-
-// Round-and-format helpers. Money is EUR, whole-euro (no cents — these are aggregates).
-const money = new Intl.NumberFormat('en-IE', {
-  style: 'currency',
-  currency: 'EUR',
-  maximumFractionDigits: 0,
-})
-
-export function formatMoney(value: number): string {
-  return money.format(Math.round(value))
-}
-
-export function formatDays(value: number | null): string {
-  if (value === null) return '—'
-  const rounded = Math.round(value)
-  return `${rounded.toLocaleString()} ${rounded === 1 ? 'day' : 'days'}`
-}
-
-export function formatCount(value: number): string {
-  return Math.round(value).toLocaleString()
-}
+//
+// formatMoney/formatDays/formatCount live in src/lib/insights/format.ts (NOT here) —
+// this file is 'use client', and insights/page.tsx (a Server Component) must call them
+// directly to build metric strings. A plain function exported from a client module
+// becomes a client reference; Next.js throws if server code invokes it directly.
 
 // ---------------------------------------------------------------------------
 // Horizontal ranking bars — a labelled row per item with a proportional track and a

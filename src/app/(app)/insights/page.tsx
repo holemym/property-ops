@@ -22,14 +22,8 @@ import { PageHeader } from '@/components/layout/PageHeader'
 import { EmptyState } from '@/components/common/EmptyState'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import {
-  RankBars,
-  TrendChart,
-  formatMoney,
-  formatDays,
-  formatCount,
-  type RankBarRow,
-} from '@/components/insights/charts'
+import { RankBars, TrendChart, type RankBarRow } from '@/components/insights/charts'
+import { formatMoney, formatDays, formatCount } from '@/lib/insights/format'
 
 // Turn an UPPER_SNAKE enum into a sentence-case-ish label ("APPLIANCE_REPAIR" →
 // "appliance repair"), matching how categories read elsewhere in the app.
