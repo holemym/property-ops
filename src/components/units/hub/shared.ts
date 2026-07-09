@@ -1,9 +1,11 @@
 import type { DocumentType, TicketStatus } from '@/types/domain'
 
 // Self-contained formatting helpers for the unit hub. Money is EUR, whole-euro (no
-// cents), matching the finance / rent-roll / insights convention. Dates are UTC-parsed
-// from `YYYY-MM-DD` so nothing drifts across timezones (mirrors the timeline builder,
-// which compares the same ISO strings lexically).
+// cents), matching the finance / rent-roll / insights convention. `formatDate` (short
+// calendar date, UTC-pinned so nothing drifts across timezones) comes from the shared
+// formatter and is re-exported to keep every surface consistent.
+import { formatDate } from '@/lib/format-date'
+export { formatDate }
 
 const money = new Intl.NumberFormat('en-IE', {
   style: 'currency',
@@ -13,20 +15,6 @@ const money = new Intl.NumberFormat('en-IE', {
 
 export function formatMoney(value: number): string {
   return money.format(Math.round(value))
-}
-
-const dateFmt = new Intl.DateTimeFormat('en-IE', {
-  day: 'numeric',
-  month: 'short',
-  year: 'numeric',
-  timeZone: 'UTC',
-})
-
-export function formatDate(iso: string | null | undefined): string {
-  if (!iso) return '—'
-  const t = Date.parse(`${iso.slice(0, 10)}T00:00:00Z`)
-  if (Number.isNaN(t)) return iso
-  return dateFmt.format(new Date(t))
 }
 
 // A tenancy span 'start – end' (or 'start – open-ended' when end is null).

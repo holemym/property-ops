@@ -7,6 +7,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
+import { formatDate } from '@/lib/format-date'
 import type { Document } from '@/types/domain'
 import {
   attachedEntityLabel,
@@ -65,10 +66,8 @@ export function DocumentsTable({
                   )}
                 </span>
                 <span className="shrink-0">
-                  {new Date(doc.created_at).toLocaleDateString()} · {formatFileSize(doc.file_size)}
-                  {doc.expires_at
-                    ? ` · exp ${new Date(doc.expires_at).toLocaleDateString()}`
-                    : ''}
+                  {formatDate(doc.created_at)} · {formatFileSize(doc.file_size)}
+                  {doc.expires_at ? ` · exp ${formatDate(doc.expires_at)}` : ''}
                 </span>
               </div>
             </li>
@@ -111,10 +110,10 @@ export function DocumentsTable({
                   )}
                 </TableCell>
                 <TableCell className="px-4 py-3 text-muted-foreground">
-                  {doc.expires_at ? new Date(doc.expires_at).toLocaleDateString() : '—'}
+                  {formatDate(doc.expires_at)}
                 </TableCell>
                 <TableCell className="px-4 py-3 text-muted-foreground">
-                  {new Date(doc.created_at).toLocaleDateString()}
+                  {formatDate(doc.created_at)}
                 </TableCell>
                 <TableCell className="px-4 py-3 text-muted-foreground">
                   {formatFileSize(doc.file_size)}

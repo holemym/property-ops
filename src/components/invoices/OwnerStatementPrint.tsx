@@ -2,6 +2,7 @@
 
 import { Printer } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { formatDateLong } from '@/lib/format-date'
 import type { InvoiceStatus } from '@/types/domain'
 
 // Print-friendly owner statement, mirroring InvoicePrint: a button that fires the browser
@@ -10,9 +11,8 @@ import type { InvoiceStatus } from '@/types/domain'
 
 const eur = new Intl.NumberFormat('en-IE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 2 })
 
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-IE', { day: 'numeric', month: 'long', year: 'numeric' })
-}
+// Long-month calendar date ('9 July 2026') for the printed statement.
+const formatDate = formatDateLong
 
 export type StatementLine = {
   id: string

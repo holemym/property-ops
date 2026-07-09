@@ -1,6 +1,10 @@
 import type { IncomeCategory, ExpenseCategory, IncomeRecord, ExpenseRecord } from '@/types/domain'
 import type { MonthPoint } from './MonthBars'
 
+// A short calendar date ('9 Jul 2026') — re-exported from the shared formatter so the finance
+// surface stays consistent with the rest of the app.
+export { formatDate } from '@/lib/format-date'
+
 // Shared, dependency-free helpers for the finance surface. Money is EUR, whole-euro
 // (no cents on aggregates or entries — matches the insights charts' formatMoney).
 const money = new Intl.NumberFormat('en-IE', {
@@ -18,21 +22,6 @@ export function formatMoney(value: number): string {
 export function formatSignedMoney(value: number): string {
   const rounded = Math.round(value)
   return rounded > 0 ? `+${money.format(rounded)}` : money.format(rounded)
-}
-
-// 'YYYY-MM-DD' → a short human date ('1 Jun 2026'). Falls back to the raw string if
-// unparseable so a bad row still renders something.
-const dateFmt = new Intl.DateTimeFormat('en-IE', {
-  day: 'numeric',
-  month: 'short',
-  year: 'numeric',
-})
-
-export function formatDate(iso: string | null): string {
-  if (!iso) return '—'
-  const t = Date.parse(iso)
-  if (Number.isNaN(t)) return iso
-  return dateFmt.format(new Date(t))
 }
 
 // 'YYYY-MM' → 'Jun 2026' for the month bar-chart axis / net-by-month rows.

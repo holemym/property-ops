@@ -8,6 +8,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Badge, StatusBadge } from '@/components/ui/badge'
+import { formatDate } from '@/lib/format-date'
 import type { Invoice } from '@/types/domain'
 
 // The invoices list table (server component). The page computes each invoice's total in JS
@@ -48,8 +49,8 @@ export function InvoiceTable({
               <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
                 <StatusBadge kind="invoice_status" value={inv.status} />
                 <span>
-                  {new Date(inv.issue_date).toLocaleDateString()}
-                  {inv.due_date ? ` · due ${new Date(inv.due_date).toLocaleDateString()}` : ''}
+                  {formatDate(inv.issue_date)}
+                  {inv.due_date ? ` · due ${formatDate(inv.due_date)}` : ''}
                 </span>
               </div>
             </Link>
@@ -93,10 +94,10 @@ export function InvoiceTable({
                 <StatusBadge kind="invoice_status" value={inv.status} />
               </TableCell>
               <TableCell className="px-4 py-3 text-muted-foreground">
-                {new Date(inv.issue_date).toLocaleDateString()}
+                {formatDate(inv.issue_date)}
               </TableCell>
               <TableCell className="px-4 py-3 text-muted-foreground">
-                {inv.due_date ? new Date(inv.due_date).toLocaleDateString() : '—'}
+                {formatDate(inv.due_date)}
               </TableCell>
               <TableCell className="px-4 py-3 text-right font-medium tabular-nums">
                 {totalFor(inv.id)}

@@ -12,14 +12,7 @@ import { EmptyState } from '@/components/common/EmptyState'
 import { ErrorToast } from '@/components/common/ErrorToast'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  })
-}
+import { formatDate } from '@/lib/format-date'
 
 export default async function PortalPage() {
   const user = await requireWorkspace()

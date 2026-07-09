@@ -26,11 +26,8 @@ import { SubmitButton } from '@/components/tickets/SubmitButton'
 import { InvoiceStatusActions } from '@/components/invoices/InvoiceStatusActions'
 import { InvoicePrint, PrintInvoiceButton } from '@/components/invoices/InvoicePrint'
 import { SentToast } from '@/components/invoices/SentToast'
+import { formatDate } from '@/lib/format-date'
 import { setInvoiceStatusAction, sendInvoiceAction } from '../actions'
-
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-IE', { day: 'numeric', month: 'short', year: 'numeric' })
-}
 
 function SummaryField({ label, children }: { label: string; children: React.ReactNode }) {
   return (

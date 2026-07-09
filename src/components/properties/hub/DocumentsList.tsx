@@ -1,6 +1,7 @@
 import { FileText } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/common/EmptyState'
+import { formatDate } from '@/lib/format-date'
 import type { Document } from '@/types/domain'
 
 // Documents attached to this property. Each row shows the title, a document-type badge,
@@ -17,12 +18,6 @@ function titleCase(value: string): string {
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
     .join(' ')
 }
-
-const dateFmt = new Intl.DateTimeFormat('en-IE', {
-  day: 'numeric',
-  month: 'short',
-  year: 'numeric',
-})
 
 export function DocumentsList({ documents }: { documents: Document[] }) {
   if (documents.length === 0) {
@@ -63,7 +58,7 @@ export function DocumentsList({ documents }: { documents: Document[] }) {
                         : 'text-xs text-muted-foreground'
                     }
                   >
-                    Expires {dateFmt.format(expiresAt)}
+                    Expires {formatDate(d.expires_at)}
                   </span>
                 )}
               </div>

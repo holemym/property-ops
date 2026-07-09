@@ -1,5 +1,6 @@
 import { sendEmail, type SendEmailResult } from './send'
 import { invoiceTotals } from '@/lib/invoices/compute'
+import { formatDateLong } from '@/lib/format-date'
 import type { Invoice, InvoiceLineItem } from '@/types/domain'
 
 // Compose and send an invoice as an email. Uses the shared transport (disconnected-safe:
@@ -10,9 +11,8 @@ function money(currency: string) {
   return new Intl.NumberFormat('en-IE', { style: 'currency', currency: currency || 'EUR' })
 }
 
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-IE', { day: 'numeric', month: 'long', year: 'numeric' })
-}
+// Long-month calendar date ('9 July 2026') for the emailed invoice.
+const formatDate = formatDateLong
 
 function esc(s: string): string {
   return s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] ?? c)

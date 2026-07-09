@@ -24,11 +24,9 @@ import {
   type StatementLine,
 } from '@/components/invoices/OwnerStatementPrint'
 
-const eur = new Intl.NumberFormat('en-IE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 2 })
+import { formatDate } from '@/lib/format-date'
 
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-IE', { day: 'numeric', month: 'short', year: 'numeric' })
-}
+const eur = new Intl.NumberFormat('en-IE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 2 })
 
 // One owner's statement — every invoice billed to them, with billed / paid / outstanding
 // and a printable version. Finance-gated. The owner is keyed by party name (URL-encoded).

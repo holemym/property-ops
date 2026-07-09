@@ -3,6 +3,7 @@
 import { Printer } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { invoiceTotals } from '@/lib/invoices/compute'
+import { formatDateLong } from '@/lib/format-date'
 import type { Invoice, InvoiceLineItem } from '@/types/domain'
 
 // Print-friendly invoice. Two pieces, both client (this file owns the window.print() call):
@@ -17,9 +18,8 @@ import type { Invoice, InvoiceLineItem } from '@/types/domain'
 const money = (currency: string) =>
   new Intl.NumberFormat('en-IE', { style: 'currency', currency: currency || 'EUR' })
 
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-IE', { day: 'numeric', month: 'long', year: 'numeric' })
-}
+// Long-month calendar date ('9 July 2026') for the printed document.
+const formatDate = formatDateLong
 
 export function PrintInvoiceButton() {
   return (
