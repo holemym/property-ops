@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { FormError } from '@/components/common/FormError'
+import { ConfirmSubmit } from '@/components/common/ConfirmSubmit'
 import { inviteUser, setUserActive } from './actions'
 
 export default async function UsersSettingsPage({
@@ -68,12 +69,24 @@ export default async function UsersSettingsPage({
               </span>
               {u.id === admin.id ? (
                 <span className="text-sm text-muted-foreground">(you)</span>
+              ) : u.is_active ? (
+                <ConfirmSubmit
+                  action={setUserActive}
+                  triggerLabel="Deactivate"
+                  triggerSize="sm"
+                  title="Deactivate this user?"
+                  description="They'll immediately lose access to the workspace. You can reactivate them later."
+                  confirmLabel="Deactivate"
+                >
+                  <input type="hidden" name="userId" value={u.id} />
+                  <input type="hidden" name="isActive" value="false" />
+                </ConfirmSubmit>
               ) : (
                 <form action={setUserActive}>
                   <input type="hidden" name="userId" value={u.id} />
-                  <input type="hidden" name="isActive" value={String(!u.is_active)} />
+                  <input type="hidden" name="isActive" value="true" />
                   <Button type="submit" variant="outline" size="sm">
-                    {u.is_active ? 'Deactivate' : 'Activate'}
+                    Activate
                   </Button>
                 </form>
               )}
@@ -102,12 +115,24 @@ export default async function UsersSettingsPage({
               <TableCell>
                 {u.id === admin.id ? (
                   <span className="text-sm text-muted-foreground">(you)</span>
+                ) : u.is_active ? (
+                  <ConfirmSubmit
+                    action={setUserActive}
+                    triggerLabel="Deactivate"
+                    triggerSize="sm"
+                    title="Deactivate this user?"
+                    description="They'll immediately lose access to the workspace. You can reactivate them later."
+                    confirmLabel="Deactivate"
+                  >
+                    <input type="hidden" name="userId" value={u.id} />
+                    <input type="hidden" name="isActive" value="false" />
+                  </ConfirmSubmit>
                 ) : (
                   <form action={setUserActive}>
                     <input type="hidden" name="userId" value={u.id} />
-                    <input type="hidden" name="isActive" value={String(!u.is_active)} />
+                    <input type="hidden" name="isActive" value="true" />
                     <Button type="submit" variant="outline" size="sm">
-                      {u.is_active ? 'Deactivate' : 'Activate'}
+                      Activate
                     </Button>
                   </form>
                 )}

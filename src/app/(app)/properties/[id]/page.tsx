@@ -23,6 +23,7 @@ import { FinanceSnapshot } from '@/components/properties/hub/FinanceSnapshot'
 import { DocumentsList } from '@/components/properties/hub/DocumentsList'
 import { formatEur } from '@/components/properties/hub/formatCurrency'
 import { FormError } from '@/components/common/FormError'
+import { ConfirmSubmit } from '@/components/common/ConfirmSubmit'
 import { updatePropertyAction, archivePropertyAction } from '../actions'
 
 // Open tickets = still needing attention. Mirrors the occupancy page + analytics
@@ -120,11 +121,13 @@ export default async function PropertyDetailPage({
           <div className="flex items-center gap-3">
             <StatusBadge kind="entity_status" value={property.status} />
             {canWrite && property.status === 'ACTIVE' && (
-              <form action={boundArchive}>
-                <Button type="submit" variant="outline">
-                  Archive
-                </Button>
-              </form>
+              <ConfirmSubmit
+                action={boundArchive}
+                triggerLabel="Archive"
+                title="Archive this property?"
+                description="It'll be removed from your active portfolio, and its units and tickets will no longer show in active lists. You can still open it to view its history."
+                confirmLabel="Archive property"
+              />
             )}
           </div>
         }

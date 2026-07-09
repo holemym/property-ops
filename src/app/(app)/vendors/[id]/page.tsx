@@ -7,6 +7,7 @@ import { VendorForm } from '@/components/vendors/VendorForm'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { FormError } from '@/components/common/FormError'
+import { ConfirmSubmit } from '@/components/common/ConfirmSubmit'
 import { updateVendorAction, toggleVendorActiveAction } from '../actions'
 
 export default async function VendorDetailPage({
@@ -36,13 +37,22 @@ export default async function VendorDetailPage({
             {vendor.is_active ? 'Active' : 'Inactive'}
           </Badge>
         </div>
-        {canWrite && (
-          <form action={boundToggle}>
-            <Button type="submit" variant="outline">
-              {vendor.is_active ? 'Mark inactive' : 'Mark active'}
-            </Button>
-          </form>
-        )}
+        {canWrite &&
+          (vendor.is_active ? (
+            <ConfirmSubmit
+              action={boundToggle}
+              triggerLabel="Mark inactive"
+              title="Mark this vendor inactive?"
+              description="They'll stop appearing in vendor pickers for new assignments. Existing tickets keep their history, and you can reactivate them anytime."
+              confirmLabel="Mark inactive"
+            />
+          ) : (
+            <form action={boundToggle}>
+              <Button type="submit" variant="outline">
+                Mark active
+              </Button>
+            </form>
+          ))}
       </div>
 
       <FormError message={error} />
