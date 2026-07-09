@@ -28,8 +28,20 @@ export default async function UsersSettingsPage({
       )}
 
       <form action={inviteUser} className="flex items-end gap-2">
-        <Input name="email" type="email" placeholder="teammate@company.com" required className="w-64" />
-        <select name="role" className="h-9 rounded-md border px-2 text-sm" defaultValue="OPERATOR">
+        <Input
+          name="email"
+          type="email"
+          placeholder="teammate@company.com"
+          required
+          aria-label="Teammate email address"
+          className="w-64"
+        />
+        <select
+          name="role"
+          aria-label="Role"
+          className="h-9 rounded-md border px-2 text-sm"
+          defaultValue="OPERATOR"
+        >
           <option value="OPERATOR">Operator</option>
           <option value="ACCOUNTANT">Accountant</option>
           <option value="OWNER">Owner</option>

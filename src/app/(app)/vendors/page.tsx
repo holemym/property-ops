@@ -40,6 +40,7 @@ export default async function VendorsPage({
       <form className="flex items-center gap-2">
         <select
           name="category"
+          aria-label="Filter by category"
           defaultValue={validCategory ?? ''}
           className="h-8 w-full max-w-sm rounded-lg border border-input bg-transparent px-2.5 text-sm capitalize outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
         >

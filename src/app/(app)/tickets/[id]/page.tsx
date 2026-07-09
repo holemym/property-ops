@@ -292,7 +292,7 @@ export default async function TicketDetailPage({
                   <Label htmlFor="body">Add a comment</Label>
                   <Textarea id="body" name="body" required placeholder="Write a comment" />
                   <div className="flex flex-wrap items-center gap-2">
-                    <select name="visibility" defaultValue="PUBLIC" className={SELECT_CLASS + ' w-auto'}>
+                    <select name="visibility" aria-label="Comment visibility" defaultValue="PUBLIC" className={SELECT_CLASS + ' w-auto'}>
                       <option value="PUBLIC">Public</option>
                       {/* INTERNAL only offered to comment-internal holders (RLS also enforces). */}
                       {canInternal && <option value="INTERNAL">Internal</option>}
@@ -465,7 +465,7 @@ export default async function TicketDetailPage({
                 {/* Vendor secure job link — only once a vendor is assigned. */}
                 {ticket.assigned_vendor_id && (
                   <div className="flex flex-col gap-2 border-t pt-4">
-                    <Label>Vendor job link</Label>
+                    <Label htmlFor="joblink">Vendor job link</Label>
                     {jobLinkUrl ? (
                       <>
                         <Input id="joblink" readOnly value={jobLinkUrl} />

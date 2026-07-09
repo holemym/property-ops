@@ -41,6 +41,7 @@ export default async function PropertiesPage({
           <Input
             name="q"
             placeholder="Search by name"
+            aria-label="Search properties by name"
             defaultValue={q ?? ''}
             className="pl-8"
           />
