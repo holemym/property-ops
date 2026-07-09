@@ -52,7 +52,7 @@ export function MobileNav({ role }: { role: Role }) {
             className="absolute inset-0 bg-black/40 motion-safe:animate-in motion-safe:fade-in-0"
             onClick={() => setOpen(false)}
           />
-          <nav className="absolute inset-y-0 left-0 flex w-64 flex-col bg-sidebar shadow-lg motion-safe:animate-in motion-safe:slide-in-from-left motion-safe:duration-200">
+          <nav className="absolute inset-y-0 left-0 flex w-64 flex-col bg-sidebar shadow-lg motion-safe:animate-in motion-safe:slide-in-from-left motion-safe:duration-[--duration-base]">
             <SidebarContent role={role} onNavigate={() => setOpen(false)} />
           </nav>
         </div>
