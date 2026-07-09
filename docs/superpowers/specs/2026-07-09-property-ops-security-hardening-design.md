@@ -138,16 +138,18 @@ registered, weak password, rate limit) to fixed strings, with a generic
 redirect. Non-auth actions already redirect with their own literal strings — leave them.
 Unit-test the mapping (known input → friendly, unknown → generic).
 
-### S1.5 Upload constraints
+### S1.5 Upload constraints — ALREADY SATISFIED (verified 2026-07-09, no code change)
 
-Shared `src/lib/validation/upload.ts`:
-`validateUpload(file: File): { ok: true } | { ok: false; error: string }` —
-max size **20MB**; allowlist by extension AND declared MIME:
-`pdf png jpg jpeg webp heic docx xlsx txt csv`. Reject empty files.
-Apply in `tickets/attachment-actions.ts`, the documents upload action, and the vendor
-job proof-upload action — before any storage call, error surfaced via the existing
-`?error=` pattern. Unit-test the validator (size edge, bad extension, MIME/extension
-mismatch, empty).
+The audit's premise here was wrong — checked the three upload call sites
+(`grep -rl storage src`) and all already validate server-side, before any bytes reach
+Storage: `src/lib/attachments/upload.ts` (`validateUploadFile`, 10MB cap, MIME allowlist
+jpeg/png/webp/pdf, SVG deliberately excluded as an XSS vector) backs both
+`tickets/attachment-actions.ts` (manager + tenant portal) and the vendor
+job proof-upload action in `job/[token]/actions.ts`; `src/lib/validation/document.ts`
+(`isAllowedDocumentMimeType` + `MAX_DOCUMENT_SIZE_BYTES`, same 10MB cap, allowlist
+plus doc/docx for leases, same SVG exclusion) backs the documents upload action. Both
+reject empty files. No new module needed — a rewrite here would only duplicate
+already-correct, already-reasoned code for zero security benefit.
 
 ### S1.6 Password policy + Supabase dashboard runbook
 
