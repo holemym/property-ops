@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { listProperties } from '@/lib/data/properties'
 import { UnitForm } from '@/components/units/UnitForm'
 import { Button } from '@/components/ui/button'
+import { PageHeader } from '@/components/layout/PageHeader'
 import { createUnitAction } from '../actions'
 
 export default async function NewUnitPage({
@@ -20,7 +21,7 @@ export default async function NewUnitPage({
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-xl font-semibold">New unit</h1>
+      <PageHeader title="New unit" subtitle="Add a unit to one of your properties." />
 
       {error && (
         <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>

@@ -1,5 +1,6 @@
 import { requirePermission } from '@/lib/auth/session'
 import { PropertyForm } from '@/components/properties/PropertyForm'
+import { PageHeader } from '@/components/layout/PageHeader'
 import { createPropertyAction } from '../actions'
 
 export default async function NewPropertyPage({
@@ -12,7 +13,7 @@ export default async function NewPropertyPage({
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-xl font-semibold">New property</h1>
+      <PageHeader title="New property" subtitle="Add a property to your portfolio." />
 
       {error && (
         <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>

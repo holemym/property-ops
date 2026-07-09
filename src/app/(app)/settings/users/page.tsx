@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { PageHeader } from '@/components/layout/PageHeader'
 import { inviteUser, setUserActive } from './actions'
 
 export default async function UsersSettingsPage({
@@ -21,7 +22,10 @@ export default async function UsersSettingsPage({
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-xl font-semibold">Users</h1>
+      <PageHeader
+        title="Users"
+        subtitle="Manage who can access this workspace and their roles."
+      />
 
       {params.error && (
         <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{params.error}</p>

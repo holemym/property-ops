@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
+import { PageHeader } from '@/components/layout/PageHeader'
 import { createTicketAction } from '../actions'
 
 const CATEGORIES = ticketCategoryEnum.options
@@ -34,7 +35,7 @@ export default async function NewTicketPage({
   if (properties.length === 0) {
     return (
       <div className="flex flex-col gap-6">
-        <h1 className="text-xl font-semibold">New ticket</h1>
+        <PageHeader title="New ticket" />
         <div className="flex flex-col items-start gap-3 rounded-lg border border-dashed p-6">
           <p className="text-sm text-muted-foreground">
             You need at least one active property before you can create a ticket.
@@ -54,7 +55,10 @@ export default async function NewTicketPage({
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-xl font-semibold">New ticket</h1>
+      <PageHeader
+        title="New ticket"
+        subtitle="Log a maintenance request against a property or unit."
+      />
 
       {error && (
         <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
