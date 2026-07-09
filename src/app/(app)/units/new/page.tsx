@@ -5,6 +5,7 @@ import { listProperties } from '@/lib/data/properties'
 import { UnitForm } from '@/components/units/UnitForm'
 import { Button } from '@/components/ui/button'
 import { PageHeader } from '@/components/layout/PageHeader'
+import { FormError } from '@/components/common/FormError'
 import { createUnitAction } from '../actions'
 
 export default async function NewUnitPage({
@@ -23,9 +24,7 @@ export default async function NewUnitPage({
     <div className="flex flex-col gap-6">
       <PageHeader title="New unit" subtitle="Add a unit to one of your properties." />
 
-      {error && (
-        <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
-      )}
+      <FormError message={error} />
 
       {properties.length === 0 ? (
         <div className="flex flex-col items-start gap-3 rounded-lg border border-dashed p-6">

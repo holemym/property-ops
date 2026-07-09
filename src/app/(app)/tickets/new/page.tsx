@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
 import { PageHeader } from '@/components/layout/PageHeader'
+import { FormError } from '@/components/common/FormError'
 import { createTicketAction } from '../actions'
 
 const CATEGORIES = ticketCategoryEnum.options
@@ -60,9 +61,7 @@ export default async function NewTicketPage({
         subtitle="Log a maintenance request against a property or unit."
       />
 
-      {error && (
-        <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
-      )}
+      <FormError message={error} />
 
       <form action={createTicketAction} className="flex max-w-2xl flex-col gap-4">
         <div>

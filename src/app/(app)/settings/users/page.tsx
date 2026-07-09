@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { PageHeader } from '@/components/layout/PageHeader'
+import { FormError } from '@/components/common/FormError'
 import { inviteUser, setUserActive } from './actions'
 
 export default async function UsersSettingsPage({
@@ -27,9 +28,7 @@ export default async function UsersSettingsPage({
         subtitle="Manage who can access this workspace and their roles."
       />
 
-      {params.error && (
-        <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{params.error}</p>
-      )}
+      <FormError message={params.error} />
 
       <form action={inviteUser} className="flex items-end gap-2">
         <Input

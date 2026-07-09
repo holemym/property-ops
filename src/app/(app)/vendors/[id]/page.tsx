@@ -6,6 +6,7 @@ import { getVendor } from '@/lib/data/vendors'
 import { VendorForm } from '@/components/vendors/VendorForm'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { FormError } from '@/components/common/FormError'
 import { updateVendorAction, toggleVendorActiveAction } from '../actions'
 
 export default async function VendorDetailPage({
@@ -44,9 +45,7 @@ export default async function VendorDetailPage({
         )}
       </div>
 
-      {error && (
-        <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
-      )}
+      <FormError message={error} />
 
       <VendorForm
         action={boundUpdate}

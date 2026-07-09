@@ -2,6 +2,7 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { getValidVendorJob } from '@/lib/data/vendor-tokens'
 import { ATTACHMENTS_BUCKET } from '@/lib/data/attachments'
 import { Button } from '@/components/ui/button'
+import { FormError } from '@/components/common/FormError'
 import {
   acceptJobAction,
   declineJobAction,
@@ -148,9 +149,7 @@ export default async function VendorJobPage({
           <span className="rounded-md border px-2 py-0.5">{job.ticket.priority}</span>
           <span className="rounded-md border px-2 py-0.5">{job.ticket.category.replace(/_/g, ' ')}</span>
         </div>
-        {error && (
-          <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
-        )}
+        <FormError message={error} />
       </header>
 
       {/* Sanitized detail */}

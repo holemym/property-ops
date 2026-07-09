@@ -22,6 +22,7 @@ import { TicketsList } from '@/components/properties/hub/TicketsList'
 import { FinanceSnapshot } from '@/components/properties/hub/FinanceSnapshot'
 import { DocumentsList } from '@/components/properties/hub/DocumentsList'
 import { formatEur } from '@/components/properties/hub/formatCurrency'
+import { FormError } from '@/components/common/FormError'
 import { updatePropertyAction, archivePropertyAction } from '../actions'
 
 // Open tickets = still needing attention. Mirrors the occupancy page + analytics
@@ -136,11 +137,7 @@ export default async function PropertyDetailPage({
         </p>
       )}
 
-      {error && (
-        <p className="mb-6 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-400">
-          {error}
-        </p>
-      )}
+      <FormError message={error} className="mb-6" />
 
       <div className="flex flex-col gap-6">
         <MetricStrip

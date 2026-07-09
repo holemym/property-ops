@@ -29,6 +29,7 @@ import {
   todayIso,
   TERMINAL_TICKET_STATUSES,
 } from '@/components/units/hub/shared'
+import { FormError } from '@/components/common/FormError'
 import { updateUnitAction } from '../actions'
 
 function coversToday(startDate: string, endDate: string | null, today: string): boolean {
@@ -119,11 +120,7 @@ export default async function UnitDetailPage({
         </p>
       )}
 
-      {error && (
-        <p className="mb-6 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-400">
-          {error}
-        </p>
-      )}
+      <FormError message={error} className="mb-6" />
 
       <div className="flex flex-col gap-6">
         <MetricStrip
