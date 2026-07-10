@@ -1,0 +1,194 @@
+# Property Ops — Task Board
+
+The execution tracker for agent-driven development. **This file is the single source
+of truth for what to build next.** Strategy lives in
+`docs/superpowers/plans/2026-07-09-property-ops-roadmap-v2.md`; full designs live in
+`docs/superpowers/specs/`. This board turns them into one-agent-sized tasks.
+
+**How to work a task (any agent, any model):**
+1. Read roadmap v2 **§2 Tech inventory & hard rules** — every rule there is a lint
+   error, a production breaker, or a security boundary. No exceptions.
+2. Read this file's entry for your task ID, then the spec section it points to.
+3. Implement. Verify: `npm run build` + `npm run lint` + `npx vitest run` all green
+   (baseline: **282 tests**). New pure logic gets unit tests in `tests/unit/`.
+4. Commit (imperative summary, body explains why, co-author trailer per repo history).
+   Push with `git push origin HEAD:graphite-polish` — bare `git push` fails.
+5. Tick the checkbox here (same commit or a follow-up), and add any USER-action
+   items you created to the queue at the bottom.
+
+**Tags:** `[builder]` = prop-builder implements it · `[rls]` = prop-rls-reviewer must
+review before commit · `[verify]` = prop-verifier runs it · `[plan]` = needs a design
+pass first (brainstorm → spec) — do NOT jump straight to code · `[USER]` = a human
+action agents cannot perform (production SQL, dashboard toggles, env vars).
+
+**Statuses are the checkboxes.** In-progress work is fine to leave unticked with a
+`(WIP <date>)` note appended.
+
+---
+
+## Track D — Demo mode
+Spec: `docs/superpowers/specs/2026-07-09-property-ops-demo-mode-design.md`
+
+- [x] **D1** — Migration 0023: demo workspace + seed identity + `reset_demo_workspace()`
+      + storage-policy exclusion. *(committed `62ec29a`, folded into schema_bundle;
+      NOT yet applied to production — see USER queue.)*
+
+- [ ] **D2** `[builder]` — Demo helpers + entry action.
+      **Files:** `src/lib/demo.ts` (new: `isDemoEnabled()` = `DEMO_MODE === 'on'`;
+      `isDemoWorkspace(workspaceId)` = `workspaceId === process.env.DEMO_WORKSPACE_ID`,
+      pure string compare, no DB hit), `src/app/(auth)/demo-actions.ts` (new:
+      `enterDemo()` per spec §1 — gate on `isDemoEnabled`, rate-limit `demo:<ip>`
+      5/10min via `checkRateLimit`, stale-reset per §3 (service client reads
+      `demo_reset_at`; >24h or null → rpc `reset_demo_workspace` + best-effort
+      `auth.admin.deleteUser` of anon users attached to the demo workspace older than
+      24h; failures never block entry), then `supabase.auth.signInAnonymously()` on the
+      **server** client, service-client profile attach (workspace_id = demo ws, role
+      OPERATOR, full_name 'Demo visitor'), redirect `/dashboard`).
+      **Accept:** unit tests for both `src/lib/demo.ts` helpers (env-var branches);
+      build+lint+tests green. `signInAnonymously` exists on supabase-js v2 — do not
+      add any dependency.
+
+- [ ] **D3** `[builder]` — "Explore the demo" entry buttons. **Depends: D2.**
+      **Files:** `src/app/(auth)/login/page.tsx`, `src/app/(auth)/signup/page.tsx`.
+      Render a form posting to `enterDemo()` only when `isDemoEnabled()`. On signup's
+      invite-only branch the copy becomes: *"Accounts are by invitation — or explore
+      the demo with sample data."* Match the existing AuthCard button styles (outline
+      variant, `size="lg"`, full width).
+      **Accept:** with `DEMO_MODE` unset nothing changes on either page (verify by
+      reading the rendered JSX paths); build+lint+tests green.
+
+- [ ] **D4** `[builder]` — In-demo behavior gates. **Depends: D2.**
+      Per spec §4 table. **Files:** upload actions
+      (`src/app/(app)/tickets/attachment-actions.ts`, `src/app/(app)/documents/actions.ts`,
+      vendor proof in `src/app/job/[token]/actions.ts`) reject demo-workspace callers
+      with the existing `?error=` pattern ("Uploads are disabled in the demo");
+      `src/app/(app)/settings/users/actions.ts` invite + activate/deactivate reject in
+      demo; invoice send action simulates (skip `sendEmail`, still DRAFT→SENT, toast
+      copy "Invoice sent — demo simulation"); `src/lib/email/notify.ts` best-effort
+      sends silently skip in demo; `src/lib/ai/triage-service.ts` forces the offline
+      heuristic when the ticket's workspace is the demo workspace (even if
+      `ANTHROPIC_API_KEY` is set); new `src/components/layout/DemoBanner.tsx` rendered
+      from `(app)/layout.tsx` when `isDemoWorkspace(user.workspaceId)` — slim bar,
+      graphite tokens, copy: "Demo workspace — sample data, resets daily".
+      **Accept:** every gate is a small, localized check calling `isDemoWorkspace`;
+      no behavior change for non-demo workspaces (this is the critical regression
+      surface — read each action's existing flow before editing); build+lint+tests
+      green; unit-test any newly extracted pure branch.
+
+- [ ] **D5** `[builder]` — Preview nav section (4 mock pages). **Depends: D2 (for the
+      demo gate); independent of D3/D4.**
+      Per spec §5. **Files:** `src/app/(app)/preview/{map,notifications,people,rent-automation}/page.tsx`
+      (each a single self-contained presentational file, hardcoded fixtures shaped like
+      the demo seed, `PageHeader` + a "Planned — preview" `Badge` + one-line footer
+      explaining what the real feature will do), `src/components/layout/Sidebar.tsx`
+      gains a "Preview" nav group rendered only when `isDemoWorkspace`. Keep each page
+      deletable in one `rm` (the swap rule when real features ship).
+      **Accept:** graphite system only (no new colors), pages render for demo
+      workspace, nav group absent otherwise; build+lint+tests green.
+
+- [ ] **D6** `[verify]` — Demo end-to-end. **Depends: D2–D5 + the USER queue items
+      (migration 0023 applied, Anonymous provider ON, `DEMO_MODE`/`DEMO_WORKSPACE_ID`
+      env set).** Playbook: fresh incognito → login page shows demo button → one click
+      → dashboard with seed data → kanban move works → upload blocked with friendly
+      error → invoice Send shows simulated toast → banner visible → Preview nav
+      present → second incognito visitor gets own session, same data. Report
+      pass/fail with evidence per check.
+
+## Track S3 — Self-host runbook (docs only)
+Spec: security-hardening design §Stage S3.
+
+- [ ] **S3-1** `[builder]` — Write `docs/runbooks/self-hosting.md` per the spec's
+      4-part outline (portability rules + env matrix table of EVERY env var the code
+      reads — grep `process.env.` for ground truth; Docker-compose Supabase + Next
+      standalone + Caddy architecture; pg_dump/storage migration path + cutover
+      checklist; operations: backup cron, restore drill, update cadence).
+      **Accept:** every env var in the codebase appears in the matrix with
+      required/optional + which stage needs it; no code changes.
+
+## Track M — Map view
+Spec: `docs/superpowers/specs/2026-07-09-property-ops-map-view-design.md`
+
+- [ ] **M1** `[builder]` `[rls]` — Migration 0024 (properties lat/lng/geocoded_at,
+      nullable, no policy change — RLS review is a formality but run it) + `Property`
+      type fields + `src/lib/geocode.ts` (raw-fetch Nominatim per spec §2:
+      `buildGeocodeQuery` + `parseNominatimResponse` as PURE exported functions,
+      User-Agent header, 5s timeout, never throws) + wire best-effort geocoding into
+      property create/update actions (address-change detection; failed re-geocode
+      nulls stale coords) + the manager-only sequential backfill action (1.1s delay,
+      cap 20). Fold migration into schema_bundle.
+      **Accept:** unit tests for the two pure functions (valid/empty/garbage inputs);
+      no geocode call can ever block or fail a property save; build+lint+tests green.
+
+- [ ] **M2** `[builder]` — `/map` page + Leaflet. **Depends: M1.**
+      Per spec §3–4: add `leaflet` + `@types/leaflet` (THE approved dependency — the
+      only one), `src/components/map/PropertyMap.tsx` (`'use client'`, `next/dynamic`
+      `ssr:false`, `L.divIcon` graphite pins — never the default PNG markers, OSM tile
+      layer with attribution, `fitBounds`, grayscale tile filter, popup = name/address/
+      units/open tickets/link), `src/app/(app)/map/page.tsx` (requirePermission
+      `properties:read`, backfill button when coords missing, "N of M located" note),
+      Sidebar: Portfolio → "Map" (`MapPinned` icon). **Delete `/preview/map` + its nav
+      entry in the same commit** (swap rule). All Leaflet mutation inside `useEffect`
+      with `map.remove()` cleanup — React Compiler rules apply.
+      **Accept:** build output shows Leaflet lazy (not in shared client chunk);
+      build+lint+tests green.
+
+- [ ] **M3** `[verify]` — Map verification. **Depends: M2 + USER ran 0024.** Playbook:
+      create a property with a real Vienna address → pin appears; edit address → pin
+      moves or clears; backfill locates seeded properties; popups navigate; dark mode
+      legible; phone viewport pans; zero CSP violations (OSM tiles are pre-allowed in
+      the S1.1 CSP).
+
+## Track P — Product depth (each needs a spec before code)
+
+- [ ] **P1** `[plan]` — Tenant directory. Brainstorm → spec → split into board tasks.
+      Outline: roadmap v2 §4. PII SELECT gating mirrors tenancies (0016).
+- [ ] **P2** `[plan]` — In-app notifications. Outline: roadmap v2 §4. Delete
+      `/preview/notifications` when real one ships.
+- [ ] **P3** `[plan]` — Recurring rent invoices. Outline: roadmap v2 §4 (no cron —
+      "Generate month" button). Delete `/preview/rent-automation` when shipped.
+- [ ] **P4** `[plan]` — German i18n via next-intl (second approved dependency,
+      cookie-based locale). LAST — after P1–P3 so screens are stable.
+
+## Track S2 — Security deep (after P2)
+
+- [ ] **S2-1** `[plan]` — TOTP MFA enrollment (`/settings/security`) + soft-enforce
+      for OWNER. Spec section exists (security design §S2.1) but needs a UI design
+      pass before building.
+- [ ] **S2-2** `[builder]` `[rls]` — `auth_events` audit table + writes from auth
+      actions + admin table on `/settings/security`. Spec §S2.2.
+- [ ] **S2-3** `[builder]` — CSP: flip Report-Only → enforcing. **Blocked on USER
+      confirming zero violations in normal browsing for a few days.** One-line header
+      rename in `next.config.ts`.
+- [ ] **S2-4** `[builder]` — `npm audit` script + monthly dependency runbook entry.
+
+## Perf
+
+- [ ] **PERF-1** `[plan]` — Kill the double `auth.getUser()` per navigation (middleware
+      + page both hit Supabase Auth over the network; React `cache()` doesn't span
+      runtimes). **High-stakes: this is the auth boundary — design pass required, no
+      direct implementation.** Context: memory notes 2026-07-09 session 6.
+- [ ] **PERF-2** `[builder]` — Add `@vercel/speed-insights` for a real-user metrics
+      baseline (tiny; then decide what else is worth doing with data, not vibes).
+
+## Housekeeping
+
+- [ ] **H1** `[builder]` — Delete dead `src/components/common/DataTable.tsx` (nothing
+      imports it). One-line commit.
+
+---
+
+## USER-action queue (humans only — agents must never attempt these)
+
+- [ ] Verify migration **0021** applied (`select column_name from
+      information_schema.columns where table_name='invoices' and
+      column_name='recipient_email';` — one row = done).
+- [ ] Run migration **0022** (rate limiting) in the Supabase SQL editor. Until then
+      the limiter fails open (app works, no throttling).
+- [ ] Run migration **0023** (demo mode) — after/with D2–D5 landing.
+- [ ] Supabase dashboard → Auth → Providers → enable **Anonymous sign-ins** (demo).
+- [ ] Vercel env (Production) + `.env.local`: `SIGNUP_MODE=invite` (flips the front
+      door — do this deliberately), `DEMO_MODE=on`,
+      `DEMO_WORKSPACE_ID=11111111-1111-1111-1111-111111111111`. Redeploy after.
+- [ ] Work through `docs/runbooks/supabase-security-settings.md` (leaked-password
+      protection, session lifetimes, OTP expiry, redirect allowlist).
+- [ ] After a few days of clean browsing: green-light S2-3 (CSP enforce).
