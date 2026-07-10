@@ -4,7 +4,9 @@ import { AuthCard } from '@/components/auth/AuthCard'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { isDemoEnabled } from '@/lib/demo'
 import { signInWithPassword, signInWithMagicLink, signInWithGoogle } from '../actions'
+import { enterDemo } from '../demo-actions'
 
 export default async function LoginPage({
   searchParams,
@@ -70,6 +72,14 @@ export default async function LoginPage({
             Continue with Google
           </Button>
         </form>
+
+        {isDemoEnabled() && (
+          <form action={enterDemo}>
+            <Button type="submit" variant="outline" size="lg" className="w-full">
+              Explore the demo
+            </Button>
+          </form>
+        )}
       </div>
 
       <p className="mt-6 text-center text-sm text-muted-foreground">

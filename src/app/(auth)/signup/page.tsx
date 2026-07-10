@@ -6,7 +6,9 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { isInviteOnly } from '@/lib/auth/signup-mode'
+import { isDemoEnabled } from '@/lib/demo'
 import { signUpWithPassword } from '../actions'
+import { enterDemo } from '../demo-actions'
 
 export default async function SignupPage({
   searchParams,
@@ -16,8 +18,16 @@ export default async function SignupPage({
   const params = await searchParams
 
   if (isInviteOnly()) {
+    const demoEnabled = isDemoEnabled()
     return (
-      <AuthCard title="Accounts are by invitation" error={params.error}>
+      <AuthCard
+        title={
+          demoEnabled
+            ? 'Accounts are by invitation — or explore the demo with sample data'
+            : 'Accounts are by invitation'
+        }
+        error={params.error}
+      >
         <p className="text-sm text-muted-foreground">
           Ask your workspace administrator to invite you from Settings → Users. Already
           have an invite?
@@ -25,6 +35,13 @@ export default async function SignupPage({
         <Button render={<Link href="/login" />} size="lg" className="mt-4 w-full">
           Go to sign in
         </Button>
+        {demoEnabled && (
+          <form action={enterDemo} className="mt-2.5">
+            <Button type="submit" variant="outline" size="lg" className="w-full">
+              Explore the demo
+            </Button>
+          </form>
+        )}
       </AuthCard>
     )
   }
@@ -78,6 +95,21 @@ export default async function SignupPage({
           Create account
         </Button>
       </form>
+
+      {isDemoEnabled() && (
+        <>
+          <div className="my-5 flex items-center gap-3 text-xs text-muted-foreground">
+            <span className="h-px flex-1 bg-border" />
+            <span>or</span>
+            <span className="h-px flex-1 bg-border" />
+          </div>
+          <form action={enterDemo}>
+            <Button type="submit" variant="outline" size="lg" className="w-full">
+              Explore the demo
+            </Button>
+          </form>
+        </>
+      )}
 
       <p className="mt-6 text-center text-sm text-muted-foreground">
         Already have an account?{' '}

@@ -48,7 +48,7 @@ Spec: `docs/superpowers/specs/2026-07-09-property-ops-demo-mode-design.md`
       build+lint+tests green. `signInAnonymously` exists on supabase-js v2 — do not
       add any dependency.
 
-- [ ] **D3** `[builder]` — "Explore the demo" entry buttons. **Depends: D2.**
+- [x] **D3** `[builder]` — "Explore the demo" entry buttons. **Depends: D2.**
       **Files:** `src/app/(auth)/login/page.tsx`, `src/app/(auth)/signup/page.tsx`.
       Render a form posting to `enterDemo()` only when `isDemoEnabled()`. On signup's
       invite-only branch the copy becomes: *"Accounts are by invitation — or explore
@@ -56,6 +56,13 @@ Spec: `docs/superpowers/specs/2026-07-09-property-ops-demo-mode-design.md`
       variant, `size="lg"`, full width).
       **Accept:** with `DEMO_MODE` unset nothing changes on either page (verify by
       reading the rendered JSX paths); build+lint+tests green.
+      *(committed — login gains an outline "Explore the demo" form appended to its
+      existing secondary-buttons group; signup gains the button on both the
+      invite-only branch (title text swaps to the demo-aware copy) and the normal
+      create-account branch (new divider + button, mirroring login's pattern); the
+      transient confirm-email-sent screen is untouched. All gated on `isDemoEnabled()`
+      — no new pure logic, reuses D2's helper and `enterDemo` action directly. 290
+      tests green, build+lint clean.)*
 
 - [x] **D4** `[builder]` — In-demo behavior gates. **Depends: D2.**
       Per spec §4 table. **Files:** upload actions
@@ -186,6 +193,14 @@ Spec: `docs/superpowers/specs/2026-07-09-property-ops-map-view-design.md`
       direct implementation.** Context: memory notes 2026-07-09 session 6.
 - [ ] **PERF-2** `[builder]` — Add `@vercel/speed-insights` for a real-user metrics
       baseline (tiny; then decide what else is worth doing with data, not vibes).
+
+## Housekeeping (continued)
+
+- [ ] **H2** `[builder]` — Sync `.env.local.example` with reality (flagged by the
+      S3-1 build): it's missing `SIGNUP_MODE`, `DEMO_MODE`, `DEMO_WORKSPACE_ID`,
+      `ANTHROPIC_API_KEY`, `ANTHROPIC_TRIAGE_MODEL`. Ground truth = the env matrix in
+      `docs/runbooks/self-hosting.md` (which was grepped from source). Placeholder
+      values + one-line comments only — never real keys.
 
 ## Housekeeping
 
