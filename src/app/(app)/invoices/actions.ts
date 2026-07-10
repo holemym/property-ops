@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { requirePermission } from '@/lib/auth/session'
 import { redirectWithError } from '@/lib/redirect-with-error'
+import { isDemoWorkspace } from '@/lib/demo'
 import { invoiceFormSchema, invoiceStatusSchema } from '@/lib/validation/invoice'
 import {
   createInvoice,
@@ -246,17 +247,25 @@ export async function sendInvoiceAction(id: string): Promise<void> {
     redirectWithError(detailPath, 'Add a recipient email (Edit the invoice) before sending.')
   }
 
-  const lines = await listInvoiceLines(supabase, user.workspaceId, id)
-  // sendInvoiceEmail never throws (best-effort transport); branch on its result.
-  const result = await sendInvoiceEmail(invoice, lines, to)
-  if (result.status === 'disconnected') {
-    redirectWithError(detailPath, 'Email isn’t connected yet — set RESEND_API_KEY to send invoices.')
-  }
-  if (!result.sent) {
-    redirectWithError(detailPath, result.error ?? 'Could not send the invoice email.')
+  // D4 in-demo gate: never email a stranger's real inbox from the shared demo workspace.
+  // The send is SIMULATED — sendInvoiceEmail is skipped entirely — but the invoice still
+  // advances DRAFT -> SENT below (so the workflow reads correctly) and the success toast
+  // says explicitly that it was a simulation.
+  const demo = isDemoWorkspace(user.workspaceId)
+
+  if (!demo) {
+    const lines = await listInvoiceLines(supabase, user.workspaceId, id)
+    // sendInvoiceEmail never throws (best-effort transport); branch on its result.
+    const result = await sendInvoiceEmail(invoice, lines, to)
+    if (result.status === 'disconnected') {
+      redirectWithError(detailPath, 'Email isn’t connected yet — set RESEND_API_KEY to send invoices.')
+    }
+    if (!result.sent) {
+      redirectWithError(detailPath, result.error ?? 'Could not send the invoice email.')
+    }
   }
 
-  // Reflect delivery: a DRAFT becomes SENT once it's actually emailed.
+  // Reflect delivery: a DRAFT becomes SENT once it's actually emailed (or simulated).
   if (invoice.status === 'DRAFT') {
     try {
       await setInvoiceStatus(supabase, user.workspaceId, id, 'SENT')
@@ -266,5 +275,5 @@ export async function sendInvoiceAction(id: string): Promise<void> {
   }
 
   revalidatePath(detailPath)
-  redirect(`${detailPath}?sent=1`)
+  redirect(`${detailPath}?sent=${demo ? 'demo' : '1'}`)
 }

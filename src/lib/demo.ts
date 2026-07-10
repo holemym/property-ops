@@ -17,3 +17,12 @@ export function isDemoWorkspace(workspaceId: string | null | undefined): boolean
   if (!demoWorkspaceId) return false
   return workspaceId === demoWorkspaceId
 }
+
+// Shared copy for the in-demo behavior gates (D4 — spec §4). Every upload action
+// rejects a demo-workspace caller with the same message via the existing `?error=`
+// pattern; Settings > Users invite/deactivate use their own analogous message; and the
+// invoice Send action's simulated toast reuses its constant. Centralized so the wording
+// stays identical across every call site instead of being retyped per-file.
+export const DEMO_UPLOAD_BLOCKED_MESSAGE = 'Uploads are disabled in the demo'
+export const DEMO_USERS_BLOCKED_MESSAGE = 'Managing users is disabled in the demo'
+export const DEMO_INVOICE_SENT_MESSAGE = 'Invoice sent — demo simulation'

@@ -26,6 +26,7 @@ import { SubmitButton } from '@/components/tickets/SubmitButton'
 import { InvoiceStatusActions } from '@/components/invoices/InvoiceStatusActions'
 import { InvoicePrint, PrintInvoiceButton } from '@/components/invoices/InvoicePrint'
 import { SentToast } from '@/components/invoices/SentToast'
+import { DEMO_INVOICE_SENT_MESSAGE } from '@/lib/demo'
 import { formatDate } from '@/lib/format-date'
 import { setInvoiceStatusAction, sendInvoiceAction } from '../actions'
 
@@ -79,7 +80,7 @@ export default async function InvoiceDetailPage({
   return (
     <div className="flex flex-col gap-6">
       <ErrorToast />
-      {sent && <SentToast />}
+      {sent && <SentToast message={sent === 'demo' ? DEMO_INVOICE_SENT_MESSAGE : undefined} />}
 
       {/* Print layout (hidden on screen, shown on paper). */}
       <InvoicePrint invoice={invoice} lines={lines} />

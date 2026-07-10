@@ -5,6 +5,7 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { requirePermission } from '@/lib/auth/session'
 import { revalidatePath } from 'next/cache'
 import { redirectWithError } from '@/lib/redirect-with-error'
+import { isDemoWorkspace, DEMO_USERS_BLOCKED_MESSAGE } from '@/lib/demo'
 import { z } from 'zod'
 import { AUTH_CALLBACK_URL } from '@/lib/urls'
 
@@ -16,6 +17,12 @@ const inviteSchema = z.object({
 
 export async function inviteUser(formData: FormData) {
   const admin = await requirePermission('users:invite')
+
+  // D4 in-demo gate: inviting real people into the shared, publicly-reachable demo
+  // workspace is nonsensical (and would send a real email to a stranger's address).
+  if (isDemoWorkspace(admin.workspaceId)) {
+    redirectWithError('/settings/users', DEMO_USERS_BLOCKED_MESSAGE)
+  }
 
   const parsed = inviteSchema.safeParse({
     email: formData.get('email'),
@@ -56,6 +63,12 @@ export async function setUserActive(formData: FormData) {
   const admin = await requirePermission('users:manage')
   const userId = String(formData.get('userId') ?? '')
   const isActive = formData.get('isActive') === 'true'
+
+  // D4 in-demo gate: deactivating another visitor's shared profile would be a confusing,
+  // permanent-feeling action in a sandbox that resets nightly regardless.
+  if (isDemoWorkspace(admin.workspaceId)) {
+    redirectWithError('/settings/users', DEMO_USERS_BLOCKED_MESSAGE)
+  }
 
   if (userId === admin.id) {
     redirectWithError('/settings/users', 'You cannot deactivate your own account.')

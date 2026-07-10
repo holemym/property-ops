@@ -7,6 +7,7 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { requireWorkspace } from '@/lib/auth/session'
 import { can, isTenantRole } from '@/lib/auth/permissions'
 import { redirectWithError } from '@/lib/redirect-with-error'
+import { isDemoWorkspace, DEMO_UPLOAD_BLOCKED_MESSAGE } from '@/lib/demo'
 import { getTicket } from '@/lib/data/tickets'
 import { appendTicketEvent } from '@/lib/data/ticket-events'
 import {
@@ -51,6 +52,13 @@ export async function uploadAttachmentAction(
 ) {
   const user = await requireWorkspace()
   const detailPath = ATTACHMENT_REDIRECT[surface](ticketId)
+
+  // D4 in-demo gate: uploads are blocked for the shared demo workspace (spec §4) — real
+  // file bytes hitting Storage would survive the daily reset's DB-only scope. Checked
+  // before authorization/validation so a demo caller always gets this specific message.
+  if (isDemoWorkspace(user.workspaceId)) {
+    redirectWithError(detailPath, DEMO_UPLOAD_BLOCKED_MESSAGE)
+  }
 
   // Authorization by surface. The REAL enforcement is RLS (Storage + table) + the
   // getTicket own-row read below; these app-layer gates give clean errors and keep each

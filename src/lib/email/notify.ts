@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { TicketCategory, TicketPriority, TicketStatus } from '@/types/domain'
 import { sendEmail } from './send'
+import { isDemoWorkspace } from '@/lib/demo'
 import {
   ticketStatusChangedEmail,
   operatorAssignedEmail,
@@ -31,8 +32,11 @@ import {
 // ---------------------------------------------------------------------------
 
 // Shared context every notification carries about the ticket being acted on.
+// `workspaceId` gates D4's in-demo behavior: notifications silently no-op for the shared
+// demo workspace so a public visitor's actions never send real email to anyone.
 export type TicketContext = {
   ticketId: string
+  workspaceId: string
   title: string
   category?: TicketCategory
   priority?: TicketPriority
@@ -93,6 +97,9 @@ export async function notifyTicketStatusChanged(
     toStatus: TicketStatus
   }
 ): Promise<void> {
+  // D4 in-demo gate: never email a stranger's real inbox from the shared demo workspace.
+  // Skipped silently (not an error) — best-effort notifications simply don't fire.
+  if (isDemoWorkspace(input.workspaceId)) return
   try {
     const to = await resolveUserEmail(serviceClient, input.reporterUserId)
     if (!to) return
@@ -115,6 +122,8 @@ export async function notifyOperatorAssigned(
     operatorName?: string | null
   }
 ): Promise<void> {
+  // D4 in-demo gate: never email a stranger's real inbox from the shared demo workspace.
+  if (isDemoWorkspace(input.workspaceId)) return
   try {
     const to = await resolveUserEmail(serviceClient, input.operatorUserId)
     if (!to) return
@@ -138,6 +147,8 @@ export async function notifyVendorAssigned(
     vendorName?: string | null
   }
 ): Promise<void> {
+  // D4 in-demo gate: never email a stranger's real inbox from the shared demo workspace.
+  if (isDemoWorkspace(input.workspaceId)) return
   try {
     const to = (input.vendorEmail ?? '').trim()
     if (!to) return
@@ -163,6 +174,8 @@ export async function notifyVendorJobLink(
     jobUrl: string
   }
 ): Promise<void> {
+  // D4 in-demo gate: never email a stranger's real inbox from the shared demo workspace.
+  if (isDemoWorkspace(input.workspaceId)) return
   try {
     const to = (input.vendorEmail ?? '').trim()
     if (!to) return
@@ -184,6 +197,8 @@ export async function notifyTicketCreated(
     reporterUserId: string | null | undefined
   }
 ): Promise<void> {
+  // D4 in-demo gate: never email a stranger's real inbox from the shared demo workspace.
+  if (isDemoWorkspace(input.workspaceId)) return
   try {
     const to = await resolveUserEmail(serviceClient, input.reporterUserId)
     if (!to) return

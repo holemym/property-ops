@@ -17,6 +17,7 @@ import {
   createAttachmentRecord,
 } from '@/lib/data/attachments'
 import { validateUploadFile } from '@/lib/attachments/upload'
+import { isDemoWorkspace, DEMO_UPLOAD_BLOCKED_MESSAGE } from '@/lib/demo'
 import type { TicketStatus } from '@/types/domain'
 
 // =============================================================================
@@ -220,6 +221,12 @@ export async function uploadVendorProofAction(token: string, formData: FormData)
   }
   if (job.token.declined_at || job.token.completed_at) {
     redirectJobError(token, 'This job has already been responded to.')
+  }
+
+  // D4 in-demo gate: uploads are blocked for the shared demo workspace (spec §4) — real
+  // file bytes hitting Storage would survive the daily reset's DB-only scope.
+  if (isDemoWorkspace(job.token.workspace_id)) {
+    redirectJobError(token, DEMO_UPLOAD_BLOCKED_MESSAGE)
   }
 
   const file = formData.get('file')

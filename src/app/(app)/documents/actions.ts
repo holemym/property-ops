@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { requirePermission } from '@/lib/auth/session'
 import { redirectWithError } from '@/lib/redirect-with-error'
+import { isDemoWorkspace, DEMO_UPLOAD_BLOCKED_MESSAGE } from '@/lib/demo'
 import {
   DOCUMENTS_BUCKET,
   buildDocumentStoragePath,
@@ -50,6 +51,12 @@ const DOCUMENTS_PATH = '/documents'
  */
 export async function uploadDocumentAction(formData: FormData): Promise<void> {
   const user = await requirePermission('documents:write')
+
+  // D4 in-demo gate: uploads are blocked for the shared demo workspace (spec §4) — real
+  // file bytes hitting Storage would survive the daily reset's DB-only scope.
+  if (isDemoWorkspace(user.workspaceId)) {
+    redirectWithError(DOCUMENTS_PATH, DEMO_UPLOAD_BLOCKED_MESSAGE)
+  }
 
   // --- File presence + size/MIME validation (server-side; the HTML accept= is a hint). ---
   const file = formData.get('file')

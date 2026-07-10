@@ -2,7 +2,9 @@ import { requireWorkspace } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { TopNav } from '@/components/layout/TopNav'
+import { DemoBanner } from '@/components/layout/DemoBanner'
 import { Toaster } from '@/components/ui/sonner'
+import { isDemoWorkspace } from '@/lib/demo'
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requireWorkspace()
@@ -27,6 +29,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       {/* min-w-0 lets the content column shrink below the sidebar width so wide tables
           scroll inside it rather than pushing the layout on small screens. */}
       <div className="flex min-w-0 flex-1 flex-col">
+        {isDemoWorkspace(user.workspaceId) && <DemoBanner />}
         <TopNav userName={user.fullName || user.email} role={user.role} workspaceName={workspace?.name ?? ''} />
         <main id="main-content" tabIndex={-1} className="flex-1 overflow-y-auto p-4 sm:p-6 focus:outline-none">
           {children}

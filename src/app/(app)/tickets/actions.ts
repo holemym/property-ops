@@ -136,6 +136,7 @@ export async function createTicketAction(formData: FormData) {
     try {
       await notifyTicketCreated(createServiceClient(), {
         ticketId,
+        workspaceId: user.workspaceId,
         title,
         category,
         priority,
@@ -217,6 +218,7 @@ export async function transitionTicketStatusAction(id: string, formData: FormDat
   try {
     await notifyTicketStatusChanged(createServiceClient(), {
       ticketId: id,
+      workspaceId: user.workspaceId,
       title: ticket.title,
       category: ticket.category,
       priority: ticket.priority,
@@ -287,6 +289,7 @@ export async function assignOperatorAction(id: string, formData: FormData) {
     try {
       await notifyOperatorAssigned(createServiceClient(), {
         ticketId: id,
+        workspaceId: user.workspaceId,
         title: ticket.title,
         category: ticket.category,
         priority: ticket.priority,
@@ -354,6 +357,7 @@ export async function assignVendorAction(id: string, formData: FormData) {
     try {
       await notifyVendorAssigned({
         ticketId: id,
+        workspaceId: user.workspaceId,
         title: ticket.title,
         category: ticket.category,
         priority: ticket.priority,
@@ -458,6 +462,7 @@ export async function generateVendorLinkAction(id: string) {
     const jobUrl = base ? `${base}/job/${rawToken}` : `/job/${rawToken}`
     await notifyVendorJobLink({
       ticketId: id,
+      workspaceId: user.workspaceId,
       title: ticket.title,
       category: ticket.category,
       priority: ticket.priority,

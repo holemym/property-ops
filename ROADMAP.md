@@ -57,7 +57,7 @@ Spec: `docs/superpowers/specs/2026-07-09-property-ops-demo-mode-design.md`
       **Accept:** with `DEMO_MODE` unset nothing changes on either page (verify by
       reading the rendered JSX paths); build+lint+tests green.
 
-- [ ] **D4** `[builder]` — In-demo behavior gates. **Depends: D2.**
+- [x] **D4** `[builder]` — In-demo behavior gates. **Depends: D2.**
       Per spec §4 table. **Files:** upload actions
       (`src/app/(app)/tickets/attachment-actions.ts`, `src/app/(app)/documents/actions.ts`,
       vendor proof in `src/app/job/[token]/actions.ts`) reject demo-workspace callers
@@ -74,6 +74,15 @@ Spec: `docs/superpowers/specs/2026-07-09-property-ops-demo-mode-design.md`
       no behavior change for non-demo workspaces (this is the critical regression
       surface — read each action's existing flow before editing); build+lint+tests
       green; unit-test any newly extracted pure branch.
+      *(committed — every gate is a localized `isDemoWorkspace` check reusing D2's
+      helper: the 3 upload actions + Settings→Users invite/deactivate redirect with
+      `?error=` via new shared messages in `src/lib/demo.ts`; invoice Send simulates
+      (DRAFT→SENT, no email, `?sent=demo` → distinct toast copy); `notify.ts`'s 5
+      functions gained a `workspaceId` field on `TicketContext` and no-op in demo;
+      `triage-service.ts` calls `suggestTriageHeuristic` directly instead of
+      `classifyTicket` for the demo workspace; `DemoBanner` wired into `(app)/layout.tsx`.
+      All gates reuse the already-tested `isDemoWorkspace` — no new pure logic needed
+      unit tests. 290 tests green, no regression to non-demo paths.)*
 
 - [ ] **D5** `[builder]` — Preview nav section (4 mock pages). **Depends: D2 (for the
       demo gate); independent of D3/D4.**
@@ -93,6 +102,14 @@ Spec: `docs/superpowers/specs/2026-07-09-property-ops-demo-mode-design.md`
       error → invoice Send shows simulated toast → banner visible → Preview nav
       present → second incognito visitor gets own session, same data. Report
       pass/fail with evidence per check.
+
+- [ ] **D7** `[builder]` — Manual demo reset for emergencies. **Depends: D2, D4.**
+      (Deferred from spec §3, flagged by the D2 build.) A server action gated to
+      SUPER_ADMIN that calls the `reset_demo_workspace` RPC + stale-anon purge
+      (reuse D2's `resetIfStale` internals — extract, don't duplicate), surfaced as
+      a small `ConfirmSubmit` on `/settings/users` visible only to SUPER_ADMIN when
+      `isDemoEnabled()`. **Accept:** unreachable + invisible for every other role;
+      build+lint+tests green.
 
 ## Track S3 — Self-host runbook (docs only)
 Spec: security-hardening design §Stage S3.

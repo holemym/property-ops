@@ -1,8 +1,9 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { TicketCategory, TicketPriority } from '@/types/domain'
-import { classifyTicket } from './triage'
+import { classifyTicket, suggestTriageHeuristic } from './triage'
 import { appendTicketEvent } from '@/lib/data/ticket-events'
 import { createTicketComment } from '@/lib/data/ticket-comments'
+import { isDemoWorkspace } from '@/lib/demo'
 
 // ---------------------------------------------------------------------------
 // runAutoTriage — the server-side write side of triage. Called best-effort from the
@@ -34,10 +35,14 @@ export async function runAutoTriage(
   input: AutoTriageInput
 ): Promise<void> {
   try {
-    const suggestion = await classifyTicket({
-      title: input.title,
-      description: input.description,
-    })
+    // D4 in-demo gate: force the offline heuristic even if ANTHROPIC_API_KEY is set, so a
+    // public demo visitor filing tickets can never burn real API tokens. The heuristic is
+    // already the zero-cost, key-free path (classifyTicket would also fall back to it if
+    // no key were configured) — this just pins to it unconditionally for the demo
+    // workspace, bypassing classifyTicket's isAiTriageEnabled() check entirely.
+    const suggestion = isDemoWorkspace(input.workspaceId)
+      ? suggestTriageHeuristic({ title: input.title, description: input.description })
+      : await classifyTicket({ title: input.title, description: input.description })
     const isAi = suggestion.source === 'ai'
 
     // Audit event: an AI/AUTOMATION actor (no user) generated a classification. The
