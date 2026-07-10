@@ -1,11 +1,18 @@
 'use server'
 
+import { redirect } from 'next/navigation'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
-import { requirePermission } from '@/lib/auth/session'
+import { requirePermission, requireWorkspace } from '@/lib/auth/session'
 import { revalidatePath } from 'next/cache'
 import { redirectWithError } from '@/lib/redirect-with-error'
-import { isDemoWorkspace, DEMO_USERS_BLOCKED_MESSAGE } from '@/lib/demo'
+import {
+  isDemoWorkspace,
+  isDemoEnabled,
+  canManuallyResetDemo,
+  resetDemoWorkspaceData,
+  DEMO_USERS_BLOCKED_MESSAGE,
+} from '@/lib/demo'
 import { z } from 'zod'
 import { AUTH_CALLBACK_URL } from '@/lib/urls'
 
@@ -99,4 +106,35 @@ export async function setUserActive(formData: FormData) {
   // loading app pages in the meantime.
 
   revalidatePath('/settings/users')
+}
+
+// D7 — manual emergency reset, deferred from the demo-mode spec §3 (flagged by the D2
+// build): wipes and reseeds the shared public demo workspace on demand instead of
+// waiting for the next visitor's 24h stale-on-entry check to trigger it. Deliberately
+// gated to canManuallyResetDemo (SUPER_ADMIN only) rather than requirePermission —
+// this is narrower than the ADMIN_PERMISSIONS matrix that treats OWNER the same as
+// SUPER_ADMIN everywhere else, because this control can nuke a shared, publicly-
+// reachable workspace out from under every visitor currently in it. Unreachable and
+// (via the page-side check mirroring canManuallyResetDemo) invisible for every other
+// role, including OWNER.
+export async function resetDemoWorkspaceManually() {
+  const user = await requireWorkspace()
+
+  if (!isDemoEnabled() || !canManuallyResetDemo(user.role)) {
+    throw new Error('Not authorized.')
+  }
+
+  const demoWorkspaceId = process.env.DEMO_WORKSPACE_ID
+  if (!demoWorkspaceId) {
+    redirectWithError('/settings/users', 'Demo workspace is not configured.')
+  }
+
+  const result = await resetDemoWorkspaceData(demoWorkspaceId)
+  if (!result.ok) {
+    console.error('resetDemoWorkspaceManually:', result.error)
+    redirectWithError('/settings/users', 'Reset failed — check the server logs.')
+  }
+
+  revalidatePath('/settings/users')
+  redirect('/settings/users?resetDemo=ok')
 }

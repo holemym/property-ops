@@ -6,12 +6,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { PageHeader } from '@/components/layout/PageHeader'
 import { FormError } from '@/components/common/FormError'
 import { ConfirmSubmit } from '@/components/common/ConfirmSubmit'
-import { inviteUser, setUserActive } from './actions'
+import { isDemoEnabled, canManuallyResetDemo } from '@/lib/demo'
+import { inviteUser, setUserActive, resetDemoWorkspaceManually } from './actions'
 
 export default async function UsersSettingsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>
+  searchParams: Promise<{ error?: string; resetDemo?: string }>
 }) {
   const params = await searchParams
   const admin = await requirePermission('users:invite')
@@ -142,6 +143,38 @@ export default async function UsersSettingsPage({
         </TableBody>
       </Table>
       </div>
+
+      {/* D7: emergency manual demo reset. Invisible for every role but SUPER_ADMIN
+          (canManuallyResetDemo), and only while the demo sandbox is enabled at all —
+          mirrors the resetDemoWorkspaceManually action's own authorization check. */}
+      {isDemoEnabled() && canManuallyResetDemo(admin.role) && (
+        <div className="flex flex-col gap-3 rounded-lg border p-4">
+          <div>
+            <h2 className="text-sm font-semibold">Demo workspace reset</h2>
+            <p className="text-sm text-muted-foreground">
+              Immediately wipe and reseed the public demo workspace instead of waiting
+              for the next visitor to trigger the 24-hour automatic reset. Signs out
+              everyone currently using the demo. Super admin only.
+            </p>
+          </div>
+          {params.resetDemo === 'ok' && (
+            <p role="status" className="text-sm text-muted-foreground">
+              Demo workspace reset.
+            </p>
+          )}
+          <div>
+            <ConfirmSubmit
+              action={resetDemoWorkspaceManually}
+              triggerLabel="Reset demo workspace"
+              triggerVariant="outline"
+              triggerSize="sm"
+              title="Reset the demo workspace now?"
+              description="This immediately wipes and reseeds the public demo workspace and signs out every visitor currently attached to it. This cannot be undone."
+              confirmLabel="Reset now"
+            />
+          </div>
+        </div>
+      )}
     </div>
   )
 }

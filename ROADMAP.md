@@ -117,13 +117,28 @@ Spec: `docs/superpowers/specs/2026-07-09-property-ops-demo-mode-design.md`
       present → second incognito visitor gets own session, same data. Report
       pass/fail with evidence per check.
 
-- [ ] **D7** `[builder]` — Manual demo reset for emergencies. **Depends: D2, D4.**
+- [x] **D7** `[builder]` — Manual demo reset for emergencies. **Depends: D2, D4.**
       (Deferred from spec §3, flagged by the D2 build.) A server action gated to
       SUPER_ADMIN that calls the `reset_demo_workspace` RPC + stale-anon purge
       (reuse D2's `resetIfStale` internals — extract, don't duplicate), surfaced as
       a small `ConfirmSubmit` on `/settings/users` visible only to SUPER_ADMIN when
       `isDemoEnabled()`. **Accept:** unreachable + invisible for every other role;
       build+lint+tests green.
+      *(committed — extracted the RPC-call + stale-anon-purge sequence out of D2's
+      `resetIfStale` into a shared `resetDemoWorkspaceData(demoWorkspaceId)` in
+      `src/lib/demo.ts` (returns `{ok}` instead of throwing; `demo-actions.ts`'s
+      `resetIfStale` now just does its staleness check then calls it). New pure gate
+      `canManuallyResetDemo(role)` = `role === 'SUPER_ADMIN'` — deliberately narrower
+      than the OWNER-inclusive `ADMIN_PERMISSIONS` matrix, unit-tested for every role
+      in the `Role` union. New action `resetDemoWorkspaceManually()` in
+      `settings/users/actions.ts` checks `isDemoEnabled() && canManuallyResetDemo`
+      (throws otherwise) before calling the shared primitive; a matching page-side
+      check gates a small bordered "Demo workspace reset" section + `ConfirmSubmit` on
+      `/settings/users`, invisible to every role but SUPER_ADMIN (including OWNER).
+      Opportunistic housekeeping: deleted dead `src/components/common/DataTable.tsx`
+      (zero importers) per the standing §2 instruction. 293 tests green (290 + 3 new),
+      build+lint clean. No migration — reuses migration 0023's existing RPC, so no RLS
+      review needed.)*
 
 ## Track S3 — Self-host runbook (docs only)
 Spec: security-hardening design §Stage S3.

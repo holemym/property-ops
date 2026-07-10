@@ -7,21 +7,16 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { checkRateLimit, clientIp } from '@/lib/rate-limit'
 import { redirectWithError } from '@/lib/redirect-with-error'
 import { friendlyAuthError } from '@/lib/auth/error-messages'
-import { isDemoEnabled } from '@/lib/demo'
-
-// Attribution-only identity inserted by migration 0023 (auth.users + profiles row,
-// unroutable email, no password — never a real login). It authored every seeded row's
-// created_by/uploaded_by column, so the stale-visitor purge below must never delete it:
-// profiles.id -> auth.users.id is `on delete cascade`, and deleting it out from under
-// the seed would orphan/blow away the very data reset_demo_workspace() just inserted.
-const DEMO_SEED_USER_ID = '00000000-0000-0000-0000-00000000d3d0'
+import { isDemoEnabled, resetDemoWorkspaceData } from '@/lib/demo'
 
 const STALE_RESET_MS = 24 * 60 * 60 * 1000
 
 // Best-effort stale-on-entry reset (spec §3): if the demo workspace hasn't been reset
 // in >24h (or never), wipe+reseed it and purge anon-visitor profiles left over from
-// before the reset. Every failure is caught and logged, never thrown — a broken reset
-// must never block a visitor from entering the demo.
+// before the reset (the RPC call + purge is shared with the manual SUPER_ADMIN reset,
+// D7 — see resetDemoWorkspaceData in src/lib/demo.ts). Every failure is caught and
+// logged, never thrown — a broken reset must never block a visitor from entering the
+// demo.
 async function resetIfStale(demoWorkspaceId: string) {
   try {
     const service = createServiceClient()
@@ -40,31 +35,9 @@ async function resetIfStale(demoWorkspaceId: string) {
     const isStale = resetAt === null || Date.now() - resetAt > STALE_RESET_MS
     if (!isStale) return
 
-    const { error: rpcError } = await service.rpc('reset_demo_workspace')
-    if (rpcError) {
-      console.error('demo stale-check: reset_demo_workspace RPC failed:', rpcError.message)
-      return
-    }
-
-    // Purge stale anon-visitor profiles — everyone attached to the demo workspace
-    // except the seed identity. auth.admin.deleteUser cascades to the profile row via
-    // the profiles.id -> auth.users.id FK.
-    const { data: staleProfiles, error: profilesError } = await service
-      .from('profiles')
-      .select('id')
-      .eq('workspace_id', demoWorkspaceId)
-      .neq('id', DEMO_SEED_USER_ID)
-
-    if (profilesError) {
-      console.error('demo stale-check: stale-visitor lookup failed:', profilesError.message)
-      return
-    }
-
-    for (const profile of (staleProfiles ?? []) as { id: string }[]) {
-      const { error: deleteError } = await service.auth.admin.deleteUser(profile.id)
-      if (deleteError) {
-        console.error(`demo stale-check: failed to delete visitor ${profile.id}:`, deleteError.message)
-      }
+    const result = await resetDemoWorkspaceData(demoWorkspaceId)
+    if (!result.ok) {
+      console.error('demo stale-check:', result.error)
     }
   } catch (err) {
     console.error('demo stale-check threw (continuing without reset):', err)
