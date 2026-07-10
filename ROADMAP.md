@@ -196,7 +196,7 @@ Spec: `docs/superpowers/specs/2026-07-09-property-ops-map-view-design.md`
 
 ## Housekeeping (continued)
 
-- [ ] **H2** `[builder]` — Sync `.env.local.example` with reality (flagged by the
+- [x] **H2** `[builder]` — Sync `.env.local.example` with reality (flagged by the
       S3-1 build): it's missing `SIGNUP_MODE`, `DEMO_MODE`, `DEMO_WORKSPACE_ID`,
       `ANTHROPIC_API_KEY`, `ANTHROPIC_TRIAGE_MODEL`. Ground truth = the env matrix in
       `docs/runbooks/self-hosting.md` (which was grepped from source). Placeholder
