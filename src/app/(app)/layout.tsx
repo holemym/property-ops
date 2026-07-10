@@ -25,12 +25,17 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       >
         Skip to content
       </a>
-      <Sidebar role={user.role} />
+      <Sidebar role={user.role} isDemo={isDemoWorkspace(user.workspaceId)} />
       {/* min-w-0 lets the content column shrink below the sidebar width so wide tables
           scroll inside it rather than pushing the layout on small screens. */}
       <div className="flex min-w-0 flex-1 flex-col">
         {isDemoWorkspace(user.workspaceId) && <DemoBanner />}
-        <TopNav userName={user.fullName || user.email} role={user.role} workspaceName={workspace?.name ?? ''} />
+        <TopNav
+          userName={user.fullName || user.email}
+          role={user.role}
+          workspaceName={workspace?.name ?? ''}
+          isDemo={isDemoWorkspace(user.workspaceId)}
+        />
         <main id="main-content" tabIndex={-1} className="flex-1 overflow-y-auto p-4 sm:p-6 focus:outline-none">
           {children}
         </main>

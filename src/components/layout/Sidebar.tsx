@@ -21,6 +21,10 @@ import {
   CirclePlus,
   Building,
   Loader2,
+  Map,
+  Bell,
+  Contact,
+  RefreshCw,
   type LucideIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -77,6 +81,20 @@ const OPERATOR_GROUPS: NavGroup[] = [
   },
 ]
 
+// Mock screens for unbuilt roadmap features (Track D, D5) — demo-workspace only, so a
+// visitor sees where the product is headed without those features existing yet. Each
+// page is a single deletable file (src/app/(app)/preview/*); when the real feature
+// ships, delete its page and move the nav item out of this group into OPERATOR_GROUPS.
+const PREVIEW_GROUP: NavGroup = {
+  label: 'Preview',
+  items: [
+    { href: '/preview/map', label: 'Map', icon: Map },
+    { href: '/preview/notifications', label: 'Notifications', icon: Bell },
+    { href: '/preview/people', label: 'People', icon: Contact },
+    { href: '/preview/rent-automation', label: 'Rent automation', icon: RefreshCw },
+  ],
+}
+
 // Minimal tenant/guest nav — the self-service portal only, headerless.
 const TENANT_GROUPS: NavGroup[] = [
   {
@@ -97,12 +115,23 @@ function matchesPath(pathname: string, href: string): boolean {
 
 // The brand + grouped nav, reused by the desktop rail (Sidebar) and the mobile drawer
 // (MobileNav). `onNavigate` (optional) fires when a link is clicked — the drawer passes a
-// close handler so tapping a destination dismisses it.
-export function SidebarContent({ role, onNavigate }: { role: Role; onNavigate?: () => void }) {
+// close handler so tapping a destination dismisses it. `isDemo` (default false) appends
+// the Preview group of mock-feature pages — demo workspace only, operator roles only.
+export function SidebarContent({
+  role,
+  onNavigate,
+  isDemo = false,
+}: {
+  role: Role
+  onNavigate?: () => void
+  isDemo?: boolean
+}) {
   const pathname = usePathname()
 
-  // Filter each group's items by permission, then drop groups left empty.
-  const groups = (isTenantRole(role) ? TENANT_GROUPS : OPERATOR_GROUPS)
+  // Filter each group's items by permission, then drop groups left empty. The Preview
+  // group has no per-item permissions (every operator role sees it in the demo).
+  const baseGroups = isTenantRole(role) ? TENANT_GROUPS : OPERATOR_GROUPS
+  const groups = (isDemo && !isTenantRole(role) ? [...baseGroups, PREVIEW_GROUP] : baseGroups)
     .map((group) => ({
       ...group,
       items: group.items.filter((item) => !item.permission || can(role, item.permission)),
@@ -160,10 +189,10 @@ export function SidebarContent({ role, onNavigate }: { role: Role; onNavigate?: 
 }
 
 // The desktop rail — hidden below md, where the MobileNav drawer takes over.
-export function Sidebar({ role }: { role: Role }) {
+export function Sidebar({ role, isDemo = false }: { role: Role; isDemo?: boolean }) {
   return (
     <nav className="hidden h-full w-56 shrink-0 flex-col border-r bg-sidebar md:flex">
-      <SidebarContent role={role} />
+      <SidebarContent role={role} isDemo={isDemo} />
     </nav>
   )
 }

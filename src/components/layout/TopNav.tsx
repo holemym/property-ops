@@ -29,10 +29,12 @@ export function TopNav({
   userName,
   role,
   workspaceName,
+  isDemo = false,
 }: {
   userName: string
   role: Role
   workspaceName: string
+  isDemo?: boolean
 }) {
   const glyph = initials(userName)
 
@@ -40,7 +42,7 @@ export function TopNav({
     <header className="flex h-14 shrink-0 items-center justify-between gap-2 border-b bg-background px-4 sm:gap-4 sm:px-6">
       <div className="flex min-w-0 items-center gap-2">
         {/* Hamburger — mobile only; opens the nav drawer. */}
-        <MobileNav role={role} />
+        <MobileNav role={role} isDemo={isDemo} />
         <WorkspaceSwitcher role={role} workspaceName={workspaceName} />
       </div>
 

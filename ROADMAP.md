@@ -91,7 +91,7 @@ Spec: `docs/superpowers/specs/2026-07-09-property-ops-demo-mode-design.md`
       All gates reuse the already-tested `isDemoWorkspace` — no new pure logic needed
       unit tests. 290 tests green, no regression to non-demo paths.)*
 
-- [ ] **D5** `[builder]` — Preview nav section (4 mock pages). **Depends: D2 (for the
+- [x] **D5** `[builder]` — Preview nav section (4 mock pages). **Depends: D2 (for the
       demo gate); independent of D3/D4.**
       Per spec §5. **Files:** `src/app/(app)/preview/{map,notifications,people,rent-automation}/page.tsx`
       (each a single self-contained presentational file, hardcoded fixtures shaped like
@@ -101,6 +101,13 @@ Spec: `docs/superpowers/specs/2026-07-09-property-ops-demo-mode-design.md`
       deletable in one `rm` (the swap rule when real features ship).
       **Accept:** graphite system only (no new colors), pages render for demo
       workspace, nav group absent otherwise; build+lint+tests green.
+      *(committed — the first builder run hit an API session-limit mid-task; it had
+      already left `Sidebar.tsx`/`MobileNav.tsx`/`TopNav.tsx`/`(app)/layout.tsx`
+      correctly threading an `isDemo` prop through to a new `PREVIEW_GROUP` nav
+      section, verified coherent and finished from there rather than re-doing it: the
+      4 preview pages themselves (requireWorkspace + isTenantRole redirect, static
+      fixtures matching the 0023 demo seed, PageHeader + muted "Planned — preview"
+      Badge + one-line footer, tenant-role guarded). 290 tests green, no regressions.)*
 
 - [ ] **D6** `[verify]` — Demo end-to-end. **Depends: D2–D5 + the USER queue items
       (migration 0023 applied, Anonymous provider ON, `DEMO_MODE`/`DEMO_WORKSPACE_ID`
