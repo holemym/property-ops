@@ -33,7 +33,7 @@ Spec: `docs/superpowers/specs/2026-07-09-property-ops-demo-mode-design.md`
       + storage-policy exclusion. *(committed `62ec29a`, folded into schema_bundle;
       NOT yet applied to production — see USER queue.)*
 
-- [ ] **D2** `[builder]` — Demo helpers + entry action.
+- [x] **D2** `[builder]` — Demo helpers + entry action.
       **Files:** `src/lib/demo.ts` (new: `isDemoEnabled()` = `DEMO_MODE === 'on'`;
       `isDemoWorkspace(workspaceId)` = `workspaceId === process.env.DEMO_WORKSPACE_ID`,
       pure string compare, no DB hit), `src/app/(auth)/demo-actions.ts` (new:
