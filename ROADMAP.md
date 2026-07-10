@@ -97,7 +97,7 @@ Spec: `docs/superpowers/specs/2026-07-09-property-ops-demo-mode-design.md`
 ## Track S3 — Self-host runbook (docs only)
 Spec: security-hardening design §Stage S3.
 
-- [ ] **S3-1** `[builder]` — Write `docs/runbooks/self-hosting.md` per the spec's
+- [x] **S3-1** `[builder]` — Write `docs/runbooks/self-hosting.md` per the spec's
       4-part outline (portability rules + env matrix table of EVERY env var the code
       reads — grep `process.env.` for ground truth; Docker-compose Supabase + Next
       standalone + Caddy architecture; pg_dump/storage migration path + cutover
