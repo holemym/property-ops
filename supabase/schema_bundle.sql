@@ -1516,5 +1516,15 @@ create policy "documents_objects_insert"
   );
 
 -- =============================================================================
+-- MAP VIEW (0024) — nullable geocode columns on properties (lat/lng + last-success
+-- timestamp). NO RLS change: rides the existing properties_select_workspace /
+-- properties_insert_manager / properties_update_manager policies (0003) like every
+-- other column on this table. See migration 0024 for full rationale.
+-- =============================================================================
+alter table public.properties add column if not exists latitude    double precision;
+alter table public.properties add column if not exists longitude   double precision;
+alter table public.properties add column if not exists geocoded_at timestamptz;
+
+-- =============================================================================
 -- DONE. Verify: select count(*) from pg_tables where schemaname='public';  -- expect 17
 -- =============================================================================

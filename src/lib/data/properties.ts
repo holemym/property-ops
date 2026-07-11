@@ -13,6 +13,13 @@ export type Property = {
   property_type: PropertyType
   notes: string | null
   status: EntityStatus
+  // Geocode result (migration 0024, Track M map view). NULL = not geocoded yet (either
+  // never attempted, or Nominatim found no match) — /map counts and offers a backfill
+  // for these. geocoded_at is stamped on a SUCCESSFUL geocode only; all three are always
+  // written together (never just one) — see src/lib/geocode-service.ts.
+  latitude: number | null
+  longitude: number | null
+  geocoded_at: string | null
   created_at: string
   updated_at: string
 }
@@ -115,4 +122,34 @@ export async function archiveProperty(
     .from('properties').update({ status: 'ARCHIVED' }).eq('workspace_id', workspaceId).eq('id', id).select().single()
   if (error) throw error
   return data as Property
+}
+
+export type PropertyCoordinates = {
+  latitude: number | null
+  longitude: number | null
+  geocoded_at: string | null
+}
+
+/**
+ * Persist a geocode result (or clear it) — Track M. Called by the best-effort
+ * geocode-on-save wiring (src/lib/geocode-service.ts) after a property create/update
+ * or during the manager-only backfill, never directly from a form. Uses the SAME
+ * RLS-scoped client as the triggering action: the caller is already authorized to
+ * write this property (properties:write / is_workspace_manager()), so no service
+ * client is needed. Throws on a DB error, same convention as every other write above —
+ * the caller (refreshPropertyGeocode) is what swallows it, keeping this function's
+ * contract consistent with createProperty/updateProperty/archiveProperty.
+ */
+export async function updatePropertyCoordinates(
+  supabase: SupabaseClient,
+  workspaceId: string,
+  id: string,
+  coords: PropertyCoordinates
+): Promise<void> {
+  const { error } = await supabase
+    .from('properties')
+    .update(coords)
+    .eq('workspace_id', workspaceId)
+    .eq('id', id)
+  if (error) throw error
 }

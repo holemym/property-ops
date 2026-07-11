@@ -1,6 +1,13 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { createFakeSupabaseClient } from '../helpers/fake-supabase'
-import { listProperties, getProperty, createProperty, updateProperty, archiveProperty } from '@/lib/data/properties'
+import {
+  listProperties,
+  getProperty,
+  createProperty,
+  updateProperty,
+  archiveProperty,
+  updatePropertyCoordinates,
+} from '@/lib/data/properties'
 
 const WORKSPACE_A = 'workspace-a'
 const WORKSPACE_B = 'workspace-b'
@@ -11,8 +18,8 @@ describe('properties data access', () => {
   beforeEach(() => {
     client = createFakeSupabaseClient({
       properties: [
-        { id: 'prop-1', workspace_id: WORKSPACE_A, name: 'Sunset Apartments', status: 'ACTIVE', created_at: '2026-01-01T00:00:00Z' },
-        { id: 'prop-2', workspace_id: WORKSPACE_B, name: 'Other Workspace Building', status: 'ACTIVE', created_at: '2026-01-02T00:00:00Z' },
+        { id: 'prop-1', workspace_id: WORKSPACE_A, name: 'Sunset Apartments', status: 'ACTIVE', created_at: '2026-01-01T00:00:00Z', latitude: null, longitude: null, geocoded_at: null },
+        { id: 'prop-2', workspace_id: WORKSPACE_B, name: 'Other Workspace Building', status: 'ACTIVE', created_at: '2026-01-02T00:00:00Z', latitude: null, longitude: null, geocoded_at: null },
       ],
     })
   })
@@ -63,5 +70,47 @@ describe('properties data access', () => {
   it('does not return a property belonging to another workspace', async () => {
     const result = await getProperty(client, WORKSPACE_A, 'prop-2')
     expect(result).toBeNull()
+  })
+
+  it('persists a geocode result onto the property row (Track M)', async () => {
+    await updatePropertyCoordinates(client, WORKSPACE_A, 'prop-1', {
+      latitude: 48.2082,
+      longitude: 16.3738,
+      geocoded_at: '2026-07-09T12:00:00Z',
+    })
+
+    const after = await getProperty(client, WORKSPACE_A, 'prop-1')
+    expect(after?.latitude).toBe(48.2082)
+    expect(after?.longitude).toBe(16.3738)
+    expect(after?.geocoded_at).toBe('2026-07-09T12:00:00Z')
+  })
+
+  it('nulls out a stale geocode on a failed re-geocode', async () => {
+    await updatePropertyCoordinates(client, WORKSPACE_A, 'prop-1', {
+      latitude: 48.2082,
+      longitude: 16.3738,
+      geocoded_at: '2026-07-09T12:00:00Z',
+    })
+    await updatePropertyCoordinates(client, WORKSPACE_A, 'prop-1', {
+      latitude: null,
+      longitude: null,
+      geocoded_at: null,
+    })
+
+    const after = await getProperty(client, WORKSPACE_A, 'prop-1')
+    expect(after?.latitude).toBeNull()
+    expect(after?.longitude).toBeNull()
+    expect(after?.geocoded_at).toBeNull()
+  })
+
+  it('does not touch a property in another workspace', async () => {
+    await updatePropertyCoordinates(client, WORKSPACE_A, 'prop-2', {
+      latitude: 1,
+      longitude: 1,
+      geocoded_at: '2026-07-09T12:00:00Z',
+    })
+
+    const other = await getProperty(client, WORKSPACE_B, 'prop-2')
+    expect(other?.latitude).toBeNull()
   })
 })

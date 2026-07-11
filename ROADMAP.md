@@ -154,7 +154,7 @@ Spec: security-hardening design §Stage S3.
 ## Track M — Map view
 Spec: `docs/superpowers/specs/2026-07-09-property-ops-map-view-design.md`
 
-- [ ] **M1** `[builder]` `[rls]` — Migration 0024 (properties lat/lng/geocoded_at,
+- [x] **M1** `[builder]` `[rls]` — Migration 0024 (properties lat/lng/geocoded_at,
       nullable, no policy change — RLS review is a formality but run it) + `Property`
       type fields + `src/lib/geocode.ts` (raw-fetch Nominatim per spec §2:
       `buildGeocodeQuery` + `parseNominatimResponse` as PURE exported functions,
@@ -164,6 +164,24 @@ Spec: `docs/superpowers/specs/2026-07-09-property-ops-map-view-design.md`
       cap 20). Fold migration into schema_bundle.
       **Accept:** unit tests for the two pure functions (valid/empty/garbage inputs);
       no geocode call can ever block or fail a property save; build+lint+tests green.
+      *(committed — RLS review came back CLEAN (no policy drift, RLS-scoped client
+      only, backfill gating is real defense-in-depth) but surfaced one MEDIUM finding:
+      this ships the app's first outbound third-party HTTP calls triggered by ordinary
+      user actions, and neither entry point was wired through the existing
+      `checkRateLimit()` (migration 0022). Fixed before commit: both property
+      create/update's geocode-on-save AND the backfill loop now check a SHARED,
+      workspace-scoped bucket (`geocode:<workspaceId>`, 30/60s — see the constants in
+      `src/lib/geocode.ts`) before calling Nominatim, so one workspace's usage can
+      never exhaust another's budget or exhaust the shared User-Agent/IP's real-world
+      Nominatim budget alone (a ban there would silently break geocoding for every
+      workspace on the deployment). A throttled save just skips that save's geocode
+      attempt (never blocks/fails the save); a throttled backfill fails the whole
+      attempt up front with a friendly `?error=` message instead of stopping partway.
+      `checkRateLimit` fails open, so this is a no-op until migration 0022 is applied.
+      `Property` type actually lives in `src/lib/data/properties.ts`, not
+      `src/types/domain.ts` as the spec says — fields added in the real location; spec
+      has a one-line inaccuracy to fix. 315 tests green (293 baseline + 22 new),
+      build+lint clean. No page/UI yet — `/map` itself is M2.)*
 
 - [ ] **M2** `[builder]` — `/map` page + Leaflet. **Depends: M1.**
       Per spec §3–4: add `leaflet` + `@types/leaflet` (THE approved dependency — the
@@ -239,6 +257,15 @@ Spec: `docs/superpowers/specs/2026-07-09-property-ops-map-view-design.md`
 - [ ] Run migration **0022** (rate limiting) in the Supabase SQL editor. Until then
       the limiter fails open (app works, no throttling).
 - [ ] Run migration **0023** (demo mode) — after/with D2–D5 landing.
+- [ ] Run migration **0024** (properties lat/lng/geocoded_at — Track M) in the Supabase
+      SQL editor. Additive, nullable columns only, no RLS/policy change. Until applied,
+      both call sites degrade safely with no user-facing failure: geocode-on-save's
+      `.update({latitude, longitude, geocoded_at})` targets columns that don't exist
+      yet, so PostgREST errors and `refreshPropertyGeocode`'s try/catch swallows it
+      (property saves are unaffected either way); the backfill action's `select('*')`
+      simply won't return those keys, so every property reads as `latitude: undefined`
+      — which fails its `=== null` "missing coords" check — so backfill finds zero
+      properties to geocode and no-ops (0 Nominatim calls) rather than erroring.
 - [ ] Supabase dashboard → Auth → Providers → enable **Anonymous sign-ins** (demo).
 - [ ] Vercel env (Production) + `.env.local`: `SIGNUP_MODE=invite` (flips the front
       door — do this deliberately), `DEMO_MODE=on`,

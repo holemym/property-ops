@@ -6,7 +6,10 @@ import { createClient } from '@/lib/supabase/server'
 import { requirePermission } from '@/lib/auth/session'
 import { redirectWithError } from '@/lib/redirect-with-error'
 import { propertyFormSchema } from '@/lib/validation/property'
-import { createProperty, updateProperty, archiveProperty } from '@/lib/data/properties'
+import { createProperty, updateProperty, archiveProperty, getProperty } from '@/lib/data/properties'
+import { refreshPropertyGeocode } from '@/lib/geocode-service'
+import { checkRateLimit } from '@/lib/rate-limit'
+import { geocodeRateLimitKey, GEOCODE_RATE_LIMIT_MAX, GEOCODE_RATE_LIMIT_WINDOW_SECONDS } from '@/lib/geocode'
 
 function parsePropertyForm(formData: FormData) {
   return propertyFormSchema.safeParse({
@@ -38,6 +41,31 @@ export async function createPropertyAction(formData: FormData) {
     // through to the redirect below on the error path — propertyId is definitely assigned.
     redirectWithError('/properties/new', e instanceof Error ? e.message : 'Could not create property.')
   }
+
+  // Geocode-on-save (Track M): every new property gets a first geocode attempt.
+  // refreshPropertyGeocode never throws, so this can never fail the create — awaited
+  // only so the pin is already present the first time the manager lands on the detail
+  // page (same rationale as runAutoTriage's await in tickets/actions.ts).
+  //
+  // Rate-limit gate: one shared Nominatim identity/IP serves every workspace on this
+  // deployment (see src/lib/geocode.ts) — throttled here just means THIS save's
+  // geocode attempt is skipped, same as any other best-effort geocode miss. It never
+  // blocks or fails the property save itself. checkRateLimit fails open, so this is a
+  // no-op (always allowed) until migration 0022 is applied.
+  const canGeocode = await checkRateLimit(
+    geocodeRateLimitKey(user.workspaceId),
+    GEOCODE_RATE_LIMIT_MAX,
+    GEOCODE_RATE_LIMIT_WINDOW_SECONDS
+  )
+  if (canGeocode) {
+    await refreshPropertyGeocode(supabase, user.workspaceId, propertyId, {
+      line1: parsed.data.addressLine1,
+      postalCode: parsed.data.postalCode,
+      city: parsed.data.city,
+      country: parsed.data.country,
+    })
+  }
+
   revalidatePath('/properties')
   redirect(`/properties/${propertyId}`)
 }
@@ -50,11 +78,44 @@ export async function updatePropertyAction(id: string, formData: FormData) {
   }
 
   const supabase = await createClient()
+  // Fetched BEFORE the update so the comparison below is against the pre-edit address —
+  // used only for address-change detection (Track M geocode-on-save); if this lookup
+  // ever came back null the update below would throw on the same missing row and
+  // redirect away before addressChanged is read.
+  const before = await getProperty(supabase, user.workspaceId, id)
   try {
     await updateProperty(supabase, user.workspaceId, id, parsed.data)
   } catch (e) {
     redirectWithError(`/properties/${id}`, e instanceof Error ? e.message : 'Could not save changes.')
   }
+
+  // Geocode-on-save (Track M): only re-geocode when an address field actually changed.
+  // refreshPropertyGeocode nulls the stale coords itself on a failed re-geocode — a
+  // wrong pin left at the old address is worse than no pin.
+  const addressChanged =
+    before?.address_line1 !== parsed.data.addressLine1 ||
+    before?.city !== parsed.data.city ||
+    before?.postal_code !== parsed.data.postalCode ||
+    before?.country !== parsed.data.country
+  if (addressChanged) {
+    // Rate-limit gate — same shared, workspace-scoped budget as create + the backfill
+    // action (see src/lib/geocode.ts). Throttled just means this save's re-geocode is
+    // skipped; the property update above has already succeeded either way.
+    const canGeocode = await checkRateLimit(
+      geocodeRateLimitKey(user.workspaceId),
+      GEOCODE_RATE_LIMIT_MAX,
+      GEOCODE_RATE_LIMIT_WINDOW_SECONDS
+    )
+    if (canGeocode) {
+      await refreshPropertyGeocode(supabase, user.workspaceId, id, {
+        line1: parsed.data.addressLine1,
+        postalCode: parsed.data.postalCode,
+        city: parsed.data.city,
+        country: parsed.data.country,
+      })
+    }
+  }
+
   revalidatePath(`/properties/${id}`)
   revalidatePath('/properties')
 }
