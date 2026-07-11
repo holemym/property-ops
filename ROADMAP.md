@@ -275,18 +275,30 @@ Spec: `docs/superpowers/specs/2026-07-09-property-ops-map-view-design.md`
 - [ ] **PERF-2** `[builder]` — Add `@vercel/speed-insights` for a real-user metrics
       baseline (tiny; then decide what else is worth doing with data, not vibes).
 
-## Housekeeping (continued)
+## Housekeeping
 
+- [x] **H1** `[builder]` — Delete dead `src/components/common/DataTable.tsx` (nothing
+      imports it). One-line commit.
+      *(done — landed as a scope freebie inside the D7 commit (`bbe845a`), just never
+      ticked here until now; confirmed via `git log --diff-filter=D`.)*
 - [x] **H2** `[builder]` — Sync `.env.local.example` with reality (flagged by the
       S3-1 build): it's missing `SIGNUP_MODE`, `DEMO_MODE`, `DEMO_WORKSPACE_ID`,
       `ANTHROPIC_API_KEY`, `ANTHROPIC_TRIAGE_MODEL`. Ground truth = the env matrix in
       `docs/runbooks/self-hosting.md` (which was grepped from source). Placeholder
       values + one-line comments only — never real keys.
-
-## Housekeeping
-
-- [ ] **H1** `[builder]` — Delete dead `src/components/common/DataTable.tsx` (nothing
-      imports it). One-line commit.
+      *(committed `8d9f83b`. One more var was missed — `NOMINATIM_CONTACT`, added by
+      M1 after this landed — folded in directly, see below.)*
+- [ ] **H3** `[builder]` — Reconcile the "is a RESOLVED ticket still open?" split
+      (flagged by the M2 build). `dashboard/page.tsx` counts `RESOLVED` tickets as
+      open/needing attention; `occupancy`, `insights`/analytics, the property hub, and
+      the unit hub all count `RESOLVED` as done (terminal) — same ticket can read
+      differently depending which page you're on. Decide the correct semantics (likely:
+      RESOLVED = done, matching the 4-page majority and `TERMINAL_TICKET_STATUSES` in
+      `src/components/units/hub/shared.ts`), fix the outlier, and grep for any other
+      ad-hoc status-terminality checks to make sure there's only one source of truth
+      going forward — consider extracting a shared `isTicketOpen(status)` helper.
+      **Accept:** every surface agrees on open vs. done for the same ticket; unit test
+      the extracted helper if one is added; build+lint+tests green.
 
 ---
 
