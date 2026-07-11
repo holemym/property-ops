@@ -28,7 +28,10 @@ alter table public.properties
   add column if not exists geocoded_at timestamptz;
 ```
 
-`Property` type in `src/types/domain.ts` gains the three fields (nullable).
+`Property` type gains the three fields (nullable) — it lives in `src/lib/data/properties.ts`
+alongside `createProperty`/`updateProperty`, **not** `src/types/domain.ts` (that file only
+holds the shared enums, `PropertyType`/`EntityStatus`; an earlier draft of this spec pointed
+here incorrectly).
 **USER action:** run migration 0024.
 
 ## 2. Geocoding — `src/lib/geocode.ts`
