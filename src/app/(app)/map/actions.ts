@@ -7,14 +7,17 @@ import { redirectWithError } from '@/lib/redirect-with-error'
 import { listProperties } from '@/lib/data/properties'
 import { refreshPropertyGeocode } from '@/lib/geocode-service'
 import { checkRateLimit } from '@/lib/rate-limit'
-import { geocodeRateLimitKey, GEOCODE_RATE_LIMIT_MAX, GEOCODE_RATE_LIMIT_WINDOW_SECONDS } from '@/lib/geocode'
+import {
+  geocodeRateLimitKey,
+  GEOCODE_RATE_LIMIT_MAX,
+  GEOCODE_RATE_LIMIT_WINDOW_SECONDS,
+  GEOCODE_BACKFILL_CAP,
+} from '@/lib/geocode'
 
 // Nominatim's usage policy caps free-tier use to 1 request/second (see the header of
 // src/lib/geocode.ts) — this loop serializes with a small safety margin over that
-// floor. Portfolios are small at this stage, so a flat cap keeps one click's latency
-// bounded regardless of workspace size; a manager can click again for the next batch.
+// floor.
 const BACKFILL_DELAY_MS = 1100
-const BACKFILL_CAP = 20
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -22,8 +25,8 @@ function sleep(ms: number): Promise<void> {
 
 /**
  * Manager-only backfill (Track M — the button lives on /map, wired in M2). Geocodes up
- * to BACKFILL_CAP ACTIVE properties that are still missing coordinates, one at a time
- * with a BACKFILL_DELAY_MS gap between calls (Nominatim policy compliance). Never
+ * to GEOCODE_BACKFILL_CAP ACTIVE properties that are still missing coordinates, one at a
+ * time with a BACKFILL_DELAY_MS gap between calls (Nominatim policy compliance). Never
  * throws on a per-property basis: refreshPropertyGeocode already swallows its own
  * errors, so one bad address can never abort the rest of the batch.
  */
@@ -50,7 +53,7 @@ export async function backfillPropertyGeocodesAction(): Promise<void> {
   const properties = await listProperties(supabase, user.workspaceId, { status: 'ACTIVE' })
   const missing = properties
     .filter((property) => property.latitude === null || property.longitude === null)
-    .slice(0, BACKFILL_CAP)
+    .slice(0, GEOCODE_BACKFILL_CAP)
 
   for (const [index, property] of missing.entries()) {
     await refreshPropertyGeocode(supabase, user.workspaceId, property.id, {

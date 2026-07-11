@@ -148,3 +148,29 @@
     scroll-behavior: auto !important;
   }
 }
+
+/* Leaflet overrides (Track M — /map, src/components/map/LeafletMap.tsx). Leaflet's CSS is
+   imported from the dynamically-loaded LeafletMap chunk (see PropertyMap.tsx's next/dynamic
+   ssr:false — kept out of the shared bundle deliberately), so it's injected into the
+   document AFTER this global stylesheet. A same-specificity override here would therefore
+   LOSE the cascade tie on load order (confirmed live: `.leaflet-popup-content-wrapper {
+   background: white; color: #333 }` from leaflet.css was winning). Each selector below adds
+   one extra qualifier over Leaflet's own so it wins regardless of injection order. Retints
+   the popup to the app's popover tokens (dark-mode aware) per the spec's ~20-line budget. */
+.leaflet-container .leaflet-popup-content-wrapper,
+.leaflet-container .leaflet-popup-tip {
+  background: var(--popover);
+  color: var(--popover-foreground);
+}
+.leaflet-container .leaflet-popup-content-wrapper {
+  border-radius: var(--radius-lg);
+}
+.leaflet-container .leaflet-popup-content {
+  margin: 0.75rem 1rem;
+}
+.leaflet-popup-content-wrapper .leaflet-popup-content a {
+  color: var(--foreground);
+}
+.leaflet-tile-pane {
+  filter: grayscale(0.85) contrast(0.9);
+}

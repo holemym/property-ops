@@ -46,6 +46,14 @@ export type GeocodeResult = { lat: number; lng: number }
 export const GEOCODE_RATE_LIMIT_MAX = 30
 export const GEOCODE_RATE_LIMIT_WINDOW_SECONDS = 60
 
+// Backfill batch cap (src/app/(app)/map/actions.ts's backfillPropertyGeocodesAction) —
+// portfolios are small at this stage, so a flat cap keeps one click's latency bounded
+// regardless of workspace size; a manager can click again for the next batch. Lives here
+// (rather than in actions.ts, a 'use server' file) so the map page can import it too, to
+// label the button with exactly how many a click will attempt — 'use server' files may
+// only export async functions, not plain constants.
+export const GEOCODE_BACKFILL_CAP = 20
+
 /** The one shared bucket key every geocode call site must use — see the constants above. */
 export function geocodeRateLimitKey(workspaceId: string): string {
   return `geocode:${workspaceId}`

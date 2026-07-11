@@ -21,7 +21,7 @@ import {
   CirclePlus,
   Building,
   Loader2,
-  Map,
+  MapPinned,
   Bell,
   Contact,
   RefreshCw,
@@ -50,6 +50,7 @@ const OPERATOR_GROUPS: NavGroup[] = [
     label: 'Portfolio',
     items: [
       { href: '/properties', label: 'Properties', icon: Building2 },
+      { href: '/map', label: 'Map', icon: MapPinned, permission: 'properties:read' },
       { href: '/units', label: 'Units', icon: DoorOpen },
       { href: '/occupancy', label: 'Occupancy', icon: CalendarClock, permission: 'occupancy:read' },
       { href: '/rent-roll', label: 'Rent roll', icon: ReceiptText, permission: 'occupancy:read' },
@@ -85,10 +86,11 @@ const OPERATOR_GROUPS: NavGroup[] = [
 // visitor sees where the product is headed without those features existing yet. Each
 // page is a single deletable file (src/app/(app)/preview/*); when the real feature
 // ships, delete its page and move the nav item out of this group into OPERATOR_GROUPS.
+// Map shipped for real in Track M (M2) — its preview entry + page are gone (the swap
+// rule); the live "Map" link now lives in OPERATOR_GROUPS's Portfolio group above.
 const PREVIEW_GROUP: NavGroup = {
   label: 'Preview',
   items: [
-    { href: '/preview/map', label: 'Map', icon: Map },
     { href: '/preview/notifications', label: 'Notifications', icon: Bell },
     { href: '/preview/people', label: 'People', icon: Contact },
     { href: '/preview/rent-automation', label: 'Rent automation', icon: RefreshCw },

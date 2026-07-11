@@ -183,7 +183,7 @@ Spec: `docs/superpowers/specs/2026-07-09-property-ops-map-view-design.md`
       has a one-line inaccuracy to fix. 315 tests green (293 baseline + 22 new),
       build+lint clean. No page/UI yet — `/map` itself is M2.)*
 
-- [ ] **M2** `[builder]` — `/map` page + Leaflet. **Depends: M1.**
+- [x] **M2** `[builder]` — `/map` page + Leaflet. **Depends: M1.**
       Per spec §3–4: add `leaflet` + `@types/leaflet` (THE approved dependency — the
       only one), `src/components/map/PropertyMap.tsx` (`'use client'`, `next/dynamic`
       `ssr:false`, `L.divIcon` graphite pins — never the default PNG markers, OSM tile
@@ -195,6 +195,47 @@ Spec: `docs/superpowers/specs/2026-07-09-property-ops-map-view-design.md`
       with `map.remove()` cleanup — React Compiler rules apply.
       **Accept:** build output shows Leaflet lazy (not in shared client chunk);
       build+lint+tests green.
+      *(committed — `PropertyMap.tsx` is a thin `'use client'` wrapper that
+      `next/dynamic(..., {ssr:false})`-imports `src/components/map/LeafletMap.tsx` (the
+      real Leaflet mutation, only ever reached through that lazy import — confirmed via
+      the build's `react-loadable-manifest.json` + chunk inspection that leaflet's ~150KB
+      chunk is registered only against `/map`'s loadable manifest, absent from
+      `rootMainFiles`/`polyfillFiles` and from the server bundle). Graphite pins are
+      lucide's `MapPin` teardrop (not `MapPinned` — that stays reserved for the Sidebar nav
+      icon per spec; a sharp-tipped teardrop anchors more precisely to a lat/lng point than
+      the flat-based `MapPinned` glyph) inlined as raw SVG since divIcon content is DOM, not
+      JSX; popups are built via `document.createElement`/`textContent` (never innerHTML).
+      Sidebar: "Map" added to the Portfolio group right after Properties,
+      `properties:read`-gated; `/preview/map` + its nav entry deleted in this commit
+      (swap rule). `GEOCODE_BACKFILL_CAP` moved from `map/actions.ts` into
+      `src/lib/geocode.ts` — a `'use server'` file may only export async functions, so the
+      page couldn't import the cap to label the backfill button ("Locate N missing")
+      without relocating it; `map/actions.ts` now imports it back.
+      Live-verified against this deployment's real (production) Supabase project — not
+      just build/lint/tests — and that surfaced two real bugs no static check would have
+      caught, both fixed before commit: (1) migration 0024 has NOT been applied here yet,
+      so `latitude`/`longitude` come back `undefined` (not `null`) on every row; an
+      `!== null` filter treats `undefined` as "located" and hands Leaflet an
+      `(undefined, undefined)` LatLng, which throws — replaced with a `hasCoordinates`
+      type predicate (`typeof x === 'number'`) that treats anything non-numeric as "not
+      located" and safely degrades to the "Nothing located yet" empty state instead of
+      crashing (confirmed live, before and after). (2) Leaflet's own popup CSS
+      (`.leaflet-popup-content-wrapper, .leaflet-popup-tip { background: white; color:
+      #333 }`) is injected AFTER globals.css (it ships inside the lazy-loaded LeafletMap
+      chunk by design), so a same-specificity override loses the cascade tie regardless of
+      source order — the popup was rendering illegibly in dark mode (dark text on a white
+      wrapper that never actually retinted). Rewrote every override to a
+      `.leaflet-container <selector>` descendant form (specificity (0,2,0) vs Leaflet's
+      (0,1,0)/(0,1,1)) so it wins regardless of injection order; reverified via
+      `getComputedStyle` in both themes (light: white/near-black; dark: dark-gray/near-
+      white — both matching `--popover`/`--popover-foreground` exactly) before reverting
+      the temporary hardcoded-coordinates test harness used to drive that check. 315 tests
+      green (no regression; no new standalone pure logic needing tests — the per-property
+      unit/ticket aggregation is inlined in the page, mirroring the existing convention in
+      the property/unit hub pages, none of which unit-test their inline aggregations
+      either). Migration 0024 still needs a USER to run it (already queued from M1) before
+      any real pins can appear — M3 is the right place to verify that end-to-end once it
+      has.)*
 
 - [ ] **M3** `[verify]` — Map verification. **Depends: M2 + USER ran 0024.** Playbook:
       create a property with a real Vienna address → pin appears; edit address → pin
