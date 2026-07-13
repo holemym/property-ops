@@ -254,35 +254,93 @@ Spec: `docs/superpowers/specs/2026-07-09-property-ops-map-view-design.md`
       popup navigation click-through, dark-mode legibility on real pins, phone
       viewport pan/zoom. Re-dispatch prop-verifier for just that list after 0024.)*
 
-## Track P — Product depth (each needs a spec before code)
+## Track P1 — Tenant directory (People)
+Spec: `docs/superpowers/specs/2026-07-12-property-ops-p1-tenant-directory-design.md`
+(Fable design pass done 2026-07-12 — builders follow it exactly.)
 
-- [ ] **P1** `[plan]` — Tenant directory. Brainstorm → spec → split into board tasks.
-      Outline: roadmap v2 §4. PII SELECT gating mirrors tenancies (0016).
-- [ ] **P2** `[plan]` — In-app notifications. Outline: roadmap v2 §4. Delete
-      `/preview/notifications` when real one ships.
-- [ ] **P3** `[plan]` — Recurring rent invoices. Outline: roadmap v2 §4 (no cron —
-      "Generate month" button). Delete `/preview/rent-automation` when shipped.
-- [ ] **P4** `[plan]` — German i18n via next-intl (second approved dependency,
-      cookie-based locale). LAST — after P1–P3 so screens are stable.
+- [ ] **P1-1** `[builder]` `[rls]` — Migration 0025 (`tenants` table, PII-gated RLS
+      per 0016's posture, `tenancies.tenant_id` composite FK, trigram indexes,
+      demo-reset extension, bundle fold) + `tenants:read`/`tenants:write` permissions
+      + data layer `src/lib/data/tenants.ts` + `src/lib/validation/tenant.ts` + unit
+      tests. Spec §1–3.
+- [ ] **P1-2** `[builder]` — `/people` list (search, responsive table→cards) +
+      `TenantForm` + new/edit pages + Portfolio nav entry + **delete
+      `/preview/people`**. Depends P1-1. Spec §4.
+- [ ] **P1-3** `[builder]` — Detail-page tenancy card + `NewTenancyDialog` person
+      picker (server-side name resolution in `createTenancy`) + tenants source in
+      `searchWorkspace` + tests. Depends P1-1; sequence after P1-2 (shared board/nav
+      files). Spec §4.
+- [ ] **P1-4** `[verify]` — Full playbook in spec §6. Depends P1-1..3 + USER ran 0025.
+
+## Track P2 — In-app notifications
+Spec: `docs/superpowers/specs/2026-07-12-property-ops-p2-notifications-design.md`
+
+- [ ] **P2-1** `[builder]` `[rls]` — Migration 0026 (`notifications` + enum, own-inbox
+      RLS with zero-INSERT-policy/service-role writes, demo-reset extension, bundle
+      fold) + `notify-inapp.ts` writer + wiring into the three ticket-action moments +
+      data layer + unit tests (recipient-resolution branches). Spec §1–2.
+- [ ] **P2-2** `[builder]` — TopNav bell + unread chip + `/notifications` inbox
+      (paged, mark-read/mark-all) + portal-surface check + **delete
+      `/preview/notifications`**. Depends P2-1. Spec §3.
+- [ ] **P2-3** `[verify]` — Full playbook in spec §5. Depends P2-1..2 + USER ran 0026.
+
+## Track P3 — Recurring rent invoices
+Spec: `docs/superpowers/specs/2026-07-12-property-ops-p3-recurring-rent-design.md`
+
+- [ ] **P3-1** `[builder]` `[rls]` — Migration 0027 (`invoices.billing_period` +
+      partial unique dedupe index, bundle fold) + `Invoice` type field +
+      `src/lib/invoices/recurring.ts` pure planner + exhaustive edge-case unit tests.
+      Spec §1–2.
+- [ ] **P3-2** `[builder]` — `generateRentInvoicesAction` + month dialog + result
+      toast + derived overdue badge + `?overdue=1` filter + **delete
+      `/preview/rent-automation`**. Depends P3-1 (works with or without P1's
+      tenant links). Spec §3.
+- [ ] **P3-3** `[verify]` — Full playbook in spec §5. Depends P3-1..2 + USER ran 0027.
+
+## Track P4 — German i18n
+Decisions LOCKED in
+`docs/superpowers/specs/2026-07-12-property-ops-p4-i18n-decisions.md` (next-intl,
+cookie locale, message-file layout, what never gets translated, date/money locale
+handling). **Task decomposition deliberately deferred until P1–P3 ship** — the copy
+surface is still growing; decomposing now guarantees churn. The future planning pass
+is mechanical given the decisions doc.
+
+- [ ] **P4-0** `[plan]` — (After P1–P3.) Turn the decisions doc into P4-1..n tasks:
+      dependency+plumbing first, then portal, shell/nav, operator surfaces, in the
+      doc's locked order.
 
 ## Track S2 — Security deep (after P2)
+S2-1 spec: `docs/superpowers/specs/2026-07-12-property-ops-s2-1-mfa-design.md`
 
-- [ ] **S2-1** `[plan]` — TOTP MFA enrollment (`/settings/security`) + soft-enforce
-      for OWNER. Spec section exists (security design §S2.1) but needs a UI design
-      pass before building.
+- [ ] **S2-1a** `[builder]` — Browser Supabase client helper (if missing) +
+      `/settings/security` page + `MfaEnroll` flow + factor list/remove + Settings
+      nav group + password-change link. Spec §2.
+- [ ] **S2-1b** `[builder]` — `/auth/mfa` challenge page + AAL redirect in
+      `signInWithPassword` + the `requireUser()` AAL gate + owner dashboard nag.
+      Depends S2-1a. **Auth boundary — deviations stop and report, never improvise.**
+      Spec §3–4.
+- [ ] **S2-1c** `[verify]` — Full playbook in spec §6 (needs a disposable test
+      account from USER — never enroll MFA on the real owner account).
 - [ ] **S2-2** `[builder]` `[rls]` — `auth_events` audit table + writes from auth
-      actions + admin table on `/settings/security`. Spec §S2.2.
+      actions + admin table on `/settings/security`. Spec: security-hardening design
+      §S2.2. Sequence after S2-1a (shares the security page).
 - [ ] **S2-3** `[builder]` — CSP: flip Report-Only → enforcing. **Blocked on USER
       confirming zero violations in normal browsing for a few days.** One-line header
       rename in `next.config.ts`.
 - [ ] **S2-4** `[builder]` — `npm audit` script + monthly dependency runbook entry.
 
 ## Perf
+PERF-1 spec: `docs/superpowers/specs/2026-07-12-property-ops-perf1-auth-roundtrip-design.md`
+(Fable design pass done — the middleware `getUser()` STAYS; only the page-level call
+changes. Rejected alternatives are listed in the spec; do not revisit them.)
 
-- [ ] **PERF-1** `[plan]` — Kill the double `auth.getUser()` per navigation (middleware
-      + page both hit Supabase Auth over the network; React `cache()` doesn't span
-      runtimes). **High-stakes: this is the auth boundary — design pass required, no
-      direct implementation.** Context: memory notes 2026-07-09 session 6.
+- [ ] **PERF-1a** `[builder]` — Swap `getCurrentUser()`'s `auth.getUser()` for
+      `auth.getClaims()` per spec (touch nothing else) + tests. Safe pre-key-migration
+      (automatic fallback).
+- [ ] **PERF-1b** `[USER]` — Supabase dashboard → JWT Keys → migrate to asymmetric
+      signing keys (this flips the perf win on). Queued below.
+- [ ] **PERF-1c** `[verify]` — After 1b: all auth flows live-checked, page-level Auth
+      API calls gone from logs, before/after navigation timing recorded. Spec §Rollout.
 - [ ] **PERF-2** `[builder]` — Add `@vercel/speed-insights` for a real-user metrics
       baseline (tiny; then decide what else is worth doing with data, not vibes).
 
@@ -337,3 +395,11 @@ Spec: `docs/superpowers/specs/2026-07-09-property-ops-map-view-design.md`
 - [ ] Work through `docs/runbooks/supabase-security-settings.md` (leaked-password
       protection, session lifetimes, OTP expiry, redirect allowlist).
 - [ ] After a few days of clean browsing: green-light S2-3 (CSP enforce).
+- [ ] *(becomes due as tracks land)* Run migration **0025** (tenants — after P1-1),
+      **0026** (notifications — after P2-1), **0027** (invoice billing_period — after
+      P3-1) in the SQL editor. Each is announced in its builder's report.
+- [ ] *(PERF-1b)* Supabase dashboard → Project Settings → JWT Keys → migrate to
+      **asymmetric signing keys** — flips on PERF-1's speed win. Do after PERF-1a lands.
+- [ ] *(with S2-1)* Supabase dashboard → Auth → Multi-Factor: confirm TOTP enabled;
+      provide a disposable test account for S2-1c verification (never enroll MFA on
+      the real owner account during testing).
