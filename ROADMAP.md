@@ -344,8 +344,18 @@ changes. Rejected alternatives are listed in the spec; do not revisit them.)
       signing keys (this flips the perf win on). Queued below.
 - [ ] **PERF-1c** `[verify]` — After 1b: all auth flows live-checked, page-level Auth
       API calls gone from logs, before/after navigation timing recorded. Spec §Rollout.
-- [ ] **PERF-2** `[builder]` — Add `@vercel/speed-insights` for a real-user metrics
+- [x] **PERF-2** `[builder]` — Add `@vercel/speed-insights` for a real-user metrics
       baseline (tiny; then decide what else is worth doing with data, not vibes).
+      *(done — `<SpeedInsights />` wired into `src/app/layout.tsx` root layout per
+      Vercel's standard App Router integration. Also added `va.vercel-scripts.com` to
+      `next.config.ts`'s CSP `script-src`: the package's dev-mode debug script loads
+      from that external domain (production self-hosts same-origin at
+      `/_vercel/speed-insights/script.js`, already covered by `'self'`) — without the
+      allowance, local dev would show a false-positive CSP violation, undermining the
+      "zero violations" check S2-3 is gated on. No new pure logic, so no new unit
+      tests; build+lint+325 existing tests verified green, plus a runtime smoke check
+      (dev server, console clean, script injected with correct route/SDK metadata).
+      Independent of PERF-1b/1c — no functional dependency, just doc ordering.)*
 
 ## Housekeeping
 

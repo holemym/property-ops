@@ -8,7 +8,10 @@ const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 
 const CSP = [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-inline'",
+  // va.vercel-scripts.com: Speed Insights' dev-mode debug script (PERF-2). In
+  // production (no `dsn` prop set) it self-hosts at the same-origin
+  // /_vercel/speed-insights/script.js path instead, already covered by 'self'.
+  "script-src 'self' 'unsafe-inline' https://va.vercel-scripts.com",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https://*.tile.openstreetmap.org",
   "font-src 'self'",
