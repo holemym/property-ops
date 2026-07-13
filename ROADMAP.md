@@ -334,6 +334,13 @@ PERF-1 spec: `docs/superpowers/specs/2026-07-12-property-ops-perf1-auth-roundtri
 (Fable design pass done — the middleware `getUser()` STAYS; only the page-level call
 changes. Rejected alternatives are listed in the spec; do not revisit them.)
 
+**Numbering note:** PERF-1x and PERF-2 are listed in narrative order, not dependency
+order — they share no files and PERF-2 has no functional dependency on PERF-1's
+completion. Either can run first; a builder correctly proceeded on PERF-2 without
+waiting for PERF-1b/1c and that was the right call. Only S2-3 (CSP enforce) actually
+depends on PERF-2 having landed first, since PERF-2 fixed a dev-mode CSP gap that
+would otherwise show up as a false-positive violation during S2-3's browsing check.
+
 - [x] **PERF-1a** `[builder]` — Swap `getCurrentUser()`'s `auth.getUser()` for
       `auth.getClaims()` per spec (touch nothing else) + tests. Safe pre-key-migration
       (automatic fallback).
