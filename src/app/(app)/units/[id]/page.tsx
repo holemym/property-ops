@@ -27,8 +27,8 @@ import {
   documentTypeLabel,
   daysUntil,
   todayIso,
-  TERMINAL_TICKET_STATUSES,
 } from '@/components/units/hub/shared'
+import { isTicketOpen } from '@/lib/status'
 import { FormError } from '@/components/common/FormError'
 import { updateUnitAction } from '../actions'
 
@@ -73,7 +73,7 @@ export default async function UnitDetailPage({
 
   // Tickets / finance / documents scoped to THIS unit.
   const unitTickets = allTickets.filter((t) => t.unit_id === id)
-  const openTickets = unitTickets.filter((t) => !TERMINAL_TICKET_STATUSES.includes(t.status))
+  const openTickets = unitTickets.filter((t) => isTicketOpen(t.status))
   const unitExpenses = expenseRecords.filter((r) => r.unit_id === id)
   void incomeRecords
   const supersededTicketIds = new Set(

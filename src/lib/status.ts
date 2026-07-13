@@ -110,3 +110,16 @@ export function statusBadge(kind: StatusBadgeInput['kind'], value: string | bool
       return VENDOR_IS_ACTIVE[value ? 'true' : 'false']
   }
 }
+
+// Ticket statuses that no longer need attention — resolved, formally closed, or
+// cancelled. This is THE single source of truth for the ticket open/done split (H3):
+// dashboard, occupancy, insights/analytics, the property hub, the unit hub, and the map
+// all import `isTicketOpen` from here instead of hand-rolling their own terminal-status
+// list. Before H3, the dashboard alone omitted RESOLVED from its local list, so a
+// resolved-but-not-yet-closed ticket read as "open" there and "done" everywhere else.
+export const TERMINAL_TICKET_STATUSES: TicketStatus[] = ['RESOLVED', 'CLOSED', 'CANCELLED']
+
+/** True when a ticket status still needs attention (i.e. not resolved/closed/cancelled). */
+export function isTicketOpen(status: TicketStatus): boolean {
+  return !TERMINAL_TICKET_STATUSES.includes(status)
+}

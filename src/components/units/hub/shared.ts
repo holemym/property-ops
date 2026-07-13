@@ -1,4 +1,4 @@
-import type { DocumentType, TicketStatus } from '@/types/domain'
+import type { DocumentType } from '@/types/domain'
 
 // Self-contained formatting helpers for the unit hub. Money is EUR, whole-euro (no
 // cents), matching the finance / rent-roll / insights convention. `formatDate` (short
@@ -27,9 +27,6 @@ export function humanizeEnum(value: string): string {
   const spaced = value.replace(/_/g, ' ').toLowerCase()
   return spaced.charAt(0).toUpperCase() + spaced.slice(1)
 }
-
-// Terminal ticket states — a ticket in one of these is "done" / no longer open.
-export const TERMINAL_TICKET_STATUSES: TicketStatus[] = ['RESOLVED', 'CLOSED', 'CANCELLED']
 
 // Today as an ISO calendar day (UTC), for tenancy "covers today" checks that compare
 // against the same `YYYY-MM-DD` strings the timeline uses.

@@ -7,22 +7,13 @@ import { listUnits } from '@/lib/data/units'
 import { listTenancies } from '@/lib/data/tenancies'
 import { listTickets } from '@/lib/data/tickets'
 import { buildUnitTimeline, defaultWindow } from '@/lib/occupancy/timeline'
-import type { Ticket } from '@/lib/data/tickets'
-import type { TicketStatus } from '@/types/domain'
+import { isTicketOpen } from '@/lib/status'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { EmptyState } from '@/components/common/EmptyState'
 import { ErrorToast } from '@/components/common/ErrorToast'
 import { TapeChart, type PropertyGroup } from '@/components/occupancy/TapeChart'
 import { NewTenancyDialog } from '@/components/occupancy/NewTenancyDialog'
 import { createTenancyAction } from './actions'
-
-// Terminal ticket states — a ticket in one of these is "done" and doesn't belong on the
-// live occupancy overlay. Everything else counts as OPEN and gets pinned as a marker.
-const TERMINAL_STATUSES: TicketStatus[] = ['RESOLVED', 'CLOSED', 'CANCELLED']
-
-function isOpen(ticket: Ticket): boolean {
-  return !TERMINAL_STATUSES.includes(ticket.status)
-}
 
 export default async function OccupancyPage() {
   const user = await requirePermission('occupancy:read')
@@ -41,7 +32,7 @@ export default async function OccupancyPage() {
   const timelineWindow = defaultWindow(new Date())
   const todayIso = new Date().toISOString().slice(0, 10)
 
-  const openTickets = tickets.filter(isOpen)
+  const openTickets = tickets.filter((t) => isTicketOpen(t.status))
 
   // Group units under their property, computing each unit's timeline + open tickets.
   // Properties come newest-first; we keep that order and only surface properties that

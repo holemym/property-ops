@@ -7,8 +7,8 @@ import type {
   IncomeRecord,
   TicketCategory,
   TicketPriority,
-  TicketStatus,
 } from '@/types/domain'
+import { isTicketOpen } from '@/lib/status'
 
 // Pure, DB-free analytics over already-fetched rows. Nothing here touches Supabase —
 // callers fetch tickets/vendors/units/properties (RLS-scoped) then hand the arrays in,
@@ -17,22 +17,6 @@ import type {
 //
 // Guards throughout: costs and timestamps are nullable on tickets, and inputs may be
 // empty. Every function returns zeros / empty arrays instead of NaN or throwing.
-
-// Ticket statuses that are NOT terminal — a ticket in one of these is still live work,
-// so its estimated_cost counts as open-cost exposure. Mirrors the occupancy page's
-// TERMINAL_STATUSES ('RESOLVED','CLOSED','CANCELLED'), inverted.
-const NON_TERMINAL_STATUSES: ReadonlySet<TicketStatus> = new Set<TicketStatus>([
-  'NEW',
-  'TRIAGE',
-  'WAITING_FOR_INFO',
-  'ASSIGNED',
-  'SCHEDULED',
-  'IN_PROGRESS',
-])
-
-function isNonTerminal(status: TicketStatus): boolean {
-  return NON_TERMINAL_STATUSES.has(status)
-}
 
 // A ticket is "resolved" for cycle-time / trend purposes once it carries a resolved_at
 // or closed_at stamp. We take whichever exists (resolved first), so a resolve→close
@@ -85,7 +69,7 @@ export function costOverview(tickets: Ticket[]): CostOverview {
   for (const t of tickets) {
     totalActualCost += cost(t.actual_cost)
     totalEstimatedCost += cost(t.estimated_cost)
-    if (isNonTerminal(t.status)) openCostExposure += cost(t.estimated_cost)
+    if (isTicketOpen(t.status)) openCostExposure += cost(t.estimated_cost)
   }
   return {
     totalActualCost,
@@ -190,7 +174,7 @@ export function vendorBenchmarks(tickets: Ticket[], vendors: Vendor[]): VendorBe
     if (typeof t.actual_cost === 'number' && Number.isFinite(t.actual_cost)) {
       entry.costs.push(t.actual_cost)
     }
-    if (isNonTerminal(t.status)) {
+    if (isTicketOpen(t.status)) {
       entry.openCount += 1
     } else {
       const days = cycleDays(t.created_at, completedAt(t))

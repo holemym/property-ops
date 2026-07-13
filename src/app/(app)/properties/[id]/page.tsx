@@ -10,7 +10,7 @@ import { listTickets } from '@/lib/data/tickets'
 import { listTenancies } from '@/lib/data/tenancies'
 import { listIncomeRecords, listExpenseRecords } from '@/lib/data/finance'
 import { listDocuments } from '@/lib/data/documents'
-import type { TicketStatus } from '@/types/domain'
+import { isTicketOpen } from '@/lib/status'
 import { PropertyForm } from '@/components/properties/PropertyForm'
 import { StatusBadge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -25,11 +25,6 @@ import { formatEur } from '@/components/properties/hub/formatCurrency'
 import { FormError } from '@/components/common/FormError'
 import { ConfirmSubmit } from '@/components/common/ConfirmSubmit'
 import { updatePropertyAction, archivePropertyAction } from '../actions'
-
-// Open tickets = still needing attention. Mirrors the occupancy page + analytics
-// NON_TERMINAL definition (RESOLVED/CLOSED/CANCELLED are done). Defined locally so the
-// property hub stays self-contained.
-const TERMINAL_TICKET_STATUSES: TicketStatus[] = ['RESOLVED', 'CLOSED', 'CANCELLED']
 
 // A tenancy covers `today` when it has started and has not yet ended (open-ended =
 // no end_date). Dates are ISO date strings; a lexical compare on YYYY-MM-DD is a
@@ -88,9 +83,7 @@ export default async function PropertyDetailPage({
     units.length === 0 ? 0 : Math.round((occupiedUnitIds.size / units.length) * 100)
 
   // Open (non-terminal) tickets for this property.
-  const openTickets = propertyTickets.filter(
-    (t) => !TERMINAL_TICKET_STATUSES.includes(t.status)
-  )
+  const openTickets = propertyTickets.filter((t) => isTicketOpen(t.status))
 
   // Finance scoped to this property: records booked on the property OR on one of its units.
   const belongsToProperty = (rec: { property_id: string | null; unit_id: string | null }) =>

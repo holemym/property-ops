@@ -6,20 +6,14 @@ import { createClient } from '@/lib/supabase/server'
 import { listProperties, type Property } from '@/lib/data/properties'
 import { listUnits } from '@/lib/data/units'
 import { listTickets } from '@/lib/data/tickets'
-import type { TicketStatus } from '@/types/domain'
 import { GEOCODE_BACKFILL_CAP } from '@/lib/geocode'
+import { isTicketOpen } from '@/lib/status'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { EmptyState } from '@/components/common/EmptyState'
 import { FormError } from '@/components/common/FormError'
 import { Button } from '@/components/ui/button'
 import { PropertyMap, type MapProperty } from '@/components/map/PropertyMap'
 import { backfillPropertyGeocodesAction } from './actions'
-
-// Open tickets = still needing attention. Mirrors the property/unit hub + occupancy +
-// analytics NON_TERMINAL definition (RESOLVED/CLOSED/CANCELLED are done). Defined locally
-// so this page stays self-contained, same convention as every other hub/list page that
-// needs this split.
-const TERMINAL_TICKET_STATUSES: TicketStatus[] = ['RESOLVED', 'CLOSED', 'CANCELLED']
 
 // Mirrors the property hub's addressParts join (src/app/(app)/properties/[id]/page.tsx) —
 // includes address_line2 so two properties differing only by a unit/staircase designator
@@ -75,7 +69,7 @@ export default async function MapPage({
   }
   const openTicketCountByProperty = new Map<string, number>()
   for (const ticket of tickets) {
-    if (TERMINAL_TICKET_STATUSES.includes(ticket.status)) continue
+    if (!isTicketOpen(ticket.status)) continue
     openTicketCountByProperty.set(
       ticket.property_id,
       (openTicketCountByProperty.get(ticket.property_id) ?? 0) + 1

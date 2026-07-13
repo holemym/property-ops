@@ -357,7 +357,7 @@ changes. Rejected alternatives are listed in the spec; do not revisit them.)
       values + one-line comments only — never real keys.
       *(committed `8d9f83b`. One more var was missed — `NOMINATIM_CONTACT`, added by
       M1 after this landed — folded in directly, see below.)*
-- [ ] **H3** `[builder]` — Reconcile the "is a RESOLVED ticket still open?" split
+- [x] **H3** `[builder]` — Reconcile the "is a RESOLVED ticket still open?" split
       (flagged by the M2 build). `dashboard/page.tsx` counts `RESOLVED` tickets as
       open/needing attention; `occupancy`, `insights`/analytics, the property hub, and
       the unit hub all count `RESOLVED` as done (terminal) — same ticket can read
@@ -368,6 +368,32 @@ changes. Rejected alternatives are listed in the spec; do not revisit them.)
       going forward — consider extracting a shared `isTicketOpen(status)` helper.
       **Accept:** every surface agrees on open vs. done for the same ticket; unit test
       the extracted helper if one is added; build+lint+tests green.
+      *(committed — verified the majority independently first: `occupancy/page.tsx`,
+      `properties/[id]/page.tsx` (property hub), `units/[id]/page.tsx` (unit hub, via
+      `TERMINAL_TICKET_STATUSES` in `hub/shared.ts`), `lib/analytics/metrics.ts` (insights,
+      via an inverted `NON_TERMINAL_STATUSES`), and `map/page.tsx` all independently
+      hand-rolled the identical `['RESOLVED','CLOSED','CANCELLED']` terminal list — five
+      separate re-implementations of the same concept, confirming both the majority
+      semantics and the "only one source of truth" problem the ticket flagged.
+      `dashboard/page.tsx` was the sole outlier (`['CLOSED','CANCELLED']`, missing
+      RESOLVED). Extracted `isTicketOpen(status)` + `TERMINAL_TICKET_STATUSES` into
+      `src/lib/status.ts` (already the established single source of truth for ticket
+      status presentation, per roadmap §2's `src/lib/` list — not `hub/shared.ts`, which
+      is page-scoped and only ever had the one unit-hub importer) and repointed all six
+      surfaces at it, deleting every local re-implementation. Fixed the dashboard bug:
+      `openCount`, "Urgent open", and "Assigned to me" no longer count a RESOLVED ticket
+      as open. Left `portal-status.ts`'s `tenantProgress` (a distinct 4-stage tenant
+      stepper, already correctly treating RESOLVED as done) and `status-flow.ts`'s
+      `ALLOWED_TRANSITIONS` (workflow-legality terminal — CLOSED/CANCELLED have no legal
+      successors, but RESOLVED can legally reopen to IN_PROGRESS) untouched: both are a
+      genuinely different concept from "does this ticket still need attention," not
+      ad-hoc duplicates of it. Also left the dashboard's "Recently resolved" widget filter
+      (`status === 'RESOLVED' || status === 'CLOSED'`) as-is — it deliberately excludes
+      CANCELLED from a "wrapped up lately" digest, a separate business decision from the
+      open/done split. New `tests/unit/status.test.ts` exhaustively covers
+      `isTicketOpen`/`TERMINAL_TICKET_STATUSES` over all 9 `TicketStatus` values,
+      pinning the RESOLVED regression case specifically. 320 tests green (315 + 5 new),
+      build+lint clean. No migration, no RLS surface — pure application-layer refactor.)*
 
 ---
 

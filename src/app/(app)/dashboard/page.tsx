@@ -10,16 +10,13 @@ import { PageHeader } from '@/components/layout/PageHeader'
 import { StatusBadge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import { relativeDay } from '@/lib/relative-date'
+import { isTicketOpen } from '@/lib/status'
 import type { TicketStatus } from '@/types/domain'
 
 // Per-widget cap — the dashboard shows short curated slices, not the full inbox. Each
 // list links to the filtered inbox ("View all") for the complete set.
 const LIST_CAP = 8
 const RECENT_CAP = 6
-
-// Terminal statuses — a ticket in one of these is "done" and does not count as open.
-const TERMINAL: TicketStatus[] = ['CLOSED', 'CANCELLED']
-const isOpen = (t: Ticket) => !TERMINAL.includes(t.status)
 
 // The status cards shown in the top strip, in operational reading order.
 const STRIP_STATUSES: TicketStatus[] = [
@@ -79,16 +76,19 @@ export default async function DashboardPage() {
 
   const propertyNames = Object.fromEntries(properties.map((p) => [p.id, p.name]))
 
-  // "Open" headline = every non-terminal ticket (sum of all statuses except CLOSED/CANCELLED).
+  // "Open" headline = every non-terminal ticket (sum of all statuses except
+  // RESOLVED/CLOSED/CANCELLED — isTicketOpen is the single source of truth, shared with
+  // occupancy/insights/property-hub/unit-hub/map so the same ticket reads the same way
+  // everywhere).
   const openCount = Object.entries(counts).reduce(
-    (sum, [status, n]) => (TERMINAL.includes(status as TicketStatus) ? sum : sum + (n ?? 0)),
+    (sum, [status, n]) => (isTicketOpen(status as TicketStatus) ? sum + (n ?? 0) : sum),
     0
   )
 
   // Urgent fires: URGENT and still non-terminal. listTickets is newest-first already.
-  const urgentOpen = urgentTickets.filter(isOpen).slice(0, LIST_CAP)
+  const urgentOpen = urgentTickets.filter((t) => isTicketOpen(t.status)).slice(0, LIST_CAP)
   // My queue: assigned to me and still non-terminal.
-  const mineOpen = mineTickets.filter(isOpen).slice(0, LIST_CAP)
+  const mineOpen = mineTickets.filter((t) => isTicketOpen(t.status)).slice(0, LIST_CAP)
   // Recently done: RESOLVED or CLOSED, most-recently-updated first.
   const recentlyDone = allTickets
     .filter((t) => t.status === 'RESOLVED' || t.status === 'CLOSED')
