@@ -14,21 +14,41 @@ export type CurrentUser = {
   isActive: boolean
 }
 
-// Wrapped in React cache() so the auth.getUser() + profile lookup runs ONCE per request
-// even though the (app) layout and every page call the require* chain — collapsing the
+// Pure mapping from decoded JWT claims to the minimal identity shell getCurrentUser
+// needs. Extracted so the claims -> {id, email} mapping (and the "no sub" guard) is
+// unit-testable without mocking the Supabase client. `sub` is the Supabase Auth user
+// id (same value `user.id` held before this swap); `email` keeps the same `?? ''`
+// fallback semantics the old `user.email ?? ''` had.
+export function claimsToUserShell(
+  claims: { sub: string; email?: string } | null | undefined
+): { id: string; email: string } | null {
+  if (!claims?.sub) return null
+  return { id: claims.sub, email: claims.email ?? '' }
+}
+
+// Wrapped in React cache() so the auth call + profile lookup runs ONCE per request even
+// though the (app) layout and every page call the require* chain — collapsing the
 // repeated round-trips that made each navigation do redundant auth work.
+//
+// PERF-1a: uses auth.getClaims() instead of auth.getUser() here. getClaims() verifies
+// the access token's signature locally against the project's cached JWKS (zero network
+// once asymmetric signing keys are enabled — see PERF-1b), instead of round-tripping to
+// the Supabase Auth server on every navigation. The middleware's own getUser() call
+// (src/lib/supabase/middleware.ts) is untouched: it stays the network hop responsible
+// for token refresh + cookie write-back and per-request revocation freshness. On
+// projects still using legacy symmetric JWT secrets, getClaims() automatically falls
+// back to a server-side verification call — same correctness, perf win just deferred.
 export const getCurrentUser = cache(async function getCurrentUser(): Promise<CurrentUser | null> {
   const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const { data: claimsData, error } = await supabase.auth.getClaims()
+  const shell = claimsToUserShell(claimsData?.claims)
 
-  if (!user) return null
+  if (error || !shell) return null
 
   const { data: profile } = await supabase
     .from('profiles')
     .select('full_name, role, workspace_id, is_active')
-    .eq('id', user.id)
+    .eq('id', shell.id)
     .single()
 
   // Note: any Supabase error here (missing profile, network issue, etc.) is treated
@@ -37,8 +57,8 @@ export const getCurrentUser = cache(async function getCurrentUser(): Promise<Cur
   if (!profile) return null
 
   return {
-    id: user.id,
-    email: user.email ?? '',
+    id: shell.id,
+    email: shell.email,
     fullName: profile.full_name,
     role: profile.role as Role,
     workspaceId: profile.workspace_id,

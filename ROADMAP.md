@@ -334,9 +334,12 @@ PERF-1 spec: `docs/superpowers/specs/2026-07-12-property-ops-perf1-auth-roundtri
 (Fable design pass done — the middleware `getUser()` STAYS; only the page-level call
 changes. Rejected alternatives are listed in the spec; do not revisit them.)
 
-- [ ] **PERF-1a** `[builder]` — Swap `getCurrentUser()`'s `auth.getUser()` for
+- [x] **PERF-1a** `[builder]` — Swap `getCurrentUser()`'s `auth.getUser()` for
       `auth.getClaims()` per spec (touch nothing else) + tests. Safe pre-key-migration
       (automatic fallback).
+      *(done — `src/lib/auth/session.ts`; extracted pure `claimsToUserShell()` mapping,
+      5 new unit tests in `tests/unit/session.test.ts`; middleware/proxy.ts, requireUser's
+      deactivation logic, and auth actions untouched. 325 tests green (was 320).)*
 - [ ] **PERF-1b** `[USER]` — Supabase dashboard → JWT Keys → migrate to asymmetric
       signing keys (this flips the perf win on). Queued below.
 - [ ] **PERF-1c** `[verify]` — After 1b: all auth flows live-checked, page-level Auth
