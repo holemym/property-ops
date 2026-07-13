@@ -242,6 +242,17 @@ Spec: `docs/superpowers/specs/2026-07-09-property-ops-map-view-design.md`
       moves or clears; backfill locates seeded properties; popups navigate; dark mode
       legible; phone viewport pans; zero CSP violations (OSM tiles are pre-allowed in
       the S1.1 CSP).
+      *(WIP 2026-07-12 — checkable-now subset PASSED via an independent audit pass:
+      build+lint+315 tests green re-run from scratch; live headers confirmed via curl
+      (CSP report-only with `https://*.tile.openstreetmap.org` in img-src, HSTS on);
+      Leaflet chunk confirmed ABSENT from the shared root bundle via build-manifest
+      inspection (lazy-loaded only); popup content confirmed DOM-built
+      (createElement/textContent, no innerHTML — property names are user input);
+      pre-migration graceful degradation confirmed in code (`hasCoordinates` type
+      predicate handles the undefined-columns state). REMAINING, blocked on USER
+      running migration 0024: pin-on-create, pin-moves-on-address-edit, backfill run,
+      popup navigation click-through, dark-mode legibility on real pins, phone
+      viewport pan/zoom. Re-dispatch prop-verifier for just that list after 0024.)*
 
 ## Track P — Product depth (each needs a spec before code)
 
