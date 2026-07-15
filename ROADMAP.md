@@ -589,6 +589,16 @@ would otherwise show up as a false-positive violation during S2-3's browsing che
       drifting. **Sequence AFTER P1-3** — both edit `CommandPalette.tsx` and would
       collide if concurrent. **Accept:** every operator Sidebar destination has a
       matching go-to command with the correct permission gate; build+lint+tests green.
+- [ ] **H5** `[builder]` — Add `nativeButton={false}` to every `<Button render={<Link/>}>`
+      composite (flagged by P2-2, which fixed only its own new bell call site). Base
+      UI's `useButton` logs a dev-console error on every mount of a `render`-as-anchor
+      Button without it (confirmed against `@base-ui/react` source) — dev-only, doesn't
+      fail build/lint/tests, but noisy. ~20 call sites across ~15 files (incl.
+      `EmptyState.tsx`, `tickets/page.tsx`, and the many `render={<Link href=.../>}`
+      buttons). Grep `render=\{<Link` for the full set. Mechanical, but verify each is
+      genuinely the anchor-composite case (not a plain `<Button>`) before editing.
+      **Accept:** no `<Button render={<Link/>}>` remains without `nativeButton={false}`;
+      build+lint+tests green; zero new dev-console errors on a rendered page.
 
 - [ ] Verify migration **0021** applied (`select column_name from
       information_schema.columns where table_name='invoices' and
