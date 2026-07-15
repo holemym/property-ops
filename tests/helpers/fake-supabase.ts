@@ -11,6 +11,26 @@ function matches(row: Row, filters: Array<[string, any]>) {
   })
 }
 
+// Minimal `.or()` support — parses a PostgREST-style filter string
+// ("full_name.ilike.%x%,email.ilike.%x%") into column/operator/value triples and
+// matches if ANY clause matches (OR semantics), combined via AND with the plain
+// `filters` list above (mirrors how a real chained `.eq(...).or(...)` call behaves).
+// Added minimally for P1-1's listTenants search (src/lib/data/tenants.ts), the
+// first data-layer function to need a multi-column ilike search — same "add as
+// needed" precedent as `rpc` below.
+function matchesOrFilter(row: Row, orFilter: string | null) {
+  if (!orFilter) return true
+  return orFilter.split(',').some((clause) => {
+    const [col, op, ...rest] = clause.split('.')
+    const val = rest.join('.')
+    if (op === 'ilike') {
+      const needle = val.replace(/%/g, '').toLowerCase()
+      return String(row[col] ?? '').toLowerCase().includes(needle)
+    }
+    return row[col] === val
+  })
+}
+
 export function createFakeSupabaseClient(seed: Record<string, Row[]> = {}) {
   const tables: Record<string, Row[]> = seed
   let idCounter = 1
@@ -23,11 +43,13 @@ export function createFakeSupabaseClient(seed: Record<string, Row[]> = {}) {
     let single = false
     let orderBy: string | null = null
     let ascending = true
+    let orFilter: string | null = null
 
     const api: any = {
       select() { return api },
       eq(col: string, val: any) { filters.push([col, val]); return api },
       ilike(col: string, val: any) { filters.push([col, val]); return api },
+      or(filterString: string) { orFilter = filterString; return api },
       order(col: string, opts?: { ascending?: boolean }) { orderBy = col; ascending = opts?.ascending ?? true; return api },
       single() { single = true; return api },
       insert(row: Row) { op = 'insert'; payload = row; return api },
@@ -46,7 +68,7 @@ export function createFakeSupabaseClient(seed: Record<string, Row[]> = {}) {
           resolve({ data: single ? targets[0] : targets, error: null })
           return
         }
-        let found = tables[table].filter((r) => matches(r, filters))
+        let found = tables[table].filter((r) => matches(r, filters) && matchesOrFilter(r, orFilter))
         if (orderBy) {
           found = [...found].sort((a, b) => {
             if (a[orderBy!] === b[orderBy!]) return 0

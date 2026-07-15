@@ -258,11 +258,32 @@ Spec: `docs/superpowers/specs/2026-07-09-property-ops-map-view-design.md`
 Spec: `docs/superpowers/specs/2026-07-12-property-ops-p1-tenant-directory-design.md`
 (Fable design pass done 2026-07-12 — builders follow it exactly.)
 
-- [ ] **P1-1** `[builder]` `[rls]` — Migration 0025 (`tenants` table, PII-gated RLS
+- [x] **P1-1** `[builder]` `[rls]` — Migration 0025 (`tenants` table, PII-gated RLS
       per 0016's posture, `tenancies.tenant_id` composite FK, trigram indexes,
       demo-reset extension, bundle fold) + `tenants:read`/`tenants:write` permissions
       + data layer `src/lib/data/tenants.ts` + `src/lib/validation/tenant.ts` + unit
       tests. Spec §1–3.
+      *(committed 2026-07-15 — RLS review came back CLEAN: `tenancies.tenant_id` is
+      `on delete set null` in both the migration and the schema_bundle fold, the
+      re-pasted `reset_demo_workspace()` is byte-complete (trigger disable/enable +
+      all seeds intact, one dropped `-- Tickets` header comment restored post-review
+      in both files), and the tenants RLS is a verbatim match to tenancies/0016's
+      PII posture (role-gated SELECT, manager-only write, no DELETE). Built:
+      `supabase/migrations/0025_tenants.sql` + `schema_bundle.sql` fold (new TENANT
+      DIRECTORY (0025) section; `reset_demo_workspace()` updated in place to its
+      final state; `expect 17` -> `expect 18`) + `tenants:read`/`tenants:write` in
+      `src/lib/auth/permissions.ts` (managers get both, ACCOUNTANT read-only) +
+      `Tenant` type + `listTenants`/`getTenant`/`createTenant`/`updateTenant`/
+      `listTenanciesForTenant` in `src/lib/data/tenants.ts` + `tenantFormSchema` in
+      `src/lib/validation/tenant.ts` + `Tenancy` (`src/types/domain.ts`) widened
+      with `tenant_id: string | null` (always null until P1-3 wires the write path)
+      + `tests/helpers/fake-supabase.ts` gained minimal `.or()` support to test the
+      full_name/email search. Row-type-location briefing inaccuracy this task
+      surfaced is now fixed at the source (see the hard-rules doc's new "Row-type
+      location is SPLIT" note). 341 tests green (325 baseline + 16 new), build+lint
+      clean. No UI yet — `/people` is P1-2/P1-3, `/preview/people` still in nav.
+      USER: migration 0025 still needs to be run in the SQL editor — already queued
+      at line ~465.)*
 - [ ] **P1-2** `[builder]` — `/people` list (search, responsive table→cards) +
       `TenantForm` + new/edit pages + Portfolio nav entry + **delete
       `/preview/people`**. Depends P1-1. Spec §4.

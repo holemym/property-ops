@@ -1325,10 +1325,13 @@ revoke execute on function public.check_rate_limit(text, integer, integer) from 
 grant execute on function public.check_rate_limit(text, integer, integer) to service_role;
 
 -- =============================================================================
--- DEMO MODE (0023) — is_demo workspace flag, synthetic seed identity, the
--- reset_demo_workspace() wipe+reseed function (service_role-only), and demo-
--- workspace exclusion on the storage INSERT policies. See migration 0023's header
--- for the full rationale. Order matters: workspace before profile attach (FK).
+-- DEMO MODE (0023, tenants wipe added in 0025) — is_demo workspace flag,
+-- synthetic seed identity, the reset_demo_workspace() wipe+reseed function
+-- (service_role-only), and demo-workspace exclusion on the storage INSERT
+-- policies. See migration 0023's header for the full rationale. Order matters:
+-- workspace before profile attach (FK). The function body below is the FINAL
+-- state (0023 + 0025's added `delete from public.tenants` line), not the 0023
+-- original — see 0025's header for why the directory needs wiping too.
 -- =============================================================================
 alter table public.workspaces add column if not exists is_demo boolean not null default false;
 alter table public.workspaces add column if not exists demo_reset_at timestamptz;
@@ -1396,6 +1399,7 @@ begin
   delete from public.vendor_job_tokens where workspace_id = demo_ws;
   delete from public.attachments where workspace_id = demo_ws;
   delete from public.tenancies where workspace_id = demo_ws;
+  delete from public.tenants where workspace_id = demo_ws;
   delete from public.tickets where workspace_id = demo_ws;
   delete from public.units where workspace_id = demo_ws;
   delete from public.vendors where workspace_id = demo_ws;
@@ -1418,6 +1422,7 @@ begin
     (vendor_plumb, demo_ws, 'Wiener Rohrservice GmbH', 'Hans Gruber', 'PLUMBING', true),
     (vendor_elec, demo_ws, 'Elektro Bauer', 'Eva Bauer', 'ELECTRICAL', true);
 
+  -- Tickets
   -- The tickets_force_safe_insert_defaults BEFORE-INSERT trigger treats auth.uid()=null
   -- (true inside this SECURITY DEFINER function) as a non-manager and would flatten the
   -- seeded statuses/costs to NEW/null - disable it around the seed insert (the exact
@@ -1526,5 +1531,79 @@ alter table public.properties add column if not exists longitude   double precis
 alter table public.properties add column if not exists geocoded_at timestamptz;
 
 -- =============================================================================
--- DONE. Verify: select count(*) from pg_tables where schemaname='public';  -- expect 17
+-- TENANT DIRECTORY (0025) — `public.tenants`, a directory of tenant CONTACT
+-- records (distinct from `tenancies`, the time-ranged LEASE record). PII posture
+-- identical to tenancies (0016): role-gated SELECT (manager+accountant, NOT
+-- open-select), manager-only write, no DELETE. tenancies.tenant_id is an optional
+-- composite FK back to (id, workspace_id) here, `on delete set null`; a NULL
+-- tenant_id (every pre-0025 tenancy, and any tenancy left unlinked going forward)
+-- keeps tenant_name as the display fallback. See migration 0025 for full rationale
+-- (including why the reset_demo_workspace() body above already carries the
+-- tenants wipe line as part of its FINAL state).
+-- =============================================================================
+create table if not exists public.tenants (
+  id uuid primary key default gen_random_uuid(),
+  workspace_id uuid not null references public.workspaces (id) on delete cascade,
+  full_name text not null,
+  email text,
+  phone text,
+  language text,
+  notes text,
+  created_by_user_id uuid not null references public.profiles (id),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint tenants_id_workspace_unique unique (id, workspace_id)
+);
+
+create index if not exists tenants_workspace_id_idx on public.tenants (workspace_id);
+create index if not exists tenants_full_name_trgm on public.tenants using gin (full_name gin_trgm_ops);
+create index if not exists tenants_email_trgm on public.tenants using gin (email gin_trgm_ops);
+
+drop trigger if exists tenants_set_updated_at on public.tenants;
+create trigger tenants_set_updated_at
+  before update on public.tenants
+  for each row execute function public.set_updated_at();
+
+alter table public.tenants enable row level security;
+
+-- SELECT: ROLE-GATED (tenant PII), NOT open-select. Manager+accountant only, plus
+-- SUPER_ADMIN platform read override. TENANT/GUEST/VENDOR get zero rows.
+drop policy if exists "tenants_select_manager_or_accountant" on public.tenants;
+create policy "tenants_select_manager_or_accountant"
+  on public.tenants for select
+  using (
+    (workspace_id = public.current_workspace_id()
+       and public.current_role() in ('SUPER_ADMIN','OWNER','OPERATOR','ACCOUNTANT'))
+    or public.current_role() = 'SUPER_ADMIN'
+  );
+
+drop policy if exists "tenants_insert_manager" on public.tenants;
+create policy "tenants_insert_manager"
+  on public.tenants for insert
+  with check (workspace_id = public.current_workspace_id() and public.is_workspace_manager());
+
+drop policy if exists "tenants_update_manager" on public.tenants;
+create policy "tenants_update_manager"
+  on public.tenants for update
+  using (workspace_id = public.current_workspace_id() and public.is_workspace_manager())
+  with check (workspace_id = public.current_workspace_id() and public.is_workspace_manager());
+
+-- No DELETE policy — directory entries are history-bearing; default-deny delete.
+
+-- PREREQUISITE for the link below: tenants needs unique(id, workspace_id), added
+-- inline above. Wrapped in a DO block that swallows duplicate_object/
+-- duplicate_table so a re-run (column/constraint already present) is a no-op —
+-- same guard shape as the tenancies_id_workspace_unique prerequisite in 0018.
+alter table public.tenancies add column if not exists tenant_id uuid;
+
+do $do$ begin
+  alter table public.tenancies
+    add constraint tenancies_tenant_fk
+    foreign key (tenant_id, workspace_id)
+    references public.tenants (id, workspace_id)
+    on delete set null;
+exception when duplicate_object or duplicate_table then null; end $do$;
+
+-- =============================================================================
+-- DONE. Verify: select count(*) from pg_tables where schemaname='public';  -- expect 18
 -- =============================================================================

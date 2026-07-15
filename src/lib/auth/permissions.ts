@@ -20,6 +20,8 @@ export type Permission =
   | 'finance:write'
   | 'documents:read'
   | 'documents:write'
+  | 'tenants:read'
+  | 'tenants:write'
 
 const MANAGER_PERMISSIONS: Permission[] = [
   'properties:read',
@@ -57,6 +59,14 @@ const MANAGER_PERMISSIONS: Permission[] = [
   // are excluded entirely.
   'documents:read',
   'documents:write',
+  // tenants:read / tenants:write — the tenant directory (/people, migration 0025).
+  // Granted exactly like occupancy:read + finance-style write: every manager role gets
+  // both read and write here; ACCOUNTANT gets read-only oversight below (granted
+  // explicitly, matching occupancy:read/vendors:read). Tenant/guest/vendor roles get
+  // neither — matches the RLS (tenants_select_manager_or_accountant / manager-only
+  // writes in migration 0025), which mirrors tenancies (0016) PII posture exactly.
+  'tenants:read',
+  'tenants:write',
 ]
 
 const ADMIN_PERMISSIONS: Permission[] = [
@@ -88,6 +98,10 @@ const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     // but does NOT manage documents (no documents:write). Matches the 0018 RLS: SELECT
     // includes ACCOUNTANT, but INSERT/UPDATE is is_workspace_manager() (excludes it).
     'documents:read',
+    // tenants:read only — read-only directory oversight, same shape as occupancy:read
+    // (no tenants:write). Matches the 0025 RLS: SELECT includes ACCOUNTANT, but
+    // INSERT/UPDATE is is_workspace_manager() (excludes it).
+    'tenants:read',
   ],
   TENANT: [],
   GUEST: [],

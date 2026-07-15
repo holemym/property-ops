@@ -77,10 +77,16 @@ export type AttachmentType = 'PHOTO' | 'INVOICE' | 'RECEIPT' | 'CONTRACT' | 'REP
 // occupied span. end_date null = open-ended / month-to-month. tenant_name /
 // tenant_contact are PII (SELECT is role-gated to managers + accountant via RLS).
 // rent_amount is captured for the future rent roll and is unused by the timeline.
+// tenant_id (migration 0025) OPTIONALLY links to a directory `Tenant` record (see
+// src/lib/data/tenants.ts) — null for every pre-P1 tenancy and any tenancy left
+// unlinked going forward; tenant_name stays the display fallback either way. P1-3
+// wires up the write path (createTenancy resolves tenant_id server-side); P1-1
+// only adds the column, so it is always null until then.
 export type Tenancy = {
   id: string
   workspace_id: string
   unit_id: string
+  tenant_id: string | null
   tenant_name: string
   tenant_contact: string | null
   start_date: string
