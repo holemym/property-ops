@@ -38,6 +38,14 @@ keys, best-effort, never-throw — the "disconnected integration" pattern
 - Middleware is `src/proxy.ts` (`export function proxy`) — `middleware.ts` builds but
   silently never runs. Public routes go in `PUBLIC_PATHS` (exact-or-subpath matching).
 - Supabase untyped `.select(cols)` results need `as unknown as Row[]`.
+- **Row-type location is SPLIT — do not state a blanket rule (M1 and P1-1 briefings each
+  got this half-wrong and the builders had to correct it).** The early tables keep their
+  row type LOCAL in `src/lib/data/<entity>.ts`: `Property`, `Unit`, `Vendor`, `Ticket`,
+  `Tenant`. Everything added from migration 0016 onward lives in `src/types/domain.ts`:
+  `Tenancy`, `Document`, `IncomeRecord`, `ExpenseRecord`, `Invoice`, `InvoiceLineItem`.
+  When adding a FIELD to an existing type, edit it wherever it already lives (grep for
+  `export type <Name>`); when adding a NEW entity, follow the nearest precedent the spec
+  names. `domain.ts` also holds the shared enums.
 - Every new workspace-scoped table referencing another workspace-scoped table needs the
   composite `(child_id, workspace_id)` FK pattern (FK validation bypasses RLS).
 - SECURITY DEFINER functions: `revoke execute ... from public` + explicit grants; RLS
