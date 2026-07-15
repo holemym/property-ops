@@ -317,7 +317,12 @@ Spec: `docs/superpowers/specs/2026-07-12-property-ops-p1-tenant-directory-design
 - [ ] **P1-3** `[builder]` — Detail-page tenancy card + `NewTenancyDialog` person
       picker (server-side name resolution in `createTenancy`) + tenants source in
       `searchWorkspace` + tests. Depends P1-1; sequence after P1-2 (shared board/nav
-      files). Spec §4.
+      files). Spec §4. **Added scope (P1-2 flagged it):** while you're in
+      `CommandPalette.tsx` for the `searchWorkspace`/`TYPE_META` work, also add a
+      `go-people` entry to the static `COMMANDS` "Go to" list (icon `Contact`, href
+      `/people`, permission `tenants:read`) so People is reachable from the palette's
+      go-to shortcuts, not just dynamic search — every other nav destination has one.
+      (The parallel `go-map` omission from M2 is H4's job, not yours — don't touch it.)
 - [ ] **P1-4** `[verify]` — Full playbook in spec §6. Depends P1-1..3 + USER ran 0025.
 
 ## Track P2 — In-app notifications
@@ -462,10 +467,16 @@ would otherwise show up as a false-positive violation during S2-3's browsing che
       `isTicketOpen`/`TERMINAL_TICKET_STATUSES` over all 9 `TicketStatus` values,
       pinning the RESOLVED regression case specifically. 320 tests green (315 + 5 new),
       build+lint clean. No migration, no RLS surface — pure application-layer refactor.)*
-
----
-
-## USER-action queue (humans only — agents must never attempt these)
+- [ ] **H4** `[builder]` — Fix CommandPalette static-nav drift (flagged by P1-2). The
+      `COMMANDS` "Go to" list in `src/components/search/CommandPalette.tsx` never got a
+      `go-map` entry when M2 shipped `/map` (People is handled by P1-3, so don't add
+      `go-people` — it'll already be there). Add `go-map` (icon `MapPinned` — already
+      the Sidebar's map icon, href `/map`, permission `properties:read`), then audit
+      the whole `COMMANDS` list against the actual Sidebar nav destinations and add any
+      other missing operator-reachable routes in one pass so this list stops silently
+      drifting. **Sequence AFTER P1-3** — both edit `CommandPalette.tsx` and would
+      collide if concurrent. **Accept:** every operator Sidebar destination has a
+      matching go-to command with the correct permission gate; build+lint+tests green.
 
 - [ ] Verify migration **0021** applied (`select column_name from
       information_schema.columns where table_name='invoices' and
