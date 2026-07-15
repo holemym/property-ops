@@ -38,14 +38,20 @@ keys, best-effort, never-throw — the "disconnected integration" pattern
 - Middleware is `src/proxy.ts` (`export function proxy`) — `middleware.ts` builds but
   silently never runs. Public routes go in `PUBLIC_PATHS` (exact-or-subpath matching).
 - Supabase untyped `.select(cols)` results need `as unknown as Row[]`.
-- **Row-type location is SPLIT — do not state a blanket rule (M1 and P1-1 briefings each
-  got this half-wrong and the builders had to correct it).** The early tables keep their
-  row type LOCAL in `src/lib/data/<entity>.ts`: `Property`, `Unit`, `Vendor`, `Ticket`,
-  `Tenant`. Everything added from migration 0016 onward lives in `src/types/domain.ts`:
-  `Tenancy`, `Document`, `IncomeRecord`, `ExpenseRecord`, `Invoice`, `InvoiceLineItem`.
-  When adding a FIELD to an existing type, edit it wherever it already lives (grep for
-  `export type <Name>`); when adding a NEW entity, follow the nearest precedent the spec
-  names. `domain.ts` also holds the shared enums.
+- **Row-type location is historical, NOT rule-based — do not tie it to migration number
+  (that framing confused the M1, P1-1, and P2-1 builders).** Two facts, both simple:
+  (a) **Postgres-enum-backed union types ALWAYS live in `src/types/domain.ts`** — no
+  exceptions (`PropertyType`, `TicketStatus`, `NotificationType`, etc.); (b) **row/record
+  types are split for historical reasons and the trend is toward LOCAL.** Some sit in
+  `domain.ts` (`Tenancy`, `Document`, `IncomeRecord`, `ExpenseRecord`, `Invoice`,
+  `InvoiceLineItem`); the rest — including every entity added recently (`Tenant`/0025,
+  `Notification`/0026) — live LOCAL in `src/lib/data/<entity>.ts` beside their CRUD
+  functions (`Property`, `Unit`, `Vendor`, `Ticket`, `Tenant`, `Notification`).
+  **Rules for new work:** adding a FIELD → grep `export type <Name>` and edit it wherever
+  it already lives; adding a NEW entity → put the row type LOCAL in `src/lib/data/` (the
+  current precedent, and it keeps the type next to its queries), the enum in `domain.ts`.
+  Ignore any spec sentence that says "the type gains a field in domain.ts" without having
+  grepped — that phrasing has been wrong more than once.
 - Every new workspace-scoped table referencing another workspace-scoped table needs the
   composite `(child_id, workspace_id)` FK pattern (FK validation bypasses RLS).
 - SECURITY DEFINER functions: `revoke execute ... from public` + explicit grants; RLS
