@@ -11,6 +11,10 @@ import { getUnit } from '@/lib/data/units'
 function parseTenancyForm(formData: FormData) {
   return tenancyFormSchema.safeParse({
     unitId: formData.get('unitId'),
+    // `|| undefined` maps the select's "no linked person" empty option to undefined,
+    // matching tenancyFormSchema's `.nullable().optional()` and the same idiom
+    // tickets/actions.ts uses for its optional unitId select.
+    tenantId: (formData.get('tenantId') as string | null) || undefined,
     tenantName: formData.get('tenantName'),
     tenantContact: (formData.get('tenantContact') as string | null) || null,
     startDate: formData.get('startDate'),
@@ -49,6 +53,7 @@ export async function createTenancyAction(formData: FormData) {
       workspaceId: user.workspaceId,
       unitId: parsed.data.unitId,
       createdByUserId: user.id,
+      tenantId: parsed.data.tenantId ?? null,
       tenantName: parsed.data.tenantName,
       tenantContact: parsed.data.tenantContact ?? null,
       startDate: parsed.data.startDate,

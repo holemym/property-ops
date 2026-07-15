@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Tenancy } from '@/types/domain'
+import { getTenant } from '@/lib/data/tenants'
 
 /**
  * Workspace roster of tenancies (drives the occupancy timeline). RLS already scopes
@@ -45,6 +46,10 @@ export type CreateTenancyInput = {
   workspaceId: string
   unitId: string
   createdByUserId: string
+  // Optional link to a tenant directory record (P1-3, migration 0025). tenantName
+  // is STILL required below (it's the storage column and the pre-P1 fallback), but
+  // when tenantId is set, its value is ignored server-side — see the CRITICAL note.
+  tenantId?: string | null
   tenantName: string
   tenantContact?: string | null
   startDate: string
@@ -57,13 +62,31 @@ export async function createTenancy(
   supabase: SupabaseClient,
   input: CreateTenancyInput
 ): Promise<Tenancy> {
+  // CRITICAL: when a directory person is linked, THEIR full_name is the source of
+  // truth for tenant_name — never the client's copy (the <select> in
+  // NewTenancyDialog auto-fills the free-text field as a UX preview, but a tampered
+  // or stale form value must not be able to overwrite the directory's PII). Resolve
+  // it server-side, scoped to the same workspace as the tenancy itself, and throw if
+  // it doesn't resolve (wrong id, or a cross-workspace id) rather than silently
+  // falling back to the client-supplied name — that would defeat the guarantee the
+  // picker exists to give. A tenancy without a linked person (tenantId omitted/null)
+  // keeps using the free-text tenantName exactly as before P1-3.
+  let tenantName = input.tenantName
+  const tenantId = input.tenantId ?? null
+  if (tenantId) {
+    const tenant = await getTenant(supabase, input.workspaceId, tenantId)
+    if (!tenant) throw new Error('Selected person was not found in your workspace.')
+    tenantName = tenant.full_name
+  }
+
   const { data, error } = await supabase
     .from('tenancies')
     .insert({
       workspace_id: input.workspaceId,
       unit_id: input.unitId,
       created_by_user_id: input.createdByUserId,
-      tenant_name: input.tenantName,
+      tenant_id: tenantId,
+      tenant_name: tenantName,
       tenant_contact: input.tenantContact ?? null,
       start_date: input.startDate,
       end_date: input.endDate ?? null,

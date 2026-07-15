@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/server'
 import { listProperties } from '@/lib/data/properties'
 import { listUnits } from '@/lib/data/units'
 import { listTenancies } from '@/lib/data/tenancies'
+import { listTenants } from '@/lib/data/tenants'
 import { listTickets } from '@/lib/data/tickets'
 import { buildUnitTimeline, defaultWindow } from '@/lib/occupancy/timeline'
 import { isTicketOpen } from '@/lib/status'
@@ -20,10 +21,16 @@ export default async function OccupancyPage() {
   const canWrite = can(user.role, 'units:write')
 
   const supabase = await createClient()
-  const [properties, units, tenancies, tickets] = await Promise.all([
+  const [properties, units, tenancies, tenants, tickets] = await Promise.all([
     listProperties(supabase, user.workspaceId),
     listUnits(supabase, user.workspaceId),
     listTenancies(supabase, user.workspaceId),
+    // Directory people for the "New tenancy" dialog's optional person picker (P1-3).
+    // Every role that can reach this page (occupancy:read) also holds tenants:read
+    // (both are manager + ACCOUNTANT permissions), so this is safe to fetch
+    // unconditionally — same "compute regardless of the finer write gate" pattern as
+    // unitOptions below.
+    listTenants(supabase, user.workspaceId),
     // Fetch all workspace tickets and filter to non-terminal in-page — listTickets takes
     // a single-status filter, and we want every open status, not one.
     listTickets(supabase, user.workspaceId),
@@ -70,7 +77,7 @@ export default async function OccupancyPage() {
         subtitle="Unit availability across the portfolio, in preview."
         actions={
           canWrite && unitOptions.length > 0 ? (
-            <NewTenancyDialog action={createTenancyAction} units={unitOptions} />
+            <NewTenancyDialog action={createTenancyAction} units={unitOptions} tenants={tenants} />
           ) : undefined
         }
       />

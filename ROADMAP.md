@@ -314,7 +314,7 @@ Spec: `docs/superpowers/specs/2026-07-12-property-ops-p1-tenant-directory-design
       exhaustively-maintained by prior tasks; left as-is, out of P1-2's explicit scope
       (spec §4's only CommandPalette-adjacent item, `searchWorkspace` + `TYPE_META`
       href, is P1-3's). Flagging for whoever next touches nav search.)*
-- [ ] **P1-3** `[builder]` — Detail-page tenancy card + `NewTenancyDialog` person
+- [x] **P1-3** `[builder]` — Detail-page tenancy card + `NewTenancyDialog` person
       picker (server-side name resolution in `createTenancy`) + tenants source in
       `searchWorkspace` + tests. Depends P1-1; sequence after P1-2 (shared board/nav
       files). Spec §4. **Added scope (P1-2 flagged it):** while you're in
@@ -323,6 +323,46 @@ Spec: `docs/superpowers/specs/2026-07-12-property-ops-p1-tenant-directory-design
       `/people`, permission `tenants:read`) so People is reachable from the palette's
       go-to shortcuts, not just dynamic search — every other nav destination has one.
       (The parallel `go-map` omission from M2 is H4's job, not yours — don't touch it.)
+      *(committed 2026-07-15 — built: `/people/[id]` "Linked tenancies" Card (unit ·
+      property / span via `formatDate` / rent, `DoorOpen` EmptyState) fed by P1-1's
+      `listTenanciesForTenant` + `listUnits`/`listProperties` joined in-page (same
+      Map-lookup pattern as `/occupancy`); `NewTenancyDialog` gained an optional
+      "Person" `<select>` (hidden when the workspace has zero directory people, same
+      convention as `AddExpenseDialog`'s ticket picker) that previews the chosen
+      person's name into the free-text field and locks it `readOnly` (Tailwind
+      `read-only:` variant, verified it actually compiles — see below) via a plain
+      ref-driven DOM write, not React state, so both fields stay uncontrolled and
+      reset correctly on the dialog's next open (confirmed from source:
+      `@base-ui/react`'s `DialogPortal` returns `null` when closed — `keepMounted`
+      defaults false — so the form subtree fully remounts, never carrying stale
+      `readOnly`/value across opens); **CRITICAL** — `createTenancy`
+      (`src/lib/data/tenancies.ts`) now takes an optional `tenantId`, and when set,
+      re-resolves `tenant_name` from `getTenant(workspaceId, tenantId)` server-side
+      and throws `'Selected person was not found in your workspace.'` if it doesn't
+      resolve (wrong id or cross-workspace id) — the client's `tenantName` is never
+      trusted once a person is linked; free-text-only tenancies (`tenantId`
+      omitted/null) are byte-for-byte unchanged from pre-P1-3 behaviour.
+      `tenancyFormSchema` gained `tenantId: z.string().uuid().nullable().optional()`
+      (same shape as `ticketCreateSchema.unitId`) and `occupancy/actions.ts` maps the
+      select's empty option to `undefined` (the established idiom). `searchWorkspace`
+      now queries `tenants` (full_name/email) as a SECOND source for the existing
+      `tenant` result type — href `/people/[id]`, alongside the untouched
+      tenancy-level `tenant_name` source (href stays `/units/[id]`); `CommandPalette`
+      gained `go-people` (icon `Contact`, href `/people`, permission `tenants:read`,
+      placed after `go-rent-roll` to mirror the Sidebar's Portfolio group order) —
+      `go-map` deliberately left untouched for H4. Tests: 12 new (3 in
+      `data-tenancies.test.ts` — resolves-and-overrides, throws on a wrong id, throws
+      on a cross-workspace id; 9 in new `tenancy-validation.test.ts`, mirroring
+      `ticket-validation.test.ts`'s nullable-uuid coverage). 353 tests green (341
+      baseline + 12 new), build+lint clean. No migration, no policy change — RLS on
+      `tenants` (0025) already gates the new search source and the `getTenant` call
+      inside `createTenancy`; not `[rls]`-tagged. One judgment call beyond the spec's
+      literal text, flagging for visibility: the spec doesn't say what `createTenancy`
+      should do when a supplied `tenantId` fails to resolve — chose fail-closed
+      (throw, surfaced to the user via the existing `redirectWithError` catch in
+      `createTenancyAction`) over silently falling back to the client's free-text
+      name, since a silent fallback would quietly defeat the "never trust the client
+      copy" guarantee for exactly the tampered/stale-id case it exists to catch.)*
 - [ ] **P1-4** `[verify]` — Full playbook in spec §6. Depends P1-1..3 + USER ran 0025.
 
 ## Track P2 — In-app notifications

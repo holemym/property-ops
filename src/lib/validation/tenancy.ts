@@ -11,6 +11,11 @@ const isoDate = z
 
 export const tenancyFormSchema = z.object({
   unitId: z.string().uuid('A valid unit is required'),
+  // Optional directory-person link (P1-3). "" -> undefined in the action (the
+  // template idiom), so an unlinked tenancy simply omits this key. When present,
+  // createTenancy re-resolves tenant_name from this id server-side rather than
+  // trusting tenantName below — see the CRITICAL comment there.
+  tenantId: z.string().uuid('Invalid person selected').nullable().optional(),
   tenantName: z.string().min(1, 'Tenant name is required').max(120),
   tenantContact: z.string().max(200).nullable().optional(),
   startDate: isoDate,

@@ -75,12 +75,16 @@ export async function searchWorkspace(
   // lets the composite indexes help).
   const scoped = (cols: string) => `and(workspace_id.eq.${workspaceId},or(${cols}))`
 
-  const [properties, units, tickets, vendors, tenants, invoices, documents] = await Promise.all([
+  // 'tenant' results come from TWO sources: legacy tenancy-level free-text names
+  // (tenancyMatches, href -> the unit) and directory records (tenants, P1-3, href ->
+  // /people/[id]). Both feed the same result type/bucket in the palette.
+  const [properties, units, tickets, vendors, tenancyMatches, tenants, invoices, documents] = await Promise.all([
     run(supabase, 'properties', 'id, name, address_line1, city', scoped(`name.ilike.${like},address_line1.ilike.${like},city.ilike.${like}`)),
     run(supabase, 'units', 'id, label, floor', scoped(`label.ilike.${like}`)),
     run(supabase, 'tickets', 'id, title, status', scoped(`title.ilike.${like}`)),
     run(supabase, 'vendors', 'id, company_name, contact_name, email', scoped(`company_name.ilike.${like},contact_name.ilike.${like},email.ilike.${like}`)),
     run(supabase, 'tenancies', 'id, tenant_name, unit_id', scoped(`tenant_name.ilike.${like}`)),
+    run(supabase, 'tenants', 'id, full_name, email', scoped(`full_name.ilike.${like},email.ilike.${like}`)),
     run(supabase, 'invoices', 'id, invoice_number, party_name', scoped(`invoice_number.ilike.${like},party_name.ilike.${like}`)),
     run(supabase, 'documents', 'id, title, document_type', scoped(`title.ilike.${like}`)),
   ])
@@ -123,13 +127,22 @@ export async function searchWorkspace(
       href: `/vendors/${str(v.id)}`,
     })
   }
-  for (const t of tenants) {
+  for (const t of tenancyMatches) {
     results.push({
       type: 'tenant',
       id: str(t.id),
       title: str(t.tenant_name),
       subtitle: 'Tenant',
       href: `/units/${str(t.unit_id)}`,
+    })
+  }
+  for (const t of tenants) {
+    results.push({
+      type: 'tenant',
+      id: str(t.id),
+      title: str(t.full_name),
+      subtitle: str(t.email) || 'Person',
+      href: `/people/${str(t.id)}`,
     })
   }
   for (const inv of invoices) {
