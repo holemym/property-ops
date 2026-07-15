@@ -1,6 +1,7 @@
 import type {
   EntityStatus,
   InvoiceStatus,
+  NotificationType,
   TicketPriority,
   TicketStatus,
   UnitStatus,
@@ -20,6 +21,11 @@ import type {
 //   unit:     OCCUPIED/blue, VACANT/amber, MAINTENANCE/amber, BLOCKED/red
 //   entity:   ACTIVE/green, ARCHIVED/neutral
 //   vendor is_active: true → active/green, false → inactive/muted
+//   notification: TICKET_ASSIGNED/blue (mirrors ticket_status's ASSIGNED), STATUS_CHANGED/
+//     amber ("something changed, take a look" — mirrors TRIAGE/WAITING_FOR_INFO's
+//     attention amber), COMMENT/neutral (lowest-urgency ping, mirrors NEW/CLOSED). Added
+//     P2-2 for the /notifications row dot; three distinct tones so a scanning eye can
+//     tell types apart even before reading the title.
 
 export type StatusTone = 'neutral' | 'muted' | 'blue' | 'amber' | 'green' | 'red'
 
@@ -37,6 +43,7 @@ export type StatusBadgeInput =
   | { kind: 'entity_status'; value: EntityStatus }
   | { kind: 'invoice_status'; value: InvoiceStatus }
   | { kind: 'vendor_is_active'; value: boolean }
+  | { kind: 'notification_type'; value: NotificationType }
 
 const TICKET_STATUS: Record<TicketStatus, StatusBadgeSpec> = {
   NEW: { label: 'New', tone: 'neutral' },
@@ -83,6 +90,12 @@ const VENDOR_IS_ACTIVE: Record<'true' | 'false', StatusBadgeSpec> = {
   false: { label: 'Inactive', tone: 'muted' },
 }
 
+const NOTIFICATION_TYPE: Record<NotificationType, StatusBadgeSpec> = {
+  TICKET_ASSIGNED: { label: 'Assigned', tone: 'blue' },
+  TICKET_STATUS_CHANGED: { label: 'Status changed', tone: 'amber' },
+  TICKET_COMMENT: { label: 'Comment', tone: 'neutral' },
+}
+
 /**
  * Map a domain status value to its `{ label, tone }` presentation.
  * The overloads keep call sites type-safe: `statusBadge('unit_status', u.status)`
@@ -94,6 +107,7 @@ export function statusBadge(kind: 'unit_status', value: UnitStatus): StatusBadge
 export function statusBadge(kind: 'entity_status', value: EntityStatus): StatusBadgeSpec
 export function statusBadge(kind: 'invoice_status', value: InvoiceStatus): StatusBadgeSpec
 export function statusBadge(kind: 'vendor_is_active', value: boolean): StatusBadgeSpec
+export function statusBadge(kind: 'notification_type', value: NotificationType): StatusBadgeSpec
 export function statusBadge(kind: StatusBadgeInput['kind'], value: string | boolean): StatusBadgeSpec {
   switch (kind) {
     case 'ticket_status':
@@ -108,6 +122,8 @@ export function statusBadge(kind: StatusBadgeInput['kind'], value: string | bool
       return INVOICE_STATUS[value as InvoiceStatus]
     case 'vendor_is_active':
       return VENDOR_IS_ACTIVE[value ? 'true' : 'false']
+    case 'notification_type':
+      return NOTIFICATION_TYPE[value as NotificationType]
   }
 }
 

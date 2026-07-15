@@ -22,7 +22,6 @@ import {
   Building,
   Loader2,
   MapPinned,
-  Bell,
   Contact,
   RefreshCw,
   type LucideIcon,
@@ -90,12 +89,13 @@ const OPERATOR_GROUPS: NavGroup[] = [
 // Map shipped for real in Track M (M2) — its preview entry + page are gone (the swap
 // rule); the live "Map" link now lives in OPERATOR_GROUPS's Portfolio group above.
 // People shipped for real in Track P1 (P1-2) — same swap.
+// Notifications shipped for real in Track P2 (P2-2) — same swap, but with NO new
+// OPERATOR_GROUPS entry: the feature's real nav affordance is the TopNav bell
+// (src/components/layout/TopNav.tsx), not a sidebar link, so there is nothing to move
+// here — the preview entry is simply gone.
 const PREVIEW_GROUP: NavGroup = {
   label: 'Preview',
-  items: [
-    { href: '/preview/notifications', label: 'Notifications', icon: Bell },
-    { href: '/preview/rent-automation', label: 'Rent automation', icon: RefreshCw },
-  ],
+  items: [{ href: '/preview/rent-automation', label: 'Rent automation', icon: RefreshCw }],
 }
 
 // Minimal tenant/guest nav — the self-service portal only, headerless.

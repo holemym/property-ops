@@ -395,9 +395,58 @@ Spec: `docs/superpowers/specs/2026-07-12-property-ops-p2-notifications-design.md
       `/notifications` and that review will confirm the real caller uses the own
       client. USER: migration 0026 still needs to be run in the SQL editor — already
       queued in the Standing USER-action queue below.)*
-- [ ] **P2-2** `[builder]` — TopNav bell + unread chip + `/notifications` inbox
+- [x] **P2-2** `[builder]` — TopNav bell + unread chip + `/notifications` inbox
       (paged, mark-read/mark-all) + portal-surface check + **delete
       `/preview/notifications`**. Depends P2-1. Spec §3.
+      *(committed 2026-07-16 — both mark-read/mark-all actions use createClient()
+      (the caller's own RLS client), never the service client, per P2-1's carried-over
+      security note. Built: `src/app/(app)/notifications/page.tsx` (PageHeader,
+      `requireWorkspace()` only — no permission gate — paged via `listNotificationsPage`
+      + `countUnread` in parallel, house `Pagination` at 25/page, EmptyState "You're all
+      caught up", "Mark all read" header action hidden at zero unread, each row a
+      `<form>`-wrapped full-width submit button — not a `<Link>`, since the click must
+      mark-read before navigating — with a type-tinted dot, `bg-muted/40` + semibold
+      while unread) + `src/app/(app)/notifications/actions.ts`
+      (`markReadNotificationAction`: best-effort mark-read, never blocks the redirect;
+      `markAllReadNotificationsAction`: surfaces a failure via `redirectWithError`,
+      since that click IS the whole point) + bell in `src/components/layout/TopNav.tsx`
+      (Bell icon + count chip, always rendered for both operator and tenant — verified
+      in the browser that the portal's TopNav shows it and correctly omits
+      CommandPalette) + unread count server-fetched in `src/app/(app)/layout.tsx`
+      alongside the workspace-name fetch, wrapped in `.catch(() => 0)` so a
+      notifications-table hiccup (e.g. 0026 not yet applied somewhere) degrades to "no
+      chip" instead of 500ing every page in the app + `notification_type` tone mapping
+      in `src/lib/status.ts` (ASSIGNED/blue, STATUS_CHANGED/amber, COMMENT/neutral) +
+      two new pure/tested helpers: `src/lib/notifications/unread-badge.ts`
+      (`formatUnreadBadge`, caps display at "9+", null hides the chip) and
+      `src/lib/notifications/resolve-href.ts` (`resolveNotificationHref` — see finding
+      below) + deleted `src/app/(app)/preview/notifications/page.tsx` and its Sidebar
+      Preview-group entry (no OPERATOR_GROUPS replacement — the bell is the nav
+      affordance, not a sidebar link). 389 tests green (380 baseline + 9 new),
+      build+lint clean.
+      **Finding beyond the spec's literal text, fixed in-scope:** every notification
+      href written by P2-1 is an operator path (`/tickets/<id>`), but tenants hold zero
+      `tickets:read`-family permissions and `/tickets/[id]` gates on `requirePermission`
+      — so a tenant clicking their own status-changed/comment notification would have
+      crashed via the default error boundary instead of reaching their ticket. Tenants'
+      reachable equivalent is `/portal/<id>` (RLS-scoped to `created_by` OR
+      `created_for`, migration 0013 — exactly the two recipients
+      `resolveStatusChangedRecipients` fans out to). `resolveNotificationHref` rewrites
+      `/tickets/<id>` → `/portal/<id>` for TENANT/GUEST at click time in
+      `markReadNotificationAction`, rather than reopening P2-1's already-RLS-reviewed
+      `tickets/actions.ts` to make the writer role-aware. Every v1 `NotificationType` is
+      ticket-related so the blanket prefix swap is complete for now; flagged in the
+      function's own docstring for whoever adds a non-ticket notification type later.
+      **Also discovered, NOT fixed here (separate, wider blast radius, flagged via
+      spawn_task):** ~20 pre-existing `<Button render={<Link .../>}>` call sites across
+      ~15 files (e.g. `EmptyState.tsx`, `tickets/page.tsx`, `properties/page.tsx`) never
+      set `nativeButton={false}`, so Base UI's dev-mode `useButton` check logs a console
+      error on every mount (confirmed by reading `@base-ui/react`'s `useButton.js` — the
+      check is unconditional, not page-specific). Dev-only (gated behind
+      `NODE_ENV !== 'production'`) and doesn't fail build/lint/tests, so it shipped
+      unnoticed until this task's own new bell button hit the same issue and got fixed
+      (`nativeButton={false}` added at its one call site) — the other ~20 are
+      out-of-scope for a notifications ticket and were left untouched.)*
 - [ ] **P2-3** `[verify]` — Full playbook in spec §5. Depends P2-1..2 + USER ran 0026.
 
 ## Track P3 — Recurring rent invoices
