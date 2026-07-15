@@ -52,13 +52,23 @@ Fold into `schema_bundle.sql`.
 `appendTicketEvent` call sites). **Never notify the actor about their own action**
 (skip when `recipientUserId === actorUserId`) and skip when recipient is null.
 
-Wire alongside the existing email hooks in `src/app/(app)/tickets/actions.ts` (the
-same three moments `notify.ts` already covers — the emails stay untouched):
-1. Operator assigned → notify the operator. (`TICKET_ASSIGNED`)
+Wire into `src/app/(app)/tickets/actions.ts` at three action sites. **Accuracy
+correction (verified against the live code 2026-07-15, pre-audit):** `notify.ts`
+covers FIVE email moments — `notifyTicketStatusChanged`, `notifyOperatorAssigned`,
+`notifyVendorAssigned`, `notifyVendorJobLink`, `notifyTicketCreated` — NOT three, and
+crucially **there is no comment email at all.** So only two of the three in-app moments
+have an existing email sibling to sit beside; the comment notification is net-new. The
+emails stay untouched; add the in-app writes as follows:
+1. Operator assigned → notify the operator. Sits beside `notifyOperatorAssigned`
+   (~line 290). (`TICKET_ASSIGNED`)
 2. Status changed → notify the reporter (`created_by`, and `created_for` if set and
-   distinct). (`TICKET_STATUS_CHANGED`)
-3. Comment added (PUBLIC only — never leak INTERNAL comment existence) → notify the
-   reporter if the commenter is someone else; if the commenter IS the reporter,
+   distinct — note the existing `reporterUserId: ticket.created_for_user_id ??
+   ticket.created_by_user_id` resolution at ~line 225). Sits beside
+   `notifyTicketStatusChanged` (~line 219). (`TICKET_STATUS_CHANGED`)
+3. Comment added — **NEW, no email sibling.** Add at `addTicketCommentAction`
+   (~line 482), which already parses/validates the `visibility` field and gates
+   INTERNAL at ~line 500. PUBLIC only — never leak INTERNAL comment existence → notify
+   the reporter if the commenter is someone else; if the commenter IS the reporter,
    notify the assigned operator instead. (`TICKET_COMMENT`)
 
 Demo workspace: skip entirely (one `isDemoWorkspace` check at the top of the shared
