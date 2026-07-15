@@ -28,6 +28,12 @@ import {
   notifyVendorJobLink,
   notifyTicketCreated,
 } from '@/lib/email/notify'
+import {
+  createNotification,
+  resolveOperatorAssignedRecipient,
+  resolveStatusChangedRecipients,
+  resolveCommentRecipient,
+} from '@/lib/notifications/notify-inapp'
 import { createVendorJobToken } from '@/lib/data/vendor-tokens'
 import { getProperty } from '@/lib/data/properties'
 import { getUnit } from '@/lib/data/units'
@@ -230,6 +236,33 @@ export async function transitionTicketStatusAction(id: string, formData: FormDat
     console.error('Failed to send status-changed email for ticket', id, e)
   }
 
+  // Best-effort in-app notification (P2-1) — fans out to BOTH created_by and
+  // created_for when distinct. The email above only reaches one address (via the
+  // ??-collapsed reporterUserId passed to notifyTicketStatusChanged); the in-app
+  // inbox can afford to ping both real stakeholders. resolveStatusChangedRecipients
+  // already excludes the actor, and createNotification independently re-checks the
+  // same guard per recipient.
+  try {
+    const recipients = resolveStatusChangedRecipients(
+      user.id,
+      ticket.created_by_user_id,
+      ticket.created_for_user_id
+    )
+    for (const recipientUserId of recipients) {
+      await createNotification(createServiceClient(), {
+        workspaceId: user.workspaceId,
+        recipientUserId,
+        actorUserId: user.id,
+        type: 'TICKET_STATUS_CHANGED',
+        title: 'Ticket status changed',
+        body: ticket.title,
+        href: detailPath,
+      })
+    }
+  } catch (e) {
+    console.error('Failed to write status-changed notification for ticket', id, e)
+  }
+
   revalidatePath(detailPath)
   redirect(detailPath)
 }
@@ -297,6 +330,23 @@ export async function assignOperatorAction(id: string, formData: FormData) {
       })
     } catch (e) {
       console.error('Failed to send operator-assigned email for ticket', id, e)
+    }
+
+    // Best-effort in-app notification (P2-1) — sits beside the email above, same
+    // ASSIGN-only guard. resolveOperatorAssignedRecipient returns null on a
+    // self-assign; createNotification independently re-checks the same guard.
+    try {
+      await createNotification(createServiceClient(), {
+        workspaceId: user.workspaceId,
+        recipientUserId: resolveOperatorAssignedRecipient(user.id, operatorId),
+        actorUserId: user.id,
+        type: 'TICKET_ASSIGNED',
+        title: 'Ticket assigned to you',
+        body: ticket.title,
+        href: detailPath,
+      })
+    } catch (e) {
+      console.error('Failed to write operator-assigned notification for ticket', id, e)
     }
   }
 
@@ -525,6 +575,37 @@ export async function addTicketCommentAction(id: string, formData: FormData) {
     })
   } catch (e) {
     console.error('Failed to log COMMENT_ADDED event for ticket', id, e)
+  }
+
+  // Best-effort in-app notification (P2-1) — NEW, no email sibling for comments
+  // (notify.ts covers five other moments but never comments). PUBLIC only: an
+  // INTERNAL comment's existence must never leak via notification, mirroring the
+  // INTERNAL visibility gate above. Needs the ticket's reporter/assigned-operator,
+  // which this action doesn't otherwise load — fetched here, scoped to its own
+  // try/catch so a lookup failure only costs the notification, never the comment
+  // that has already been saved.
+  try {
+    const ticket = await getTicket(supabase, user.workspaceId, id)
+    if (ticket) {
+      const reporterUserId = ticket.created_for_user_id ?? ticket.created_by_user_id
+      const recipientUserId = resolveCommentRecipient(
+        visibility,
+        user.id,
+        reporterUserId,
+        ticket.assigned_operator_id
+      )
+      await createNotification(createServiceClient(), {
+        workspaceId: user.workspaceId,
+        recipientUserId,
+        actorUserId: user.id,
+        type: 'TICKET_COMMENT',
+        title: 'New comment',
+        body: ticket.title,
+        href: detailPath,
+      })
+    }
+  } catch (e) {
+    console.error('Failed to write comment notification for ticket', id, e)
   }
 
   revalidatePath(detailPath)

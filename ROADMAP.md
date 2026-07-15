@@ -368,10 +368,33 @@ Spec: `docs/superpowers/specs/2026-07-12-property-ops-p1-tenant-directory-design
 ## Track P2 — In-app notifications
 Spec: `docs/superpowers/specs/2026-07-12-property-ops-p2-notifications-design.md`
 
-- [ ] **P2-1** `[builder]` `[rls]` — Migration 0026 (`notifications` + enum, own-inbox
+- [x] **P2-1** `[builder]` `[rls]` — Migration 0026 (`notifications` + enum, own-inbox
       RLS with zero-INSERT-policy/service-role writes, demo-reset extension, bundle
       fold) + `notify-inapp.ts` writer + wiring into the three ticket-action moments +
       data layer + unit tests (recipient-resolution branches). Spec §1–2.
+      *(committed 2026-07-16 — RLS review came back CLEAN: own-inbox SELECT/UPDATE
+      isolation verified byte-for-byte with genuinely no manager/admin override
+      branch, zero INSERT policy confirmed, the writer uses the service client while
+      mark-read/mark-all use the caller's own RLS client, and the re-pasted
+      `reset_demo_workspace()` is line-by-line identical to 0025's body except the one
+      new notifications-delete line (no comment-drop this time). Built:
+      `supabase/migrations/0026_notifications.sql` + `schema_bundle.sql` fold (new
+      NOTIFICATIONS (0026) section; `reset_demo_workspace()` updated in place;
+      `expect 18` -> `expect 19`) + `src/lib/notifications/notify-inapp.ts`
+      (`createNotification` writer + `resolveOperatorAssignedRecipient`/
+      `resolveStatusChangedRecipients`/`resolveCommentRecipient` pure resolvers) +
+      `src/lib/data/notifications.ts` (`listNotificationsPage`/`countUnread`/
+      `markRead`/`markAllRead`) + `NotificationType` in `src/types/domain.ts` (row
+      type `Notification` stays local per the corrected row-type-location rule) +
+      wiring into `src/app/(app)/tickets/actions.ts` at
+      `transitionTicketStatusAction`/`assignOperatorAction`/`addTicketCommentAction`
+      (the last is net-new — `notify.ts` has no comment email) +
+      `tests/helpers/fake-supabase.ts` gained minimal `.is()`/`.range()`/count
+      support. 380 tests green (353 baseline + 27 new), build+lint clean.
+      markRead/markAllRead have no call sites yet — expected, P2-2 wires them into
+      `/notifications` and that review will confirm the real caller uses the own
+      client. USER: migration 0026 still needs to be run in the SQL editor — already
+      queued in the Standing USER-action queue below.)*
 - [ ] **P2-2** `[builder]` — TopNav bell + unread chip + `/notifications` inbox
       (paged, mark-read/mark-all) + portal-surface check + **delete
       `/preview/notifications`**. Depends P2-1. Spec §3.

@@ -241,3 +241,11 @@ export type InvoiceLineItem = {
   sort_order: number
   created_at: string
 }
+
+// In-app notification event type (migration 0026). Every Postgres-enum-backed union
+// in this schema lives here regardless of which migration introduced it (unlike the
+// bigger entity ROW types, which split local-vs-domain.ts by migration number — see
+// roadmap v2 §2); the `Notification` row type itself stays local to
+// src/lib/data/notifications.ts, following the src/lib/data/tenants.ts (0025)
+// precedent. Written by src/lib/notifications/notify-inapp.ts.
+export type NotificationType = 'TICKET_ASSIGNED' | 'TICKET_STATUS_CHANGED' | 'TICKET_COMMENT'

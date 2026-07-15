@@ -1325,13 +1325,15 @@ revoke execute on function public.check_rate_limit(text, integer, integer) from 
 grant execute on function public.check_rate_limit(text, integer, integer) to service_role;
 
 -- =============================================================================
--- DEMO MODE (0023, tenants wipe added in 0025) — is_demo workspace flag,
--- synthetic seed identity, the reset_demo_workspace() wipe+reseed function
--- (service_role-only), and demo-workspace exclusion on the storage INSERT
--- policies. See migration 0023's header for the full rationale. Order matters:
--- workspace before profile attach (FK). The function body below is the FINAL
--- state (0023 + 0025's added `delete from public.tenants` line), not the 0023
--- original — see 0025's header for why the directory needs wiping too.
+-- DEMO MODE (0023, tenants wipe added in 0025, notifications wipe added in
+-- 0026) — is_demo workspace flag, synthetic seed identity, the
+-- reset_demo_workspace() wipe+reseed function (service_role-only), and
+-- demo-workspace exclusion on the storage INSERT policies. See migration
+-- 0023's header for the full rationale. Order matters: workspace before
+-- profile attach (FK). The function body below is the FINAL state (0023 +
+-- 0025's `delete from public.tenants` line + 0026's `delete from
+-- public.notifications` line), not the 0023 original — see 0025/0026's
+-- headers for why each addition needs wiping too.
 -- =============================================================================
 alter table public.workspaces add column if not exists is_demo boolean not null default false;
 alter table public.workspaces add column if not exists demo_reset_at timestamptz;
@@ -1394,6 +1396,7 @@ begin
   delete from public.documents where workspace_id = demo_ws;
   delete from public.expense_records where workspace_id = demo_ws;
   delete from public.income_records where workspace_id = demo_ws;
+  delete from public.notifications where workspace_id = demo_ws;
   delete from public.ticket_comments where workspace_id = demo_ws;
   delete from public.ticket_events where workspace_id = demo_ws;
   delete from public.vendor_job_tokens where workspace_id = demo_ws;
@@ -1605,5 +1608,67 @@ do $do$ begin
 exception when duplicate_object or duplicate_table then null; end $do$;
 
 -- =============================================================================
--- DONE. Verify: select count(*) from pg_tables where schemaname='public';  -- expect 18
+-- NOTIFICATIONS (0026) — `public.notifications`, a per-user inbox of in-app
+-- pings for events the system already emits (ticket assignment, status
+-- change, comment). Written by src/lib/notifications/notify-inapp.ts, called
+-- from the same src/app/(app)/tickets/actions.ts server actions that already
+-- fire the Phase-4 email hooks. RLS is STRICTLY OWN-INBOX — a deliberate
+-- deviation from the tenants/tenancies PII pattern: no manager/SUPER_ADMIN
+-- read-all override. INSERT is ZERO POLICY (service_role-only, same lock as
+-- vendor_job_tokens/0014); no DELETE policy. See migration 0026 for full
+-- rationale (including the ACCEPTED LIMITATION on the UPDATE policy's WITH
+-- CHECK, and why the reset_demo_workspace() body above already carries the
+-- notifications wipe line as part of its FINAL state).
+-- =============================================================================
+do $do$ begin
+  create type public.notification_type as enum
+    ('TICKET_ASSIGNED', 'TICKET_STATUS_CHANGED', 'TICKET_COMMENT');
+exception when duplicate_object then null; end $do$;
+
+create table if not exists public.notifications (
+  id uuid primary key default gen_random_uuid(),
+  workspace_id uuid not null references public.workspaces (id) on delete cascade,
+  recipient_user_id uuid not null references public.profiles (id) on delete cascade,
+  type public.notification_type not null,
+  title text not null,
+  body text,
+  href text not null,
+  read_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists notifications_recipient_idx
+  on public.notifications (recipient_user_id, read_at, created_at desc);
+
+alter table public.notifications enable row level security;
+
+-- SELECT: strictly own-inbox. NO manager/SUPER_ADMIN override (deliberate).
+drop policy if exists "notifications_select_own" on public.notifications;
+create policy "notifications_select_own"
+  on public.notifications for select
+  using (
+    recipient_user_id = auth.uid()
+    and workspace_id = public.current_workspace_id()
+    and coalesce(public.current_is_active(), false)
+  );
+
+-- UPDATE (mark-read): same predicate on both sides.
+drop policy if exists "notifications_update_own" on public.notifications;
+create policy "notifications_update_own"
+  on public.notifications for update
+  using (
+    recipient_user_id = auth.uid()
+    and workspace_id = public.current_workspace_id()
+    and coalesce(public.current_is_active(), false)
+  )
+  with check (
+    recipient_user_id = auth.uid()
+    and workspace_id = public.current_workspace_id()
+    and coalesce(public.current_is_active(), false)
+  );
+
+-- INSERT: ZERO POLICY — intentional, service_role-only. No DELETE policy.
+
+-- =============================================================================
+-- DONE. Verify: select count(*) from pg_tables where schemaname='public';  -- expect 19
 -- =============================================================================

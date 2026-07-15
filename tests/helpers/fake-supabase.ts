@@ -44,17 +44,35 @@ export function createFakeSupabaseClient(seed: Record<string, Row[]> = {}) {
     let orderBy: string | null = null
     let ascending = true
     let orFilter: string | null = null
+    let wantCount = false
+    let rangeFrom: number | null = null
+    let rangeTo: number | null = null
 
     const api: any = {
-      select() { return api },
+      // Second arg mirrors the real client's `{ count: 'exact', head: true }` shape
+      // (used by the listXPage house pagination pattern, e.g. listTicketsPage /
+      // listNotificationsPage) — only `count === 'exact'` is modeled; `head` is
+      // ignored since this stub always computes `data` anyway.
+      select(_cols?: string, opts?: { count?: string; head?: boolean }) {
+        wantCount = opts?.count === 'exact'
+        return api
+      },
       eq(col: string, val: any) { filters.push([col, val]); return api },
       ilike(col: string, val: any) { filters.push([col, val]); return api },
+      // `.is(col, null)` — added minimally for P2-1's notifications data layer
+      // (read_at IS NULL). Reuses the plain equality filter list; matches() does
+      // strict `===`, so seed fixtures must set the column explicitly to `null`
+      // rather than omitting it (same convention every other fixture already follows).
+      is(col: string, val: any) { filters.push([col, val]); return api },
       or(filterString: string) { orFilter = filterString; return api },
       order(col: string, opts?: { ascending?: boolean }) { orderBy = col; ascending = opts?.ascending ?? true; return api },
+      // Added minimally for P2-1's listNotificationsPage (house `.range()` pattern,
+      // same shape listTicketsPage already uses). Applied AFTER sort, like Postgrest.
+      range(from: number, to: number) { rangeFrom = from; rangeTo = to; return api },
       single() { single = true; return api },
       insert(row: Row) { op = 'insert'; payload = row; return api },
       update(row: Row) { op = 'update'; payload = row; return api },
-      then(resolve: (v: { data: any; error: any }) => void) {
+      then(resolve: (v: { data: any; error: any; count?: number }) => void) {
         if (op === 'insert') {
           const newRow = { id: `fake-${idCounter++}`, created_at: new Date().toISOString(), updated_at: new Date().toISOString(), ...payload }
           tables[table].push(newRow)
@@ -76,8 +94,12 @@ export function createFakeSupabaseClient(seed: Record<string, Row[]> = {}) {
             return ascending ? cmp : -cmp
           })
         }
+        const matchedCount = found.length
+        if (rangeFrom !== null && rangeTo !== null) {
+          found = found.slice(rangeFrom, rangeTo + 1)
+        }
         if (single && found.length === 0) { resolve({ data: null, error: new Error('not found') }); return }
-        resolve({ data: single ? found[0] : found, error: null })
+        resolve({ data: single ? found[0] : found, error: null, count: wantCount ? matchedCount : undefined })
       },
     }
     return api
