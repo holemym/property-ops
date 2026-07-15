@@ -54,6 +54,7 @@ const OPERATOR_GROUPS: NavGroup[] = [
       { href: '/units', label: 'Units', icon: DoorOpen },
       { href: '/occupancy', label: 'Occupancy', icon: CalendarClock, permission: 'occupancy:read' },
       { href: '/rent-roll', label: 'Rent roll', icon: ReceiptText, permission: 'occupancy:read' },
+      { href: '/people', label: 'People', icon: Contact, permission: 'tenants:read' },
     ],
   },
   {
@@ -88,11 +89,11 @@ const OPERATOR_GROUPS: NavGroup[] = [
 // ships, delete its page and move the nav item out of this group into OPERATOR_GROUPS.
 // Map shipped for real in Track M (M2) — its preview entry + page are gone (the swap
 // rule); the live "Map" link now lives in OPERATOR_GROUPS's Portfolio group above.
+// People shipped for real in Track P1 (P1-2) — same swap.
 const PREVIEW_GROUP: NavGroup = {
   label: 'Preview',
   items: [
     { href: '/preview/notifications', label: 'Notifications', icon: Bell },
-    { href: '/preview/people', label: 'People', icon: Contact },
     { href: '/preview/rent-automation', label: 'Rent automation', icon: RefreshCw },
   ],
 }

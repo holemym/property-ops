@@ -284,9 +284,36 @@ Spec: `docs/superpowers/specs/2026-07-12-property-ops-p1-tenant-directory-design
       clean. No UI yet — `/people` is P1-2/P1-3, `/preview/people` still in nav.
       USER: migration 0025 still needs to be run in the SQL editor — already queued
       at line ~465.)*
-- [ ] **P1-2** `[builder]` — `/people` list (search, responsive table→cards) +
+- [x] **P1-2** `[builder]` — `/people` list (search, responsive table→cards) +
       `TenantForm` + new/edit pages + Portfolio nav entry + **delete
       `/preview/people`**. Depends P1-1. Spec §4.
+      *(committed 2026-07-15 — built `src/components/tenants/TenantForm.tsx` (mirrors
+      VendorForm: fullName/email/phone/language/notes, readOnly mode) +
+      `src/components/tenants/TenantTable.tsx` (mirrors VendorTable: Name/Contact
+      (email+phone stacked)/Language/Tenancies columns, mobile card fallback,
+      stretched-link + focus-ring row click to `/people/[id]`) +
+      `src/app/(app)/people/page.tsx` (search-by-name form mirrors `/properties`;
+      linked-tenancy count computed by joining the existing `listTenants` +
+      `listTenancies` calls through a `Map<tenantId, count>` in the page — same
+      pattern as `/map`'s `unitCountByProperty`, so no new data-layer code was needed)
+      + `/people/new` + `/people/[id]` (minimal edit form, no toggle/card — structured
+      so P1-3 can add the linked-tenancies card as a sibling block) +
+      `src/app/(app)/people/actions.ts` (`createTenantAction`/`updateTenantAction`,
+      mirrors `vendors/actions.ts` exactly) + three `loading.tsx` skeletons + moved
+      "People" from the Preview nav group into Portfolio (icon `Contact`, after Rent
+      roll, `tenants:read`-gated) in `src/components/layout/Sidebar.tsx` + deleted
+      `src/app/(app)/preview/people/page.tsx` in the same commit (swap rule). No lib
+      changes — P1-1's data layer/validation/permissions were used as-is. No new pure
+      logic, so no new test file (matches the vendors/properties precedent: their
+      list/form UI has zero dedicated test files either — pure logic lives in the data
+      layer, already covered by `tests/unit/data-tenants.test.ts` +
+      `tenant-validation.test.ts`). 341 tests green (unchanged from P1-1's baseline),
+      build+lint clean. Note: the CommandPalette's static "Go to" `COMMANDS` list
+      (`src/components/search/CommandPalette.tsx`) still has no People entry — it was
+      also never updated for Map (M2), so this list isn't treated as
+      exhaustively-maintained by prior tasks; left as-is, out of P1-2's explicit scope
+      (spec §4's only CommandPalette-adjacent item, `searchWorkspace` + `TYPE_META`
+      href, is P1-3's). Flagging for whoever next touches nav search.)*
 - [ ] **P1-3** `[builder]` — Detail-page tenancy card + `NewTenancyDialog` person
       picker (server-side name resolution in `createTenancy`) + tenants source in
       `searchWorkspace` + tests. Depends P1-1; sequence after P1-2 (shared board/nav
