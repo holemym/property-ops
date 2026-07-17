@@ -34,7 +34,7 @@ export default async function VendorsPage({
       <PageHeader
         title="Vendors"
         subtitle="Contractors and service providers you assign to maintenance work."
-        actions={canWrite && <Button render={<Link href="/vendors/new" />}>New vendor</Button>}
+        actions={canWrite && <Button render={<Link href="/vendors/new" />} nativeButton={false}>New vendor</Button>}
       />
 
       <form className="flex items-center gap-2">
@@ -67,7 +67,7 @@ export default async function VendorsPage({
           }
           action={
             canWrite ? (
-              <Button render={<Link href="/vendors/new" />}>Add vendor</Button>
+              <Button render={<Link href="/vendors/new" />} nativeButton={false}>Add vendor</Button>
             ) : undefined
           }
         />

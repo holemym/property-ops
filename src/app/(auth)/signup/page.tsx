@@ -32,7 +32,7 @@ export default async function SignupPage({
           Ask your workspace administrator to invite you from Settings → Users. Already
           have an invite?
         </p>
-        <Button render={<Link href="/login" />} size="lg" className="mt-4 w-full">
+        <Button render={<Link href="/login" />} nativeButton={false} size="lg" className="mt-4 w-full">
           Go to sign in
         </Button>
         {demoEnabled && (
@@ -57,7 +57,7 @@ export default async function SignupPage({
             We sent a confirmation link to your inbox. Open it to activate your account, then sign
             in.
           </p>
-          <Button render={<Link href="/login" />} size="lg" className="w-full">
+          <Button render={<Link href="/login" />} nativeButton={false} size="lg" className="w-full">
             Back to sign in
           </Button>
         </div>

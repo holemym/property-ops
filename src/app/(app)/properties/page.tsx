@@ -30,7 +30,7 @@ export default async function PropertiesPage({
         subtitle="Buildings you manage, with their units, vendors, and tickets."
         actions={
           canWrite && (
-            <Button render={<Link href="/properties/new" />}>New property</Button>
+            <Button render={<Link href="/properties/new" />} nativeButton={false}>New property</Button>
           )
         }
       />
@@ -62,7 +62,7 @@ export default async function PropertiesPage({
           }
           action={
             canWrite && !isFiltered ? (
-              <Button render={<Link href="/properties/new" />}>Add property</Button>
+              <Button render={<Link href="/properties/new" />} nativeButton={false}>Add property</Button>
             ) : undefined
           }
         />

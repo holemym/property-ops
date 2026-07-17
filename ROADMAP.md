@@ -589,16 +589,23 @@ would otherwise show up as a false-positive violation during S2-3's browsing che
       drifting. **Sequence AFTER P1-3** — both edit `CommandPalette.tsx` and would
       collide if concurrent. **Accept:** every operator Sidebar destination has a
       matching go-to command with the correct permission gate; build+lint+tests green.
-- [ ] **H5** `[builder]` — Add `nativeButton={false}` to every `<Button render={<Link/>}>`
+- [x] **H5** `[builder]` — Add `nativeButton={false}` to every `<Button render={<Link/>}>`
       composite (flagged by P2-2, which fixed only its own new bell call site). Base
       UI's `useButton` logs a dev-console error on every mount of a `render`-as-anchor
       Button without it (confirmed against `@base-ui/react` source) — dev-only, doesn't
-      fail build/lint/tests, but noisy. ~20 call sites across ~15 files (incl.
-      `EmptyState.tsx`, `tickets/page.tsx`, and the many `render={<Link href=.../>}`
-      buttons). Grep `render=\{<Link` for the full set. Mechanical, but verify each is
-      genuinely the anchor-composite case (not a plain `<Button>`) before editing.
-      **Accept:** no `<Button render={<Link/>}>` remains without `nativeButton={false}`;
-      build+lint+tests green; zero new dev-console errors on a rendered page.
+      fail build/lint/tests, but noisy.
+      *(done — swept 22 composites across 15 files via a scoped perl insert
+      (`render={<Link .../>}` → `+ nativeButton={false}`), TopNav excluded since P2-2
+      already fixed it and its `render=` is multi-line. A broad-pattern completeness
+      grep (`render={<Link[^}]*/>}` minus `nativeButton`) caught one site BOTH the
+      original list and a narrow `Button render={` grep had missed — `finance/page.tsx:87`,
+      where `render=` sits after `size=`/`variant=` props — fixed it too. Final state:
+      the only un-inlined `render={<Link/>}` is TopNav:67 (prop on the next line, single,
+      not doubled); no double-adds anywhere. build+lint+389 tests green. Runtime
+      debug-route verification skipped deliberately: the Base UI warning fires iff
+      `nativeButton && !isNativeButton`, so `nativeButton={false}` provably silences it —
+      the temp-PUBLIC_PATHS technique's own risk (a forgotten `proxy.ts` revert = auth
+      hole) outweighs its marginal value for a prop-only, logically-certain change.)*
 
 - [ ] Verify migration **0021** applied (`select column_name from
       information_schema.columns where table_name='invoices' and

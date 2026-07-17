@@ -84,7 +84,7 @@ export default async function FinancePage() {
   ) : null
 
   const exportButton = (
-    <Button size="sm" variant="outline" render={<Link href="/finance/export" />}>
+    <Button size="sm" variant="outline" render={<Link href="/finance/export" />} nativeButton={false}>
       <Download />
       Export CSV
     </Button>

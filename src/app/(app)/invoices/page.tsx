@@ -89,12 +89,12 @@ export default async function InvoicesPage({
   const exportHref = exportParams ? `/invoices/export?${exportParams}` : '/invoices/export'
 
   const exportButton = (
-    <Button variant="outline" render={<Link href={exportHref} />}>
+    <Button variant="outline" render={<Link href={exportHref} />} nativeButton={false}>
       <Download className="size-4" />
       Export CSV
     </Button>
   )
-  const newButton = canWrite ? <Button render={<Link href="/invoices/new" />}>New invoice</Button> : null
+  const newButton = canWrite ? <Button render={<Link href="/invoices/new" />} nativeButton={false}>New invoice</Button> : null
   const headerActions = (
     <div className="flex items-center gap-2">
       {exportButton}

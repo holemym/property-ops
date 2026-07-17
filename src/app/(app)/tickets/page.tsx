@@ -85,7 +85,7 @@ export default async function TicketsPage({
         title="Tickets"
         subtitle="Maintenance requests across your properties, from triage to close."
         actions={
-          canWrite && <Button render={<Link href="/tickets/new" />}>New ticket</Button>
+          canWrite && <Button render={<Link href="/tickets/new" />} nativeButton={false}>New ticket</Button>
         }
       />
 
@@ -102,7 +102,7 @@ export default async function TicketsPage({
           }
           action={
             canWrite && !isFiltered ? (
-              <Button render={<Link href="/tickets/new" />}>New ticket</Button>
+              <Button render={<Link href="/tickets/new" />} nativeButton={false}>New ticket</Button>
             ) : undefined
           }
         />

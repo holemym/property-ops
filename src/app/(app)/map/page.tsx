@@ -118,7 +118,7 @@ export default async function MapPage({
           title="No properties yet"
           body="Add your first property to see it plotted on the map."
           action={
-            canManage ? <Button render={<Link href="/properties/new" />}>Add property</Button> : undefined
+            canManage ? <Button render={<Link href="/properties/new" />} nativeButton={false}>Add property</Button> : undefined
           }
         />
       ) : located.length === 0 ? (

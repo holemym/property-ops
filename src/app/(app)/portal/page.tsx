@@ -33,7 +33,7 @@ export default async function PortalPage() {
         title="My requests"
         subtitle="Track the maintenance requests you've reported."
         actions={
-          <Button render={<Link href="/portal/new" />}>Report an issue</Button>
+          <Button render={<Link href="/portal/new" />} nativeButton={false}>Report an issue</Button>
         }
       />
 
@@ -42,7 +42,7 @@ export default async function PortalPage() {
           icon={<Inbox />}
           title="No requests yet"
           body="Report a maintenance issue and follow its progress here."
-          action={<Button render={<Link href="/portal/new" />}>Report an issue</Button>}
+          action={<Button render={<Link href="/portal/new" />} nativeButton={false}>Report an issue</Button>}
         />
       ) : (
         <Card className="p-0">

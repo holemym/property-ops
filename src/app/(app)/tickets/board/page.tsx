@@ -52,7 +52,7 @@ export default async function TicketBoardPage() {
         title="Board"
         subtitle="Drag tickets across the lifecycle, from triage to close."
         actions={
-          <Button variant="outline" render={<Link href="/tickets" />}>
+          <Button variant="outline" render={<Link href="/tickets" />} nativeButton={false}>
             <LayoutList className="size-4" />
             List view
           </Button>
@@ -66,7 +66,7 @@ export default async function TicketBoardPage() {
           body="Open a ticket to track a repair, and it will show up on the board through to close."
           action={
             canWrite ? (
-              <Button render={<Link href="/tickets/new" />}>New ticket</Button>
+              <Button render={<Link href="/tickets/new" />} nativeButton={false}>New ticket</Button>
             ) : undefined
           }
         />

@@ -36,7 +36,7 @@ export default async function UnitsPage({
       <PageHeader
         title="Units"
         subtitle="Individual units across your properties, with occupancy and access details."
-        actions={canWrite && <Button render={<Link href="/units/new" />}>New unit</Button>}
+        actions={canWrite && <Button render={<Link href="/units/new" />} nativeButton={false}>New unit</Button>}
       />
 
       <form className="flex items-center gap-2">
@@ -69,7 +69,7 @@ export default async function UnitsPage({
           }
           action={
             canWrite ? (
-              <Button render={<Link href="/units/new" />}>Add unit</Button>
+              <Button render={<Link href="/units/new" />} nativeButton={false}>Add unit</Button>
             ) : undefined
           }
         />

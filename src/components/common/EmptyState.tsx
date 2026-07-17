@@ -33,7 +33,7 @@ export function EmptyState({
   const supporting = body ?? description
   const legacyAction =
     actionLabel && actionHref ? (
-      <Button render={<Link href={actionHref} />}>{actionLabel}</Button>
+      <Button render={<Link href={actionHref} />} nativeButton={false}>{actionLabel}</Button>
     ) : null
 
   return (

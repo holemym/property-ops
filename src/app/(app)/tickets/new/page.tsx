@@ -43,7 +43,7 @@ export default async function NewTicketPage({
           icon={<Building2 />}
           title="Add a property first"
           body="You need at least one active property before you can create a ticket."
-          action={<Button render={<Link href="/properties/new" />}>Add a property</Button>}
+          action={<Button render={<Link href="/properties/new" />} nativeButton={false}>Add a property</Button>}
         />
       </div>
     )

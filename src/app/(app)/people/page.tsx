@@ -46,7 +46,7 @@ export default async function PeoplePage({
       <PageHeader
         title="People"
         subtitle="Tenant contact records across your portfolio."
-        actions={canWrite && <Button render={<Link href="/people/new" />}>New person</Button>}
+        actions={canWrite && <Button render={<Link href="/people/new" />} nativeButton={false}>New person</Button>}
       />
 
       <form className="flex items-center gap-2">
@@ -76,7 +76,7 @@ export default async function PeoplePage({
           }
           action={
             canWrite && !isFiltered ? (
-              <Button render={<Link href="/people/new" />}>Add person</Button>
+              <Button render={<Link href="/people/new" />} nativeButton={false}>Add person</Button>
             ) : undefined
           }
         />

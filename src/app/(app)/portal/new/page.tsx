@@ -51,7 +51,7 @@ export default async function ReportIssuePage() {
           icon={<Building2 />}
           title="Nothing to report against yet"
           body="No properties are set up in this workspace. Reach out to your property manager to get started."
-          action={<Button render={<Link href="/portal" />}>Back to my requests</Button>}
+          action={<Button render={<Link href="/portal" />} nativeButton={false}>Back to my requests</Button>}
         />
       </div>
     )
@@ -148,7 +148,7 @@ export default async function ReportIssuePage() {
 
             <div className="flex items-center gap-2 pt-1">
               <SubmitButton pendingLabel="Submitting">Submit request</SubmitButton>
-              <Button variant="ghost" render={<Link href="/portal" />}>
+              <Button variant="ghost" render={<Link href="/portal" />} nativeButton={false}>
                 Cancel
               </Button>
             </div>
