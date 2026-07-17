@@ -5,12 +5,55 @@ of truth for what to build next.** Strategy lives in
 `docs/superpowers/plans/2026-07-09-property-ops-roadmap-v2.md`; full designs live in
 `docs/superpowers/specs/`. This board turns them into one-agent-sized tasks.
 
+---
+
+## ▶ HANDOVER — current state (as of 2026-07-17, HEAD `c019f72`)
+
+**Where things are:** LIVE at property-ops-sandy.vercel.app, **389 tests green**, tree
+clean, all pushed to `graphite-polish` (pushes auto-deploy prod). The multi-agent
+pipeline runs the board autonomously: agents `prop-builder` / `prop-rls-reviewer` /
+`prop-verifier` (all sonnet) in `clauderoom/.claude/agents/`. Orchestrate on **sonnet**;
+use **fable/opus only** for `[plan]` tasks (P4-0) and deep audits of security-sensitive
+diffs.
+
+**Build-complete:** S1 security (all) · Demo mode D1–D7 · Map M1–M2 · Perf PERF-1a
+(getClaims) + PERF-2 (speed-insights) · **Tenant directory P1-1/2/3** · **Notifications
+P2-1/2** · housekeeping H1/H2/H3/H5. Two migrations RLS-reviewed CLEAN this run (0025
+tenants, 0026 notifications).
+
+**Next dispatch order:** `P3-1` (recurring rent, `[rls]` — migration 0027) → `P3-2` →
+`S2-1a/b/c` (MFA) → `S2-2` (audit log, `[rls]`) → `H4` (CommandPalette go-map). All
+`[verify]` tasks (D6, M3, P1-4, P2-3, PERF-1c) are **USER-gated** — they can't pass until
+the console queue below is done.
+
+**🔴 THE BOTTLENECK (nothing new is actually LIVE until the USER does these):** migrations
+**0022–0026 are committed but NOT applied to production Supabase** (0027 lands with P3-1).
+Prod logs currently show these degrading *safely* — "failed to fetch unread notification
+count", "tenants query failed", "rate limit RPC error" — because the guards we built catch
+them, but notifications / people-search / rate-limiting don't actually *work* yet. Fastest
+path: paste `supabase/schema_bundle.sql` once in the Supabase SQL editor (idempotent, all
+migrations). Then: enable Anonymous sign-ins (demo), set `DEMO_MODE`/`DEMO_WORKSPACE_ID`/
+optional `SIGNUP_MODE=invite` env, migrate JWT keys→asymmetric (PERF-1b). Full list at the
+bottom USER-action queue.
+
+**⚠️ OPEN LIVE ITEM — friend testing (melikparsadanovd@gmail.com):** the friend wants to
+test with seeded data. Vercel Deployment Protection is now **OFF** (done). But he
+self-registered, so the invite 500'd on "email already registered". Fixed in `c019f72`
+(`inviteUser` now attaches an already-registered person instead of throwing) — **verify
+`c019f72` finished deploying, then re-click Invite for him at /settings/users** (attaches
+his existing account to Holemym Apts as Operator; no new email — he signs in with his
+existing creds). SQL fallback if needed is in the session. Also note: `/settings/users`
+has **no sidebar nav link** (reachable only by URL) — a real UX gap worth a task.
+
+---
+
 **How to work a task (any agent, any model):**
 1. Read roadmap v2 **§2 Tech inventory & hard rules** — every rule there is a lint
    error, a production breaker, or a security boundary. No exceptions.
 2. Read this file's entry for your task ID, then the spec section it points to.
 3. Implement. Verify: `npm run build` + `npm run lint` + `npx vitest run` all green
-   (baseline: **282 tests**). New pure logic gets unit tests in `tests/unit/`.
+   (baseline: **389 tests** as of 2026-07-17 — never go below the current count). New
+   pure logic gets unit tests in `tests/unit/`.
 4. Commit (imperative summary, body explains why, co-author trailer per repo history).
    Push with `git push origin HEAD:graphite-polish` — bare `git push` fails.
 5. Tick the checkbox here (same commit or a follow-up), and add any USER-action
@@ -589,6 +632,16 @@ would otherwise show up as a false-positive violation during S2-3's browsing che
       drifting. **Sequence AFTER P1-3** — both edit `CommandPalette.tsx` and would
       collide if concurrent. **Accept:** every operator Sidebar destination has a
       matching go-to command with the correct permission gate; build+lint+tests green.
+- [ ] **H6** `[builder]` — Add a nav link to `/settings/users` (flagged live 2026-07-17
+      — the user couldn't find where to invite a teammate because the page exists but has
+      NO sidebar entry; only reachable by typing the URL). Add a small "Settings" nav
+      group to `src/components/layout/Sidebar.tsx` with a "Users" link
+      (`users:invite`-gated). **Note:** the S2-1a spec also plans this exact "Settings"
+      nav group (holding Users + a future Security page) — if S2-1a runs first this is
+      already covered; otherwise do the minimal Users link here now. Also add a
+      `go-users` entry to CommandPalette `COMMANDS` (fold into H4 if H4 hasn't run).
+      **Accept:** an owner/admin can reach the users page from the sidebar; build+lint+
+      tests green.
 - [x] **H5** `[builder]` — Add `nativeButton={false}` to every `<Button render={<Link/>}>`
       composite (flagged by P2-2, which fixed only its own new bell call site). Base
       UI's `useButton` logs a dev-console error on every mount of a `render`-as-anchor
