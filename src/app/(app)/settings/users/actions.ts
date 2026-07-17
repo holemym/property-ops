@@ -22,6 +22,25 @@ const inviteSchema = z.object({
   role: z.enum(['OPERATOR', 'ACCOUNTANT', 'OWNER']),
 })
 
+// Find an existing auth user's id by email via the admin API. Returns null if none
+// matches. Paginates defensively (capped) so it still works past the first 50 users;
+// at this app's scale the match is on page 1. Used to gracefully ATTACH someone who
+// already has an account (e.g. self-signed-up) rather than 500-ing on "email exists".
+async function findUserIdByEmail(
+  client: ReturnType<typeof createServiceClient>,
+  email: string
+): Promise<string | null> {
+  const target = email.trim().toLowerCase()
+  for (let page = 1; page <= 20; page++) {
+    const { data, error } = await client.auth.admin.listUsers({ page, perPage: 50 })
+    if (error || !data?.users?.length) return null
+    const match = data.users.find((u) => u.email?.toLowerCase() === target)
+    if (match) return match.id
+    if (data.users.length < 50) return null // last page reached
+  }
+  return null
+}
+
 export async function inviteUser(formData: FormData) {
   const admin = await requirePermission('users:invite')
 
@@ -50,18 +69,46 @@ export async function inviteUser(formData: FormData) {
     redirectTo: `${AUTH_CALLBACK_URL}?next=${encodeURIComponent('/auth/set-password')}`,
   })
 
-  if (error) throw error
+  // Resolve the target user id. The common failure is "email already registered" —
+  // someone self-signed-up (or was invited) before. That's not an error worth a 500:
+  // find their existing account and ATTACH it to this workspace below (they'll sign in
+  // with the credentials they already have — no new invite email is sent). Any OTHER
+  // invite failure becomes a friendly message instead of the raw error boundary.
+  let userId: string
+  if (error) {
+    const code = (error as { code?: string }).code
+    const alreadyExists =
+      code === 'email_exists' ||
+      code === 'user_already_exists' ||
+      /already.*registered|already exists/i.test(error.message)
+    if (!alreadyExists) {
+      redirectWithError('/settings/users', 'Could not send the invitation. Please try again.')
+    }
+    const existingId = await findUserIdByEmail(admin_client, email)
+    if (!existingId) {
+      redirectWithError(
+        '/settings/users',
+        'That email already has an account elsewhere. Ask them to sign in once, then try inviting again.'
+      )
+    }
+    userId = existingId
+  } else {
+    userId = data.user.id
+  }
 
-  // handle_new_user already created a profile row for the invited user; attach it to
-  // this workspace with the chosen role.
+  // Attach the profile (created by handle_new_user for a fresh invite, or the existing
+  // one) to THIS workspace with the chosen role. For an existing user this moves them
+  // into this workspace as the chosen role.
   const { error: attachError } = await admin_client
     .from('profiles')
     .update({ workspace_id: admin.workspaceId, role })
-    .eq('id', data.user.id)
+    .eq('id', userId)
     .select('id')
     .single()
 
-  if (attachError) throw attachError
+  if (attachError) {
+    redirectWithError('/settings/users', 'Could not add that person to the workspace.')
+  }
 
   revalidatePath('/settings/users')
 }
