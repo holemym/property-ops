@@ -8,6 +8,7 @@ import { listTickets, countTicketsByStatus, type Ticket } from '@/lib/data/ticke
 import { listProperties } from '@/lib/data/properties'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { StatusBadge } from '@/components/ui/badge'
+import { DashboardMfaNag } from '@/components/dashboard/DashboardMfaNag'
 import { cn } from '@/lib/utils'
 import { relativeDay } from '@/lib/relative-date'
 import { isTicketOpen } from '@/lib/status'
@@ -60,7 +61,7 @@ export default async function DashboardPage() {
   // parallel (not N+1). RLS scopes every query to this workspace. listTickets has no
   // server-side LIMIT today (Phase-4 optimization), so widgets slice in JS below;
   // workspace ticket volume is bounded at MVP scale.
-  const [counts, newTickets, urgentTickets, waitingTickets, mineTickets, allTickets, properties] =
+  const [counts, newTickets, urgentTickets, waitingTickets, mineTickets, allTickets, properties, mfaFactors] =
     await Promise.all([
       countTicketsByStatus(supabase, user.workspaceId),
       listTickets(supabase, user.workspaceId, { status: 'NEW' }),
@@ -72,7 +73,17 @@ export default async function DashboardPage() {
       // the workspace list once and derive it in JS.
       listTickets(supabase, user.workspaceId),
       listProperties(supabase, user.workspaceId),
+      // S2-1 spec §4: the owner MFA nag reads the same server-side mfa.listFactors()
+      // call the /settings/security page uses — local session read, no extra network
+      // hop, safe to run alongside everything else here.
+      supabase.auth.mfa.listFactors(),
     ])
+
+  // Soft enforcement: OWNER/SUPER_ADMIN with no verified TOTP factor sees a dismissible
+  // nag pointing at /settings/security. Every other role (including a fully-enrolled
+  // owner) never sees it.
+  const hasVerifiedMfaFactor = (mfaFactors.data?.totp ?? []).some((f) => f.status === 'verified')
+  const showMfaNag = (user.role === 'OWNER' || user.role === 'SUPER_ADMIN') && !hasVerifiedMfaFactor
 
   const propertyNames = Object.fromEntries(properties.map((p) => [p.id, p.name]))
 
@@ -101,6 +112,8 @@ export default async function DashboardPage() {
         title="Dashboard"
         subtitle={`${openCount} open ${openCount === 1 ? 'ticket' : 'tickets'} across the portfolio`}
       />
+
+      {showMfaNag && <DashboardMfaNag />}
 
       {/* Status summary strip — one graphite metric card per key status, linking to the
           filtered inbox. Saturated color stays out of these; the counts read as data. */}

@@ -622,10 +622,29 @@ S2-1 spec: `docs/superpowers/specs/2026-07-12-property-ops-s2-1-mfa-design.md`
       `data:image/svg+xml;utf-8,` before returning, so no manual data-URI wrapping
       needed. Did NOT touch `/auth/mfa`, `signInWithPassword`, `requireUser()`, or the
       dashboard nag — S2-1b territory. 443 tests (was 440), build+lint clean.)*
-- [ ] **S2-1b** `[builder]` — `/auth/mfa` challenge page + AAL redirect in
+- [x] **S2-1b** `[builder]` — `/auth/mfa` challenge page + AAL redirect in
       `signInWithPassword` + the `requireUser()` AAL gate + owner dashboard nag.
       Depends S2-1a. **Auth boundary — deviations stop and report, never improvise.**
       Spec §3–4.
+      *(done — pure predicate `needsMfaChallenge(currentLevel, nextLevel)` (exact spec
+      comparison `nextLevel === 'aal2' && currentLevel === 'aal1'`) added to
+      `src/lib/auth/mfa.ts`, 6 new unit tests proving the no-factor-user invariant (both
+      "no session" and "session, no factor" shapes yield `nextLevel === currentLevel`
+      per @supabase/auth-js's own `_getAuthenticatorAssuranceLevel`, so the predicate is
+      false and no redirect fires). New: `src/app/(auth)/auth/mfa/page.tsx` (server,
+      does NOT call `requireUser()` — that's how it avoids looping against its own
+      redirect target) + `src/components/auth/MfaChallenge.tsx` (client, challenge+verify
+      then `window.location.assign('/dashboard')`) + `src/components/dashboard/
+      DashboardMfaNag.tsx` (dismissible, per-render only). Changed: `signInWithPassword`
+      in `(auth)/actions.ts` (post-login AAL check → `/auth/mfa`), `requireUser()` in
+      `src/lib/auth/session.ts` (new `enforceMfaChallenge()` called after the is_active
+      check — universal gate since every authenticated page/action flows through
+      requireUser), `dashboard/page.tsx` (renders the nag for OWNER/SUPER_ADMIN with no
+      verified factor, server-checked via `mfa.listFactors()` alongside the existing
+      Promise.all). `proxy.ts` untouched — it only gates on session presence, never AAL,
+      so `/auth/mfa` needed no PUBLIC_PATHS change and no loop risk from that layer.
+      449 tests (was 443), build+lint clean. NOT pushed — awaiting orchestrator review +
+      disposable test account per S2-1c gate.)*
 - [ ] **S2-1c** `[verify]` — Full playbook in spec §6 (needs a disposable test
       account from USER — never enroll MFA on the real owner account).
 - [ ] **S2-2** `[builder]` `[rls]` — `auth_events` audit table + writes from auth

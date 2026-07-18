@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { redirectWithError } from '@/lib/redirect-with-error'
 import { assertPermission, type Permission } from '@/lib/auth/permissions'
+import { needsMfaChallenge } from '@/lib/auth/mfa'
 import type { Role } from '@/types/domain'
 
 export type CurrentUser = {
@@ -81,7 +82,41 @@ export async function requireUser(): Promise<CurrentUser> {
   if (!user.isActive) {
     redirectWithError('/login', 'Your account has been deactivated.')
   }
+  await enforceMfaChallenge()
   return user
+}
+
+// S2-1b: the AAL enforcement gate. requireUser() is the single app-layer chokepoint
+// every authenticated page/action flows through (requireWorkspace, requirePermission,
+// the (app) layout, set-password, workspace/new — all call it), so putting the check
+// here makes it universal without touching each call site.
+//
+// THE INVARIANT (see needsMfaChallenge's doc comment in lib/auth/mfa.ts for the proof):
+// a user with no verified MFA factor gets `nextLevel === currentLevel` from Supabase,
+// so `needsMfaChallenge()` is false for them and this function is a no-op — they are
+// NEVER redirected here. Only an AAL1 session with a verified factor gets bounced to
+// /auth/mfa to finish the TOTP challenge.
+//
+// Allowlist (spec §3): "/auth/mfa itself + signOut must stay reachable" while
+// AAL1-pending. Both achieve that structurally, not via a path exemption in this
+// function: signOut() ((auth)/actions.ts) never calls requireUser() at all, and the
+// /auth/mfa page ((auth)/auth/mfa/page.tsx) deliberately does NOT call requireUser()
+// either — if it did, this same redirect would fire on that page's own load and loop
+// forever. It authenticates itself directly via getClaims() +
+// getAuthenticatorAssuranceLevel() instead. proxy.ts is unaffected either way: it only
+// gates on "is there a session at all" (updateSession's getUser()), never on AAL, so an
+// AAL1-pending user reaching /auth/mfa never gets intercepted there.
+//
+// On an unexpected error reading the assurance level, this fails OPEN (no redirect) —
+// consistent with the invariant above: never lock a user out due to a transient read
+// failure on a check that's supposed to be a pure local JWT-claim read.
+async function enforceMfaChallenge(): Promise<void> {
+  const supabase = await createClient()
+  const { data, error } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel()
+  if (error || !data) return
+  if (needsMfaChallenge(data.currentLevel, data.nextLevel)) {
+    redirect('/auth/mfa')
+  }
 }
 
 export async function requireWorkspace(): Promise<CurrentUser & { workspaceId: string }> {

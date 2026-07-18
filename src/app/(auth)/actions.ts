@@ -10,6 +10,7 @@ import { signupSchema, passwordSchema } from '@/lib/validation/auth'
 import { requireUser } from '@/lib/auth/session'
 import { checkRateLimit, clientIp } from '@/lib/rate-limit'
 import { friendlyAuthError } from '@/lib/auth/error-messages'
+import { needsMfaChallenge } from '@/lib/auth/mfa'
 
 export async function signInWithPassword(formData: FormData) {
   const ip = clientIp(await headers())
@@ -27,6 +28,19 @@ export async function signInWithPassword(formData: FormData) {
   if (error) {
     redirectWithError('/login', friendlyAuthError(error))
   }
+
+  // S2-1b: route straight to the AAL2 step-up when this account has a verified TOTP
+  // factor (nextLevel === 'aal2' && currentLevel === 'aal1'). A user with no factor
+  // always gets nextLevel === currentLevel from Supabase (see needsMfaChallenge's doc
+  // comment), so this is unconditionally false for them and they fall through to
+  // /dashboard exactly as before this change — requireUser()'s own gate is the backstop
+  // either way (see session.ts) so a magic-link/Google sign-in that skips this action
+  // still gets caught on first page load.
+  const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel()
+  if (aal && needsMfaChallenge(aal.currentLevel, aal.nextLevel)) {
+    redirect('/auth/mfa')
+  }
+
   redirect('/dashboard')
 }
 
