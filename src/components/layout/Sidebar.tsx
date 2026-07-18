@@ -23,6 +23,8 @@ import {
   Loader2,
   MapPinned,
   Contact,
+  ShieldCheck,
+  UserCog,
   type LucideIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -77,6 +79,19 @@ const OPERATOR_GROUPS: NavGroup[] = [
     label: 'Records',
     items: [
       { href: '/documents', label: 'Documents', icon: FileText, permission: 'documents:read' },
+    ],
+  },
+  // Settings — S2-1a. "Security" has no `permission`: every non-tenant role manages its
+  // own two-factor/password (matches the security page's own gate, isTenantRole only, no
+  // requirePermission call). "Users" is gated on `users:invite` — same permission the
+  // /settings/users page itself requires — so this is the first sidebar entry for a page
+  // that has existed since Phase 1 but was previously URL-only. A future entry (H6) can
+  // slot in alongside Users under this same group.
+  {
+    label: 'Settings',
+    items: [
+      { href: '/settings/security', label: 'Security', icon: ShieldCheck },
+      { href: '/settings/users', label: 'Users', icon: UserCog, permission: 'users:invite' },
     ],
   },
 ]

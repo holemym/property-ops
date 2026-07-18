@@ -54,6 +54,23 @@ dashboard's Ctrl/Cmd-K if it's not where you expect):
 Turning it on early would let anyone reach `/dashboard` with an anonymous session
 before the demo-mode workspace scoping exists to contain them.
 
+## 7. TOTP MFA — enabled by default, and the lost-device recovery path (Track S2-1)
+**Authentication → Multi-Factor**: TOTP is on by default on Supabase — just confirm it
+hasn't been disabled.
+
+The app (`/settings/security`) lets a signed-in user enroll, list, and remove their
+**own** TOTP factor — that's self-service and needs no dashboard work. There is
+deliberately no in-app "recovery codes" or admin-override UI (out of scope for v1, see
+the S2-1 design doc §5), so the one case that *does* need you:
+
+- A user loses their authenticator device and can no longer produce a 6-digit code.
+  Once S2-1b (sign-in enforcement) ships, this locks them out of their account
+  entirely — they can't reach `/settings/security` to remove the factor themselves,
+  because they can't get past the MFA challenge to sign in at all.
+- Fix: **Authentication → Users** → find the user → their MFA factors → delete the
+  stale TOTP factor. This drops them back to password-only sign-in; tell them to
+  re-enroll a new device from `/settings/security` once they're back in.
+
 ---
 
 Nothing above changes app behavior — the app already enforces its own 10-character

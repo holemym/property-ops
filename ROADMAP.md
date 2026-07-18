@@ -602,9 +602,26 @@ is mechanical given the decisions doc.
 ## Track S2 — Security deep (after P2)
 S2-1 spec: `docs/superpowers/specs/2026-07-12-property-ops-s2-1-mfa-design.md`
 
-- [ ] **S2-1a** `[builder]` — Browser Supabase client helper (if missing) +
+- [x] **S2-1a** `[builder]` — Browser Supabase client helper (if missing) +
       `/settings/security` page + `MfaEnroll` flow + factor list/remove + Settings
       nav group + password-change link. Spec §2.
+      *(done — browser client helper already existed at `src/lib/supabase/client.ts`,
+      unused until now (no earlier client-side Supabase call site). New:
+      `src/app/(app)/settings/security/page.tsx` (server page, `requireWorkspace` +
+      `isTenantRole` gate, no `requirePermission` — every non-tenant role reaches it,
+      matching the spec), `src/components/settings/MfaEnroll.tsx` (client — owns
+      enroll/verify/list/remove, all `supabase.auth.mfa.*` calls client-side per spec),
+      `src/lib/auth/mfa.ts` (`isValidTotpCode`, extracted pure 6-digit guard, 3 tests).
+      Sidebar gained a "Settings" group (`Security`, no permission; `Users`, gated
+      `users:invite` — first sidebar link ever to `/settings/users`, pre-empting H6).
+      Initial factor list is a server-side `mfa.listFactors()` read (cheap, avoids a
+      client fetch waterfall); every client mutation (enroll-verify, unenroll) calls
+      `router.refresh()` to resync it. QR `<img src={data.totp.qr_code}>` matches spec
+      exactly — verified against the installed `@supabase/auth-js` source
+      (`GoTrueClient.js`) that `enroll()` itself prepends
+      `data:image/svg+xml;utf-8,` before returning, so no manual data-URI wrapping
+      needed. Did NOT touch `/auth/mfa`, `signInWithPassword`, `requireUser()`, or the
+      dashboard nag — S2-1b territory. 443 tests (was 440), build+lint clean.)*
 - [ ] **S2-1b** `[builder]` — `/auth/mfa` challenge page + AAL redirect in
       `signInWithPassword` + the `requireUser()` AAL gate + owner dashboard nag.
       Depends S2-1a. **Auth boundary — deviations stop and report, never improvise.**
