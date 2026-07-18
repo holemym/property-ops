@@ -222,6 +222,12 @@ export type Invoice = {
   paid_at: string | null
   // Optional delivery address (migration 0021) — where "Send" emails the invoice.
   recipient_email: string | null
+  // First day of the billed month (migration 0027, Track P3) — set only on
+  // invoices produced by "Generate rent"; null for owner statements, vendor
+  // bills, and ad-hoc tenant invoices. Paired with tenancy_id in the partial
+  // unique index invoices_tenancy_period_unique (VOID excluded) that is the
+  // actual dedupe guarantee for recurring rent — see src/lib/invoices/recurring.ts.
+  billing_period: string | null
   notes: string | null
   created_by_user_id: string
   created_at: string

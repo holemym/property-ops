@@ -1273,6 +1273,18 @@ create index if not exists tickets_workspace_status_idx on public.tickets (works
 -- INVOICE DELIVERY (0021) — optional recipient email so invoices can be emailed.
 alter table public.invoices add column if not exists recipient_email text;
 
+-- RECURRING RENT (0027) — billing_period (first day of the billed month; null for
+-- every non-rent invoice) + the partial unique index that is the actual dedupe
+-- mechanism for "Generate rent" (src/lib/invoices/recurring.ts plans, the DB
+-- guarantees no double-bill even under concurrent clicks). No policy changes —
+-- billing_period rides the existing finance-gated invoice policies above (RLS is
+-- row-level, not column-level). See migration 0027 for full rationale.
+alter table public.invoices add column if not exists billing_period date;
+
+create unique index if not exists invoices_tenancy_period_unique
+  on public.invoices (workspace_id, tenancy_id, billing_period)
+  where tenancy_id is not null and billing_period is not null and status <> 'VOID';
+
 -- =============================================================================
 -- RATE LIMITING (0022) — Postgres-backed fixed-window limiter for login/signup/
 -- search/job-token. RLS enabled with ZERO policies (default-deny for anon +

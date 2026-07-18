@@ -9,7 +9,7 @@ of truth for what to build next.** Strategy lives in
 
 ## ▶ HANDOVER — current state (as of 2026-07-17, HEAD `c019f72`)
 
-**Where things are:** LIVE at property-ops-sandy.vercel.app, **389 tests green**, tree
+**Where things are:** LIVE at property-ops-sandy.vercel.app, **420 tests green**, tree
 clean, all pushed to `graphite-polish` (pushes auto-deploy prod). The multi-agent
 pipeline runs the board autonomously: agents `prop-builder` / `prop-rls-reviewer` /
 `prop-verifier` (all sonnet) in `clauderoom/.claude/agents/`. Orchestrate on **sonnet**;
@@ -21,13 +21,14 @@ diffs.
 P2-1/2** · housekeeping H1/H2/H3/H5. Two migrations RLS-reviewed CLEAN this run (0025
 tenants, 0026 notifications).
 
-**Next dispatch order:** `P3-1` (recurring rent, `[rls]` — migration 0027) → `P3-2` →
-`S2-1a/b/c` (MFA) → `S2-2` (audit log, `[rls]`) → `H4` (CommandPalette go-map). All
-`[verify]` tasks (D6, M3, P1-4, P2-3, PERF-1c) are **USER-gated** — they can't pass until
-the console queue below is done.
+**Next dispatch order:** `P3-2` (recurring-rent UI/action; `P3-1` ✓ committed 2026-07-19,
+RLS CLEAN, 420 tests) → `S2-1a/b/c` (MFA) → `S2-2` (audit log, `[rls]`) → `H4`
+(CommandPalette go-map) → `H6` (Settings nav link). All `[verify]` tasks (D6, M3, P1-4,
+P2-3, PERF-1c) are **USER-gated** — they can't pass until the console queue below is done.
 
 **🔴 THE BOTTLENECK (nothing new is actually LIVE until the USER does these):** migrations
-**0022–0026 are committed but NOT applied to production Supabase** (0027 lands with P3-1).
+**0022–0027 are committed but NOT applied to production Supabase** (0027 landed 2026-07-19
+with P3-1; all six are folded into `schema_bundle.sql`, so ONE paste applies them all).
 Prod logs currently show these degrading *safely* — "failed to fetch unread notification
 count", "tenants query failed", "rate limit RPC error" — because the guards we built catch
 them, but notifications / people-search / rate-limiting don't actually *work* yet. Fastest
@@ -52,7 +53,7 @@ has **no sidebar nav link** (reachable only by URL) — a real UX gap worth a ta
    error, a production breaker, or a security boundary. No exceptions.
 2. Read this file's entry for your task ID, then the spec section it points to.
 3. Implement. Verify: `npm run build` + `npm run lint` + `npx vitest run` all green
-   (baseline: **389 tests** as of 2026-07-17 — never go below the current count). New
+   (baseline: **420 tests** as of 2026-07-19 — never go below the current count). New
    pure logic gets unit tests in `tests/unit/`.
 4. Commit (imperative summary, body explains why, co-author trailer per repo history).
    Push with `git push origin HEAD:graphite-polish` — bare `git push` fails.
@@ -495,10 +496,35 @@ Spec: `docs/superpowers/specs/2026-07-12-property-ops-p2-notifications-design.md
 ## Track P3 — Recurring rent invoices
 Spec: `docs/superpowers/specs/2026-07-12-property-ops-p3-recurring-rent-design.md`
 
-- [ ] **P3-1** `[builder]` `[rls]` — Migration 0027 (`invoices.billing_period` +
+- [x] **P3-1** `[builder]` `[rls]` — Migration 0027 (`invoices.billing_period` +
       partial unique dedupe index, bundle fold) + `Invoice` type field +
       `src/lib/invoices/recurring.ts` pure planner + exhaustive edge-case unit tests.
       Spec §1–2.
+      *(committed 2026-07-19 — RLS review CLEAN: the schema_bundle fold is a single hunk
+      byte-identical to the migration, inserted right after the 0021 invoice-delivery
+      block; the finance-gated invoice policies (0019 select/insert/update_finance) are
+      untouched — `billing_period` is a plain nullable column and RLS is row-level not
+      column-level, so a new column rides existing policies with no new entry; the
+      `(tenancy_id, workspace_id)` composite FK posture is unchanged; the partial index is
+      `workspace_id`-leading so no cross-workspace collision is possible and NULL
+      tenancy_id/billing_period correctly escape it (ad-hoc/owner/vendor invoices never
+      blocked); `status <> 'VOID'` void-then-regenerate is reachable only through
+      `can_manage_finance()` — the same tier that inserts invoices — so it's a
+      privilege-gated product decision, not an escalation path. Orchestrator re-verified
+      independently before commit: 420 tests green (389 + 31 new — planner edge cases incl.
+      month-overlap boundaries, a tenancy ending on the 1st, leap-year Feb-29,
+      VOID-excluded dedupe, no-rent-before-existing order), build+lint clean, and confirmed
+      `'VOID'` is a real `invoice_status` enum value so the index predicate can't fail the
+      bundle paste. `Invoice` gained `billing_period: string | null` in
+      `src/types/domain.ts` (grepped — it lives there, NOT `src/lib/data/invoices.ts` as
+      spec §1 claims; trust the grep per §2). Planner `computeRentInvoicePlan` deviates from
+      the spec's 3-arg pseudocode by design: takes `units` (resolve property_id), an
+      injected `today: Date` (house no-`Date.now()`-inside rule), an optional `tenantNames`
+      map (works with OR without P1 links), and an `ExistingInvoiceKey` carrying `status` so
+      the planner itself enforces the VOID-excluded dedupe mirroring the index. No new table
+      → `expect 19` assertion unchanged. USER: 0027 is folded into schema_bundle.sql, so
+      console-batch Step 1 (paste the bundle) applies it alongside 0022–0026 in one go — no
+      separate paste. P3-2 wires `generateRentInvoicesAction` + the month dialog next.)*
 - [ ] **P3-2** `[builder]` — `generateRentInvoicesAction` + month dialog + result
       toast + derived overdue badge + `?overdue=1` filter + **delete
       `/preview/rent-automation`**. Depends P3-1 (works with or without P1's
@@ -682,9 +708,10 @@ would otherwise show up as a false-positive violation during S2-3's browsing che
 - [ ] Work through `docs/runbooks/supabase-security-settings.md` (leaked-password
       protection, session lifetimes, OTP expiry, redirect allowlist).
 - [ ] After a few days of clean browsing: green-light S2-3 (CSP enforce).
-- [ ] *(becomes due as tracks land)* Run migration **0025** (tenants — after P1-1),
-      **0026** (notifications — after P2-1), **0027** (invoice billing_period — after
-      P3-1) in the SQL editor. Each is announced in its builder's report.
+- [ ] *(becomes due as tracks land)* Migrations **0025** (tenants), **0026**
+      (notifications), and **0027** (invoice billing_period, committed 2026-07-19) are all
+      folded into `schema_bundle.sql` — the single bottleneck paste applies 0022–0027 in
+      one run; no per-migration paste needed.
 - [ ] *(PERF-1b)* Supabase dashboard → Project Settings → JWT Keys → migrate to
       **asymmetric signing keys** — flips on PERF-1's speed win. Do after PERF-1a lands.
 - [ ] *(with S2-1)* Supabase dashboard → Auth → Multi-Factor: confirm TOTP enabled;
