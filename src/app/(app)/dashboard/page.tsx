@@ -61,7 +61,7 @@ export default async function DashboardPage() {
   // parallel (not N+1). RLS scopes every query to this workspace. listTickets has no
   // server-side LIMIT today (Phase-4 optimization), so widgets slice in JS below;
   // workspace ticket volume is bounded at MVP scale.
-  const [counts, newTickets, urgentTickets, waitingTickets, mineTickets, allTickets, properties, mfaFactors] =
+  const [counts, newTickets, urgentTickets, waitingTickets, mineTickets, allTickets, properties] =
     await Promise.all([
       countTicketsByStatus(supabase, user.workspaceId),
       listTickets(supabase, user.workspaceId, { status: 'NEW' }),
@@ -73,16 +73,21 @@ export default async function DashboardPage() {
       // the workspace list once and derive it in JS.
       listTickets(supabase, user.workspaceId),
       listProperties(supabase, user.workspaceId),
-      // S2-1 spec §4: the owner MFA nag reads the same server-side mfa.listFactors()
-      // call the /settings/security page uses — local session read, no extra network
-      // hop, safe to run alongside everything else here.
-      supabase.auth.mfa.listFactors(),
     ])
 
   // Soft enforcement: OWNER/SUPER_ADMIN with no verified TOTP factor sees a dismissible
   // nag pointing at /settings/security. Every other role (including a fully-enrolled
-  // owner) never sees it.
-  const hasVerifiedMfaFactor = (mfaFactors.data?.totp ?? []).some((f) => f.status === 'verified')
+  // owner) never sees it. mfa.listFactors() reaches the auth server, so it's read in its
+  // OWN guarded await — NOT the all-or-nothing Promise.all above, where a transient auth
+  // hiccup would 500 the app's main landing page for every user — and fails safe to "no
+  // nag" (never a false nag, never a 500), matching the TopNav unread-count guard (P2-2).
+  let hasVerifiedMfaFactor = true
+  try {
+    const { data: mfaData } = await supabase.auth.mfa.listFactors()
+    hasVerifiedMfaFactor = (mfaData?.totp ?? []).some((f) => f.status === 'verified')
+  } catch {
+    // read failed — leave hasVerifiedMfaFactor = true so the nag stays suppressed
+  }
   const showMfaNag = (user.role === 'OWNER' || user.role === 'SUPER_ADMIN') && !hasVerifiedMfaFactor
 
   const propertyNames = Object.fromEntries(properties.map((p) => [p.id, p.name]))
