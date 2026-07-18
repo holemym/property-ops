@@ -1,9 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { invoiceTotals, formatInvoiceNumber } from '@/lib/invoices/compute'
+import { invoiceTotals, formatInvoiceNumber, isInvoiceOverdue } from '@/lib/invoices/compute'
 import {
   invoiceFormSchema,
   invoiceLineSchema,
   invoiceStatusSchema,
+  rentMonthSchema,
 } from '@/lib/validation/invoice'
 
 describe('invoiceTotals', () => {
@@ -114,5 +115,56 @@ describe('invoiceStatusSchema', () => {
   })
   it('rejects a bad status', () => {
     expect(invoiceStatusSchema.safeParse({ status: 'REFUNDED' }).success).toBe(false)
+  })
+})
+
+describe('rentMonthSchema', () => {
+  it('accepts a YYYY-MM value', () => {
+    expect(rentMonthSchema.safeParse({ month: '2026-07' }).success).toBe(true)
+  })
+  it('rejects a full calendar date', () => {
+    expect(rentMonthSchema.safeParse({ month: '2026-07-01' }).success).toBe(false)
+  })
+  it('rejects an empty string', () => {
+    expect(rentMonthSchema.safeParse({ month: '' }).success).toBe(false)
+  })
+  it('rejects a missing field', () => {
+    expect(rentMonthSchema.safeParse({}).success).toBe(false)
+  })
+})
+
+describe('isInvoiceOverdue', () => {
+  const TODAY = '2026-07-15'
+
+  it('a SENT invoice past its due date is overdue', () => {
+    expect(isInvoiceOverdue({ status: 'SENT', due_date: '2026-07-01' }, TODAY)).toBe(true)
+  })
+
+  it('a PARTIAL invoice past its due date is overdue', () => {
+    expect(isInvoiceOverdue({ status: 'PARTIAL', due_date: '2026-07-01' }, TODAY)).toBe(true)
+  })
+
+  it('due exactly today is NOT yet overdue (strict <)', () => {
+    expect(isInvoiceOverdue({ status: 'SENT', due_date: TODAY }, TODAY)).toBe(false)
+  })
+
+  it('due in the future is not overdue', () => {
+    expect(isInvoiceOverdue({ status: 'SENT', due_date: '2026-08-01' }, TODAY)).toBe(false)
+  })
+
+  it('a null due_date is never overdue', () => {
+    expect(isInvoiceOverdue({ status: 'SENT', due_date: null }, TODAY)).toBe(false)
+  })
+
+  it('DRAFT is never overdue, even past its due date', () => {
+    expect(isInvoiceOverdue({ status: 'DRAFT', due_date: '2026-07-01' }, TODAY)).toBe(false)
+  })
+
+  it('PAID is never overdue, even past its due date', () => {
+    expect(isInvoiceOverdue({ status: 'PAID', due_date: '2026-07-01' }, TODAY)).toBe(false)
+  })
+
+  it('VOID is never overdue, even past its due date', () => {
+    expect(isInvoiceOverdue({ status: 'VOID', due_date: '2026-07-01' }, TODAY)).toBe(false)
   })
 })

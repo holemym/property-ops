@@ -525,10 +525,66 @@ Spec: `docs/superpowers/specs/2026-07-12-property-ops-p3-recurring-rent-design.m
       → `expect 19` assertion unchanged. USER: 0027 is folded into schema_bundle.sql, so
       console-batch Step 1 (paste the bundle) applies it alongside 0022–0026 in one go — no
       separate paste. P3-2 wires `generateRentInvoicesAction` + the month dialog next.)*
-- [ ] **P3-2** `[builder]` — `generateRentInvoicesAction` + month dialog + result
+- [x] **P3-2** `[builder]` — `generateRentInvoicesAction` + month dialog + result
       toast + derived overdue badge + `?overdue=1` filter + **delete
       `/preview/rent-automation`**. Depends P3-1 (works with or without P1's
       tenant links). Spec §3.
+      *(committed 2026-07-19 — built: `generateRentInvoicesAction`
+      (`src/app/(app)/invoices/actions.ts`) gates `finance:write`, loads
+      tenancies+units+existing-month invoice keys, runs P3-1's
+      `computeRentInvoicePlan`, inserts sequentially via `createInvoice`
+      (extended with a `billingPeriod` field), redirects to
+      `/invoices?generated=<n>&skipped=<n>`; `GenerateRentDialog.tsx` (plain
+      form, not ConfirmSubmit — drafts are reviewable/voidable, not
+      destructive, matching AddIncomeDialog's posture) + `GeneratedToast.tsx`
+      (mirrors SentToast's mount-effect pattern) + an "Overdue" toggle chip in
+      `InvoiceFilters.tsx` wired to a new `?overdue=1` → `.lt('due_date',
+      today).in('status',['SENT','PARTIAL'])` branch in `listInvoicesPage`
+      + a derived (never stored) OVERDUE badge — `isInvoiceOverdue` (new,
+      tested, `src/lib/invoices/compute.ts`) — replacing the stored-status
+      badge in `InvoiceTable.tsx` and the `[id]` detail page when a SENT/
+      PARTIAL invoice's due_date is strictly before today. Deleted
+      `src/app/(app)/preview/rent-automation/page.tsx` (+ the now-empty
+      `preview/` dir) and its `PREVIEW_GROUP` Sidebar entry in the same
+      commit — it was the last mock preview page (Map/People/Notifications
+      already swapped), so `RefreshCw`'s import and the dead
+      `isDemo`-gated group are gone too; `isDemo` stays threaded through
+      Sidebar/MobileNav/TopNav/the (app) layout for call-site parity
+      (unused-var lint suppressed with a comment explaining why) rather than
+      cascading a 4-file prop removal into this commit — flagged via
+      spawn_task for whoever wants that follow-up cleanup.
+      **Both hard requirements verified:** (1) degrade-safe — the FIRST
+      billing_period-touching call is the existing-keys `SELECT`, so if
+      migration 0027 isn't applied yet in an environment this throws before
+      any invoice is drafted; caught by a new tested predicate,
+      `isMissingBillingPeriodColumnError` (`src/lib/invoices/degrade.ts`,
+      code-and-message multi-signal, same shape as
+      `error-messages.ts`'s `friendlyAuthError`), and turned into a friendly
+      `?error=` redirect (same P1-2/P2-2 ship-before-migration precedent) —
+      the insert loop re-checks it defensively too. (2) dedupe-skip — a
+      23505 from `createInvoice` is caught in the per-invoice loop and
+      counted as `skipped`, never surfaced as an error, per 0027's own
+      migration-header contract. **Bug fixed in passing:** `createInvoice`'s
+      existing retry-on-23505 loop (built for its OWN invoice_number
+      collision) would have mis-retried a
+      `invoices_tenancy_period_unique` violation too — same code, different
+      constraint — burning all 4 attempts against the identical violation
+      and surfacing a misleading "could not allocate a number" error
+      instead of a clean skip. Now only retries when the error message
+      names `invoices_number_workspace_unique`; anything else (P3's dedupe
+      index) rethrows immediately for the caller to handle. No live
+      pre-migration Supabase to exercise this against (and running
+      production DDL is out of scope), so the predicate is unit-tested in
+      isolation instead (8 cases) rather than integration-tested against a
+      real PostgREST error. 440 tests green (420 + 20 new: 8
+      `isMissingBillingPeriodColumnError`, 8 `isInvoiceOverdue`, 4
+      `rentMonthSchema`), build+lint clean. Judgment call: the toast's
+      `skipped` count is "already billed" only (plan.skippedExisting + any
+      23505 hits) — tenancies skipped for having no rent on file are
+      silently excluded, since the dialog copy never promises to bill them
+      and spec §3's example toast text only speaks to the dedupe case.
+      NOT PUSHED per instruction — orchestrator verifies degrade-safety +
+      diff before deploying.)*
 - [ ] **P3-3** `[verify]` — Full playbook in spec §5. Depends P3-1..2 + USER ran 0027.
 
 ## Track P4 — German i18n

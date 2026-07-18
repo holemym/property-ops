@@ -9,7 +9,7 @@ import { getProperty } from '@/lib/data/properties'
 import { getUnit } from '@/lib/data/units'
 import { getVendor } from '@/lib/data/vendors'
 import { getTicket } from '@/lib/data/tickets'
-import { invoiceTotals } from '@/lib/invoices/compute'
+import { invoiceTotals, isInvoiceOverdue } from '@/lib/invoices/compute'
 import { StatusBadge, Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -67,6 +67,11 @@ export default async function InvoiceDetailPage({
     lines.map((l) => ({ quantity: l.quantity, unit_amount: l.unit_amount })),
     invoice.tax_rate,
   )
+  // Same derived, display-only OVERDUE badge as the list (Track P3, spec §3) — the
+  // stored invoice.status is untouched; InvoiceStatusActions below still reads the real
+  // status for its transition options.
+  const todayIso = new Date().toISOString().slice(0, 10)
+  const displayStatus = isInvoiceOverdue(invoice, todayIso) ? 'OVERDUE' : invoice.status
   const fmt = new Intl.NumberFormat('en-IE', {
     style: 'currency',
     currency: invoice.currency || 'EUR',
@@ -97,7 +102,7 @@ export default async function InvoiceDetailPage({
               <h1 className="text-2xl font-semibold tracking-tight tabular-nums">
                 {invoice.invoice_number}
               </h1>
-              <StatusBadge kind="invoice_status" value={invoice.status} />
+              <StatusBadge kind="invoice_status" value={displayStatus} />
               <Badge variant="outline" className="capitalize">
                 {invoice.party_type.toLowerCase()}
               </Badge>

@@ -17,6 +17,9 @@ import { Pagination } from '@/components/common/Pagination'
 import { Button } from '@/components/ui/button'
 import { InvoiceTable } from '@/components/invoices/InvoiceTable'
 import { InvoiceFilters } from '@/components/invoices/InvoiceFilters'
+import { GenerateRentDialog } from '@/components/invoices/GenerateRentDialog'
+import { GeneratedToast } from '@/components/invoices/GeneratedToast'
+import { generateRentInvoicesAction } from './actions'
 import type { InvoiceStatus, InvoicePartyType, InvoiceDirection, InvoiceLineItem } from '@/types/domain'
 
 const money = new Intl.NumberFormat('en-IE', { style: 'currency', currency: 'EUR' })
@@ -24,11 +27,27 @@ const money = new Intl.NumberFormat('en-IE', { style: 'currency', currency: 'EUR
 export default async function InvoicesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; partyType?: string; direction?: string; page?: string }>
+  searchParams: Promise<{
+    status?: string
+    partyType?: string
+    direction?: string
+    page?: string
+    overdue?: string
+    generated?: string
+    skipped?: string
+  }>
 }) {
   const user = await requirePermission('finance:read')
   const canWrite = can(user.role, 'finance:write')
-  const { status: rawStatus, partyType: rawPartyType, direction: rawDirection, page: rawPage } = await searchParams
+  const {
+    status: rawStatus,
+    partyType: rawPartyType,
+    direction: rawDirection,
+    page: rawPage,
+    overdue: rawOverdue,
+    generated: rawGenerated,
+    skipped: rawSkipped,
+  } = await searchParams
 
   // Validate enum params before passing to listInvoices — a garbage ?status= would 400 at
   // PostgREST and crash the error boundary. Invalid values are ignored (same guard as the
@@ -40,12 +59,18 @@ export default async function InvoicesPage({
   const direction = invoiceDirectionEnum.safeParse(rawDirection).success
     ? (rawDirection as InvoiceDirection)
     : undefined
+  const overdue = rawOverdue === '1'
 
   const requestedPage = Math.max(1, Number.parseInt(rawPage ?? '1', 10) || 1)
+  // Server-computed so the "Generate rent" dialog's month default and the overdue badge
+  // derivation agree on the same instant — no client-side new Date() (avoids any
+  // SSR/hydration clock skew) and matches the house todayIso pattern (occupancy/page.tsx,
+  // properties/[id]/page.tsx).
+  const todayIso = new Date().toISOString().slice(0, 10)
 
   const supabase = await createClient()
   const invoicePage = await listInvoicesPage(supabase, user.workspaceId, {
-    filters: { status, partyType, direction },
+    filters: { status, partyType, direction, overdue },
     page: requestedPage,
   })
   const invoices = invoicePage.rows
@@ -78,7 +103,7 @@ export default async function InvoicesPage({
   }
   const totalFor = (id: string) => totalStringById.get(id) ?? money.format(0)
 
-  const isFiltered = Boolean(status || partyType || direction)
+  const isFiltered = Boolean(status || partyType || direction || overdue)
 
   // Carry the CURRENT filters onto the export link so the CSV matches what's on screen.
   const exportParams = new URLSearchParams({
@@ -95,9 +120,13 @@ export default async function InvoicesPage({
     </Button>
   )
   const newButton = canWrite ? <Button render={<Link href="/invoices/new" />} nativeButton={false}>New invoice</Button> : null
+  const generateRentButton = canWrite ? (
+    <GenerateRentDialog action={generateRentInvoicesAction} defaultMonth={todayIso.slice(0, 7)} />
+  ) : null
   const headerActions = (
     <div className="flex items-center gap-2">
       {exportButton}
+      {generateRentButton}
       {newButton}
     </div>
   )
@@ -105,6 +134,12 @@ export default async function InvoicesPage({
   return (
     <div className="flex flex-col gap-6">
       <ErrorToast />
+      {rawGenerated !== undefined && (
+        <GeneratedToast
+          generated={Number.parseInt(rawGenerated, 10) || 0}
+          skipped={Number.parseInt(rawSkipped ?? '0', 10) || 0}
+        />
+      )}
       <PageHeader
         title="Invoices"
         subtitle="Bills you send and bills you receive, across the portfolio."
@@ -128,7 +163,7 @@ export default async function InvoicesPage({
         />
       ) : (
         <div className="flex flex-col gap-4">
-          <InvoiceTable invoices={invoices} totalFor={totalFor} />
+          <InvoiceTable invoices={invoices} totalFor={totalFor} todayIso={todayIso} />
           <Pagination
             page={invoicePage.page}
             pageCount={invoicePage.pageCount}
@@ -137,6 +172,7 @@ export default async function InvoicesPage({
               ...(status ? { status } : {}),
               ...(partyType ? { partyType } : {}),
               ...(direction ? { direction } : {}),
+              ...(overdue ? { overdue: '1' } : {}),
             }}
             basePath="/invoices"
           />

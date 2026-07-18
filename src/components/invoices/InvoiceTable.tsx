@@ -9,6 +9,7 @@ import {
 } from '@/components/ui/table'
 import { Badge, StatusBadge } from '@/components/ui/badge'
 import { formatDate } from '@/lib/format-date'
+import { isInvoiceOverdue } from '@/lib/invoices/compute'
 import type { Invoice } from '@/types/domain'
 
 // The invoices list table (server component). The page computes each invoice's total in JS
@@ -19,12 +20,19 @@ import type { Invoice } from '@/types/domain'
 // (after:absolute inset-0), mirroring TicketTable. The status pill sits in a `relative z-10`
 // cell so it's legible/clickable above the stretched overlay. Party type renders as a plain
 // outline Badge (there is no colored party badge — saturated color is reserved for status).
+//
+// `todayIso` drives the derived OVERDUE badge (Track P3, spec §3): a past-due SENT/PARTIAL
+// invoice shows the OVERDUE tone INSTEAD OF its stored status — the underlying `status`
+// column is never touched (isInvoiceOverdue is a pure read, not a write), and a paid/voided
+// invoice's badge is unaffected either way.
 export function InvoiceTable({
   invoices,
   totalFor,
+  todayIso,
 }: {
   invoices: Invoice[]
   totalFor: (id: string) => string
+  todayIso: string
 }) {
   return (
     <>
@@ -47,7 +55,10 @@ export function InvoiceTable({
                 </Badge>
               </div>
               <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-                <StatusBadge kind="invoice_status" value={inv.status} />
+                <StatusBadge
+                  kind="invoice_status"
+                  value={isInvoiceOverdue(inv, todayIso) ? 'OVERDUE' : inv.status}
+                />
                 <span>
                   {formatDate(inv.issue_date)}
                   {inv.due_date ? ` · due ${formatDate(inv.due_date)}` : ''}
@@ -91,7 +102,10 @@ export function InvoiceTable({
                 </div>
               </TableCell>
               <TableCell className="relative z-10 px-4 py-3">
-                <StatusBadge kind="invoice_status" value={inv.status} />
+                <StatusBadge
+                  kind="invoice_status"
+                  value={isInvoiceOverdue(inv, todayIso) ? 'OVERDUE' : inv.status}
+                />
               </TableCell>
               <TableCell className="px-4 py-3 text-muted-foreground">
                 {formatDate(inv.issue_date)}

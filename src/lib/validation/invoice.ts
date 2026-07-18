@@ -43,5 +43,13 @@ export const invoiceStatusSchema = z.object({
   status: invoiceStatusEnum,
 })
 
+// "Generate rent" (Track P3, spec §3) — the <input type="month"> value GenerateRentDialog
+// posts. Rejects a missing/malformed value before any DB work; recurring.ts's
+// computeRentInvoicePlan treats a bad 'YYYY-MM' as a programmer-contract error (throws),
+// so this is the friendly guard that keeps a tampered/stale form from ever reaching it.
+export const rentMonthSchema = z.object({
+  month: z.string().regex(/^\d{4}-\d{2}$/, 'Choose a month to generate rent invoices for.'),
+})
+
 export type InvoiceFormValues = z.infer<typeof invoiceFormSchema>
 export type InvoiceLineValues = z.infer<typeof invoiceLineSchema>

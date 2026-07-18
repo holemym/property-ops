@@ -37,7 +37,8 @@ export function InvoiceFilters() {
   const status = searchParams.get('status') ?? ''
   const partyType = searchParams.get('partyType') ?? ''
   const direction = searchParams.get('direction') ?? ''
-  const hasFilters = Boolean(status || partyType || direction)
+  const overdue = searchParams.get('overdue') === '1'
+  const hasFilters = Boolean(status || partyType || direction || overdue)
 
   function setParam(key: string, value: string) {
     const next = new URLSearchParams(searchParams.toString())
@@ -46,6 +47,10 @@ export function InvoiceFilters() {
     next.delete('page') // a changed filter resets to the first page
     const qs = next.toString()
     startTransition(() => router.push(qs ? `${pathname}?${qs}` : pathname))
+  }
+
+  function toggleOverdue() {
+    setParam('overdue', overdue ? '' : '1')
   }
 
   function clearAll() {
@@ -95,6 +100,23 @@ export function InvoiceFilters() {
           </option>
         ))}
       </select>
+
+      {/* Derived quick filter (Track P3, spec §3) — matches due_date < today AND status
+          in (SENT, PARTIAL) server-side (listInvoicesPage); OVERDUE is never a stored
+          status, so this can't be a plain <select> option alongside the others. */}
+      <button
+        type="button"
+        onClick={toggleOverdue}
+        aria-pressed={overdue}
+        className={cn(
+          'inline-flex h-8 items-center gap-1 rounded-lg border px-2.5 text-sm font-medium transition-colors',
+          overdue
+            ? 'border-transparent bg-foreground text-background'
+            : 'border-border text-muted-foreground hover:bg-accent hover:text-accent-foreground',
+        )}
+      >
+        Overdue
+      </button>
 
       {hasFilters && (
         <button

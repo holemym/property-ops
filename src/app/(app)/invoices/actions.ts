@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase/server'
 import { requirePermission } from '@/lib/auth/session'
 import { redirectWithError } from '@/lib/redirect-with-error'
 import { isDemoWorkspace } from '@/lib/demo'
-import { invoiceFormSchema, invoiceStatusSchema } from '@/lib/validation/invoice'
+import { invoiceFormSchema, invoiceStatusSchema, rentMonthSchema } from '@/lib/validation/invoice'
 import {
   createInvoice,
   getInvoice,
@@ -17,10 +17,14 @@ import {
 } from '@/lib/data/invoices'
 import { sendInvoiceEmail } from '@/lib/email/invoice'
 import { getProperty } from '@/lib/data/properties'
-import { getUnit } from '@/lib/data/units'
+import { getUnit, listUnits } from '@/lib/data/units'
 import { getVendor } from '@/lib/data/vendors'
 import { getTicket } from '@/lib/data/tickets'
 import { listTenancies } from '@/lib/data/tenancies'
+import { listTenants } from '@/lib/data/tenants'
+import { computeRentInvoicePlan, type ExistingInvoiceKey } from '@/lib/invoices/recurring'
+import { isMissingBillingPeriodColumnError } from '@/lib/invoices/degrade'
+import type { InvoiceStatus } from '@/types/domain'
 
 // Invoice write actions. Each gates on 'finance:write' FIRST (held by SUPER_ADMIN / OWNER /
 // ACCOUNTANT — the same can_manage_finance() gate RLS enforces on invoices in 0019), then
@@ -276,4 +280,144 @@ export async function sendInvoiceAction(id: string): Promise<void> {
 
   revalidatePath(detailPath)
   redirect(`${detailPath}?sent=${demo ? 'demo' : '1'}`)
+}
+
+// Partial-select row shape for the `existing` dedupe-key query below — untyped
+// `.select(cols)` results need an explicit cast (roadmap v2 §2's Supabase-select rule).
+type ExistingInvoiceRow = { tenancy_id: string; billing_period: string; status: InvoiceStatus }
+
+/**
+ * "Generate rent" (Track P3, spec §3): drafts one DRAFT invoice per active tenancy with a
+ * rent amount for the chosen month, deduped per (tenancy, month). Gated on finance:write
+ * (the same can_manage_finance() tier as every other invoice write).
+ *
+ * DEGRADE-SAFE by design: migration 0027 (invoices.billing_period + the
+ * invoices_tenancy_period_unique partial index) can land as a commit before a human
+ * pastes it into the live Supabase SQL editor — the app stays live the whole time (same
+ * ship-before-migration gap P1-2/P2-2 handled). The FIRST query below selects
+ * billing_period, so if the column doesn't exist yet this throws immediately, before any
+ * invoice is drafted — caught by isMissingBillingPeriodColumnError and turned into a
+ * friendly `?error=` redirect (never a raw 500, never a partial run).
+ *
+ * DEDUPE CONTRACT (0027's migration header): the planner's own `existing` check is the
+ * friendly first line; the DB's partial unique index is the actual guarantee under a
+ * concurrent click. A 23505 unique-violation on an individual insert is caught here and
+ * counted as skipped, never surfaced as an error.
+ */
+export async function generateRentInvoicesAction(formData: FormData): Promise<void> {
+  const user = await requirePermission('finance:write')
+  const listPath = '/invoices'
+  const degradeMessage =
+    'Rent invoice generation isn’t set up yet — ask an admin to finish the pending database update.'
+
+  const parsed = rentMonthSchema.safeParse({ month: formData.get('month') })
+  if (!parsed.success) {
+    redirectWithError(listPath, parsed.error.issues[0].message)
+  }
+  const { month } = parsed.data
+  const monthStart = `${month}-01`
+
+  const supabase = await createClient()
+
+  const [tenancies, units] = await Promise.all([
+    listTenancies(supabase, user.workspaceId),
+    listUnits(supabase, user.workspaceId),
+  ])
+
+  // Tenant full-name resolution (P1's tenant_id linkage) is a display nicety, not the
+  // point of this action — never let a tenants-table hiccup (e.g. migration 0025 not yet
+  // applied in this environment) block rent-invoice generation, which only depends on
+  // 0027. Falls back to each tenancy's own free-text tenant_name, exactly as if no
+  // person were ever linked — same swallow-to-safe-default posture as the TopNav bell's
+  // countUnread (src/app/(app)/layout.tsx, P2-2).
+  const tenantNames = await listTenants(supabase, user.workspaceId)
+    .then((tenants) => new Map(tenants.map((t) => [t.id, t.full_name])))
+    .catch((e) => {
+      console.error(
+        'generateRentInvoicesAction: tenant directory lookup failed, falling back to tenancy.tenant_name',
+        e,
+      )
+      return new Map<string, string>()
+    })
+
+  // The friendly first-line dedupe check (recurring.ts's `existing` param) — also the
+  // FIRST place billing_period is queried, so a not-yet-applied migration 0027 surfaces
+  // HERE, before any invoice is drafted.
+  let existing: ExistingInvoiceKey[]
+  try {
+    const { data, error } = await supabase
+      .from('invoices')
+      .select('tenancy_id, billing_period, status')
+      .eq('workspace_id', user.workspaceId)
+      .eq('billing_period', monthStart)
+      .not('tenancy_id', 'is', null)
+    if (error) throw error
+    const rows = (data ?? []) as unknown as ExistingInvoiceRow[]
+    existing = rows.map((row) => ({
+      tenancyId: row.tenancy_id,
+      billingPeriod: row.billing_period,
+      status: row.status,
+    }))
+  } catch (e) {
+    if (isMissingBillingPeriodColumnError(e)) {
+      redirectWithError(listPath, degradeMessage)
+    }
+    // Anything else unexpected here (network blip, RLS surprise, ...) — never leak a raw
+    // error, same posture as every other action in this file.
+    redirectWithError(listPath, e instanceof Error ? e.message : 'Could not check existing rent invoices.')
+  }
+
+  const plan = computeRentInvoicePlan(
+    tenancies,
+    units.map((u) => ({ id: u.id, propertyId: u.property_id })),
+    existing,
+    month,
+    new Date(),
+    tenantNames,
+  )
+
+  let created = 0
+  let skipped = plan.skippedExisting
+
+  for (const planned of plan.toCreate) {
+    try {
+      await createInvoice(supabase, {
+        workspaceId: user.workspaceId,
+        createdByUserId: user.id,
+        partyType: planned.partyType,
+        partyName: planned.partyName,
+        direction: planned.direction,
+        currency: planned.currency,
+        taxRate: 0,
+        issueDate: planned.issueDate,
+        dueDate: planned.dueDate,
+        propertyId: planned.propertyId,
+        unitId: planned.unitId,
+        tenancyId: planned.tenancyId,
+        billingPeriod: planned.billingPeriod,
+        lines: planned.lines.map((l, i) => ({
+          description: l.description,
+          quantity: l.quantity,
+          unitAmount: l.unitAmount,
+          sortOrder: i,
+        })),
+      })
+      created++
+    } catch (e) {
+      if (isMissingBillingPeriodColumnError(e)) {
+        redirectWithError(listPath, degradeMessage)
+      }
+      if ((e as { code?: string })?.code === '23505') {
+        // Concurrent-click backstop: migration 0027's invoices_tenancy_period_unique
+        // index caught a (tenancy, month) pair our own pre-check above just missed.
+        // Counted as skipped, never surfaced as an error.
+        skipped++
+        continue
+      }
+      redirectWithError(listPath, e instanceof Error ? e.message : 'Could not draft rent invoices.')
+    }
+  }
+
+  revalidatePath(listPath)
+  redirect(`${listPath}?generated=${created}&skipped=${skipped}`)
 }

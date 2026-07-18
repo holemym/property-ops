@@ -23,7 +23,6 @@ import {
   Loader2,
   MapPinned,
   Contact,
-  RefreshCw,
   type LucideIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -84,19 +83,14 @@ const OPERATOR_GROUPS: NavGroup[] = [
 
 // Mock screens for unbuilt roadmap features (Track D, D5) — demo-workspace only, so a
 // visitor sees where the product is headed without those features existing yet. Each
-// page is a single deletable file (src/app/(app)/preview/*); when the real feature
-// ships, delete its page and move the nav item out of this group into OPERATOR_GROUPS.
-// Map shipped for real in Track M (M2) — its preview entry + page are gone (the swap
-// rule); the live "Map" link now lives in OPERATOR_GROUPS's Portfolio group above.
-// People shipped for real in Track P1 (P1-2) — same swap.
-// Notifications shipped for real in Track P2 (P2-2) — same swap, but with NO new
-// OPERATOR_GROUPS entry: the feature's real nav affordance is the TopNav bell
-// (src/components/layout/TopNav.tsx), not a sidebar link, so there is nothing to move
-// here — the preview entry is simply gone.
-const PREVIEW_GROUP: NavGroup = {
-  label: 'Preview',
-  items: [{ href: '/preview/rent-automation', label: 'Rent automation', icon: RefreshCw }],
-}
+// page was a single deletable file (src/app/(app)/preview/*); when the real feature
+// ships, its page + nav item are deleted (the swap rule). Map (M2), People (P1-2),
+// Notifications (P2-2), and finally Rent automation (P3-2) — the last preview mock —
+// have all shipped for real now, so the `src/app/(app)/preview/` directory and the
+// PREVIEW_GROUP nav concept it fed are retired. `isDemo` is kept on
+// Sidebar/SidebarContent below (still threaded through from TopNav/MobileNav/the (app)
+// layout) since a future roadmap item may reintroduce a demo-only preview group; it is
+// simply unused by `groups` until then.
 
 // Minimal tenant/guest nav — the self-service portal only, headerless.
 const TENANT_GROUPS: NavGroup[] = [
@@ -118,11 +112,16 @@ function matchesPath(pathname: string, href: string): boolean {
 
 // The brand + grouped nav, reused by the desktop rail (Sidebar) and the mobile drawer
 // (MobileNav). `onNavigate` (optional) fires when a link is clicked — the drawer passes a
-// close handler so tapping a destination dismisses it. `isDemo` (default false) appends
-// the Preview group of mock-feature pages — demo workspace only, operator roles only.
+// close handler so tapping a destination dismisses it. `isDemo` is accepted (and threaded
+// through from TopNav/MobileNav/the (app) layout) for signature parity with those callers,
+// but is currently unused here — it drove the now-retired PREVIEW_GROUP (see the comment
+// above TENANT_GROUPS).
 export function SidebarContent({
   role,
   onNavigate,
+  // Kept for call-site parity with Sidebar/MobileNav/TopNav (all still thread isDemo
+  // through from the (app) layout); see the doc comment above.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   isDemo = false,
 }: {
   role: Role
@@ -131,10 +130,9 @@ export function SidebarContent({
 }) {
   const pathname = usePathname()
 
-  // Filter each group's items by permission, then drop groups left empty. The Preview
-  // group has no per-item permissions (every operator role sees it in the demo).
+  // Filter each group's items by permission, then drop groups left empty.
   const baseGroups = isTenantRole(role) ? TENANT_GROUPS : OPERATOR_GROUPS
-  const groups = (isDemo && !isTenantRole(role) ? [...baseGroups, PREVIEW_GROUP] : baseGroups)
+  const groups = baseGroups
     .map((group) => ({
       ...group,
       items: group.items.filter((item) => !item.permission || can(role, item.permission)),

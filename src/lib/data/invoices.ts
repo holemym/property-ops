@@ -17,6 +17,11 @@ export type InvoiceFilters = {
   partyType?: InvoicePartyType
   direction?: InvoiceDirection
   propertyId?: string
+  // Derived "Overdue" quick filter (Track P3, spec §3) — NOT a stored status. Matches
+  // due_date < today AND status in (SENT, PARTIAL), the same predicate as
+  // src/lib/invoices/compute.ts's isInvoiceOverdue. Only listInvoicesPage (the /invoices
+  // list) implements it; listInvoices/CSV export are unaffected (out of spec scope).
+  overdue?: boolean
 }
 
 export async function listInvoices(
@@ -112,6 +117,9 @@ export async function listInvoicesPage(
 ): Promise<InvoicePage> {
   const pageSize = params.pageSize ?? DEFAULT_INVOICE_PAGE_SIZE
   const f = params.filters ?? {}
+  // Computed once, reused by both queries below — avoids the count and the page
+  // straddling a midnight rollover mid-request.
+  const todayIso = new Date().toISOString().slice(0, 10)
 
   let countQuery = supabase
     .from('invoices')
@@ -121,6 +129,7 @@ export async function listInvoicesPage(
   if (f.partyType) countQuery = countQuery.eq('party_type', f.partyType)
   if (f.direction) countQuery = countQuery.eq('direction', f.direction)
   if (f.propertyId) countQuery = countQuery.eq('property_id', f.propertyId)
+  if (f.overdue) countQuery = countQuery.lt('due_date', todayIso).in('status', ['SENT', 'PARTIAL'])
   const { count, error: countError } = await countQuery
   if (countError) throw countError
   const total = count ?? 0
@@ -134,6 +143,7 @@ export async function listInvoicesPage(
   if (f.partyType) query = query.eq('party_type', f.partyType)
   if (f.direction) query = query.eq('direction', f.direction)
   if (f.propertyId) query = query.eq('property_id', f.propertyId)
+  if (f.overdue) query = query.lt('due_date', todayIso).in('status', ['SENT', 'PARTIAL'])
   const { data, error } = await query.order('created_at', { ascending: false }).range(from, to)
   if (error) throw error
 
@@ -164,6 +174,10 @@ export type CreateInvoiceInput = {
   tenancyId?: string | null
   vendorId?: string | null
   ticketId?: string | null
+  // First day of the billed month (migration 0027, Track P3) — set only by
+  // generateRentInvoicesAction; every other caller (createInvoiceAction, the manual
+  // invoice form) omits it, leaving it null.
+  billingPeriod?: string | null
   lines: CreateInvoiceLineInput[]
 }
 
@@ -211,6 +225,7 @@ export async function createInvoice(
         issue_date: input.issueDate,
         due_date: input.dueDate ?? null,
         recipient_email: input.recipientEmail ?? null,
+        billing_period: input.billingPeriod ?? null,
         notes: input.notes ?? null,
         created_by_user_id: input.createdByUserId,
       })
@@ -220,8 +235,21 @@ export async function createInvoice(
       created = data as Invoice
       break
     }
-    // 23505 = unique_violation (another create grabbed this number). Retry with the next.
-    if ((error as { code?: string }).code !== '23505') throw error
+    const pgError = error as { code?: string; message?: string }
+    // 23505 = unique_violation. Only retry (with a bumped invoice_number) when it's OUR
+    // OWN number-collision constraint (invoices_number_workspace_unique) — another
+    // concurrent create grabbed this number. Any OTHER unique violation is a DIFFERENT
+    // constraint entirely — most notably P3's invoices_tenancy_period_unique dedupe index
+    // (migration 0027), which fires when "Generate rent" double-bills a (tenancy, month)
+    // under a concurrent click. Retrying THAT with a new invoice_number would just hit the
+    // same violation again on every attempt, exhaust the retry budget, and mask the real
+    // outcome behind a misleading "could not allocate a number" error. Rethrow anything
+    // that isn't our own constraint immediately so the caller (generateRentInvoicesAction,
+    // P3-2) can catch its own dedupe key and count it as skipped, per 0027's documented
+    // contract (its migration header + src/lib/invoices/recurring.ts's module doc).
+    if (pgError.code !== '23505' || !pgError.message?.includes('invoices_number_workspace_unique')) {
+      throw error
+    }
   }
   if (!created) throw new Error('Could not allocate an invoice number; please retry.')
 
