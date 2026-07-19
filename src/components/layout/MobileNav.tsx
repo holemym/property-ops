@@ -8,7 +8,7 @@ import type { Role } from '@/types/domain'
 // Mobile navigation: a hamburger (shown below md) that opens the sidebar as an off-canvas
 // drawer. Tapping a destination closes it (SidebarContent's onNavigate), as does the
 // backdrop or Escape. Hidden entirely at md+, where the static rail is visible.
-export function MobileNav({ role, isDemo = false }: { role: Role; isDemo?: boolean }) {
+export function MobileNav({ role }: { role: Role }) {
   const [open, setOpen] = useState(false)
   const triggerRef = useRef<HTMLButtonElement | null>(null)
 
@@ -53,7 +53,7 @@ export function MobileNav({ role, isDemo = false }: { role: Role; isDemo?: boole
             onClick={() => setOpen(false)}
           />
           <nav className="absolute inset-y-0 left-0 flex w-64 flex-col bg-sidebar shadow-lg motion-safe:animate-in motion-safe:slide-in-from-left motion-safe:duration-[--duration-base]">
-            <SidebarContent role={role} isDemo={isDemo} onNavigate={() => setOpen(false)} />
+            <SidebarContent role={role} onNavigate={() => setOpen(false)} />
           </nav>
         </div>
       )}

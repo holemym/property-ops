@@ -102,10 +102,7 @@ const OPERATOR_GROUPS: NavGroup[] = [
 // ships, its page + nav item are deleted (the swap rule). Map (M2), People (P1-2),
 // Notifications (P2-2), and finally Rent automation (P3-2) — the last preview mock —
 // have all shipped for real now, so the `src/app/(app)/preview/` directory and the
-// PREVIEW_GROUP nav concept it fed are retired. `isDemo` is kept on
-// Sidebar/SidebarContent below (still threaded through from TopNav/MobileNav/the (app)
-// layout) since a future roadmap item may reintroduce a demo-only preview group; it is
-// simply unused by `groups` until then.
+// PREVIEW_GROUP nav concept it fed are retired.
 
 // Minimal tenant/guest nav — the self-service portal only, headerless.
 const TENANT_GROUPS: NavGroup[] = [
@@ -127,21 +124,13 @@ function matchesPath(pathname: string, href: string): boolean {
 
 // The brand + grouped nav, reused by the desktop rail (Sidebar) and the mobile drawer
 // (MobileNav). `onNavigate` (optional) fires when a link is clicked — the drawer passes a
-// close handler so tapping a destination dismisses it. `isDemo` is accepted (and threaded
-// through from TopNav/MobileNav/the (app) layout) for signature parity with those callers,
-// but is currently unused here — it drove the now-retired PREVIEW_GROUP (see the comment
-// above TENANT_GROUPS).
+// close handler so tapping a destination dismisses it.
 export function SidebarContent({
   role,
   onNavigate,
-  // Kept for call-site parity with Sidebar/MobileNav/TopNav (all still thread isDemo
-  // through from the (app) layout); see the doc comment above.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  isDemo = false,
 }: {
   role: Role
   onNavigate?: () => void
-  isDemo?: boolean
 }) {
   const pathname = usePathname()
 
@@ -205,10 +194,10 @@ export function SidebarContent({
 }
 
 // The desktop rail — hidden below md, where the MobileNav drawer takes over.
-export function Sidebar({ role, isDemo = false }: { role: Role; isDemo?: boolean }) {
+export function Sidebar({ role }: { role: Role }) {
   return (
     <nav className="hidden h-full w-56 shrink-0 flex-col border-r bg-sidebar md:flex">
-      <SidebarContent role={role} isDemo={isDemo} />
+      <SidebarContent role={role} />
     </nav>
   )
 }
