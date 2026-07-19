@@ -816,6 +816,71 @@ would otherwise show up as a false-positive violation during S2-3's browsing che
       the temp-PUBLIC_PATHS technique's own risk (a forgotten `proxy.ts` revert = auth
       hole) outweighs its marginal value for a prop-only, logically-certain change.)*
 
+## Track P0 — Product deepening: polish & completion
+Plan: `docs/superpowers/plans/2026-07-19-product-deepening.md` §2 (Phase 0 — autonomous,
+no sign-off; zero product-decision risk). Pure UI/UX, no migrations/schema/RLS. P0-5
+(payment ledger) is a separate `[rls]`-gated task, tracked independently.
+
+- [x] **P0-1** `[builder]` — Error/not-found boundaries. No `error.tsx`/`not-found.tsx`
+      existed, so a bad id or thrown query dropped the user onto Next's unstyled 500/404
+      outside the app shell.
+      **Files:** `src/app/not-found.tsx` + `src/app/error.tsx` (new, global, outside any
+      shell — `error.tsx` is a Client Component per Next.js file convention); `src/app/(app)/not-found.tsx`
+      + `src/app/(app)/error.tsx` (new, `(app)`-scoped — sit inside the `(app)` layout's
+      segment so they wrap `(app)/template.tsx` and every nested page, but NOT
+      `(app)/layout.tsx` itself per Next's error-boundary rule, so Sidebar/TopNav stay
+      mounted). Reuses `PageHeader`/`EmptyState`/`Button` for the app-scoped pair; the
+      global pair mirrors `(auth)/layout.tsx`'s centered brand-mark treatment since no
+      shell applies there. `notFound()` in tickets/[id], portal/[id], people/[id],
+      invoices/[id], units/[id] now bubbles to the app-scoped boundary; so does
+      `requirePermission`'s thrown Error on a denied permission (previously hit Next's
+      raw default error page).
+      *(done — verified: production `npm run build` typechecks all four files cleanly;
+      curled the dev server directly (auth-gated routes redirect via proxy.ts before
+      reaching not-found, as expected) — `GET /login/some-garbage-subpath` (a PUBLIC_PATHS
+      subpath, so proxy doesn't intercept it) returned a real `404` status with the new
+      global not-found content ("Page not found" / "Back to dashboard"). The
+      `(app)`-scoped pair can't be curl-verified without a live Supabase session (no demo
+      env configured locally) but is covered by the same successful typecheck + the
+      documented Next.js boundary-nesting rule. 481 tests, build+lint clean, no new pure
+      logic to unit-test.)*
+- [x] **P0-2** `[builder]` — Remove stale "preview" copy on shipped, fully-interactive
+      features. **Files:** `occupancy/page.tsx` (header subtitle + legend's "Read-only
+      preview" tag), `rent-roll/page.tsx` (subtitle).
+      *(done — occupancy subtitle now "Unit availability across the portfolio."; legend's
+      trailing "Read-only preview" span removed entirely (not replaced — the tape chart
+      has no read-only/interactive distinction worth calling out, so the tag was purely
+      the misleading part); rent-roll subtitle now "Occupancy, tenants, and monthly rent
+      across the portfolio." Both pages already had real generate/create actions before
+      this — the copy was the only thing calling them a preview.)*
+- [x] **P0-3** `[builder]` — `/settings` index. No `settings/page.tsx` existed, so the
+      bare path 404'd. **Files:** `src/app/(app)/settings/page.tsx` (new).
+      *(done — unconditional `redirect('/settings/security')`: proxy.ts already gates auth
+      before this route is reachable, and `/settings/security` itself further bounces
+      tenant roles on to `/portal`, so no auth/role check needed here — simplest correct
+      fix per the task. Confirmed in the build's route table: `/settings` now compiles as
+      a real route.)*
+- [x] **P0-4** `[builder]` — Icon pass (lucide-react, matching existing usage).
+      **Files:** `properties/page.tsx`, `units/page.tsx`, `vendors/page.tsx`,
+      `people/page.tsx`, `tickets/page.tsx`, `invoices/page.tsx` (leading `Plus` on every
+      New/Add primary button — invoices only needed one edit since its header button and
+      EmptyState action both reuse the same `newButton` const); `portal/page.tsx`
+      (`CirclePlus` on both "Report an issue" buttons, matching the Sidebar's existing use
+      of the same icon for that destination); `settings/users/page.tsx` (`UserPlus` on
+      Invite); `notifications/page.tsx` (per-type glyphs — `UserCheck`/`RefreshCw`/
+      `MessageSquare` for ASSIGNED/STATUS_CHANGED/COMMENT — replacing the monochrome tone
+      dot with a small tone-tinted icon chip using the same bg-tint/text-color pairing as
+      `Badge`'s status-tone variants, so the color system stays one convention);
+      `settings/security/page.tsx` (`History` on the "Recent activity" EmptyState);
+      `login/page.tsx` (inline multi-color Google "G" SVG glyph on "Continue with
+      Google" — no new dependency).
+      *(done — build+lint+481 tests green after every edit; `curl`-verified the Google
+      glyph renders (`<svg viewBox` present, `GoogleGlyph is not defined` browser-console
+      errors seen mid-edit were a stale Turbopack HMR artifact from the two-edit sequence
+      on `login/page.tsx`, not a real bug — confirmed gone after a full dev-server
+      restart + a direct HTTP curl of the rendered HTML). Icon-only change, no new pure
+      logic to unit-test.)*
+
 - [ ] Verify migration **0021** applied (`select column_name from
       information_schema.columns where table_name='invoices' and
       column_name='recipient_email';` — one row = done).

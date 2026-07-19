@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { Contact, Search } from 'lucide-react'
+import { Contact, Plus, Search } from 'lucide-react'
 import { requirePermission } from '@/lib/auth/session'
 import { can } from '@/lib/auth/permissions'
 import { createClient } from '@/lib/supabase/server'
@@ -46,7 +46,14 @@ export default async function PeoplePage({
       <PageHeader
         title="People"
         subtitle="Tenant contact records across your portfolio."
-        actions={canWrite && <Button render={<Link href="/people/new" />} nativeButton={false}>New person</Button>}
+        actions={
+          canWrite && (
+            <Button render={<Link href="/people/new" />} nativeButton={false}>
+              <Plus className="size-4" />
+              New person
+            </Button>
+          )
+        }
       />
 
       <form className="flex items-center gap-2">
@@ -76,7 +83,10 @@ export default async function PeoplePage({
           }
           action={
             canWrite && !isFiltered ? (
-              <Button render={<Link href="/people/new" />} nativeButton={false}>Add person</Button>
+              <Button render={<Link href="/people/new" />} nativeButton={false}>
+                <Plus className="size-4" />
+                Add person
+              </Button>
             ) : undefined
           }
         />

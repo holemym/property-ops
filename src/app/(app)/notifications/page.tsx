@@ -1,4 +1,4 @@
-import { Bell } from 'lucide-react'
+import { Bell, MessageSquare, RefreshCw, UserCheck, type LucideIcon } from 'lucide-react'
 import { requireWorkspace } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { listNotificationsPage, countUnread, type Notification } from '@/lib/data/notifications'
@@ -11,19 +11,27 @@ import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { markReadNotificationAction, markAllReadNotificationsAction } from './actions'
+import type { NotificationType } from '@/types/domain'
 
-// Solid dot color per tone — a small-mark exception to StatusBadge's tint-pair pill
-// convention (src/components/ui/badge.tsx), mirroring TicketTable's PRIORITY_SPINE
-// precedent (src/components/tickets/TicketTable.tsx): a flat, non-dark-mode-adjusted
-// Tailwind -500 accent is already accepted for small marks like a left spine border.
-// 'neutral'/'muted' share one plain gray dot since neither is a saturated status tone.
-const TONE_DOT: Record<StatusTone, string> = {
-  neutral: 'bg-muted-foreground/40',
-  muted: 'bg-muted-foreground/40',
-  blue: 'bg-blue-500',
-  amber: 'bg-amber-500',
-  green: 'bg-green-500',
-  red: 'bg-red-500',
+// P0-4: replaced the monochrome tone dot with a distinct glyph per notification type —
+// far more scannable at a glance. Tone still carries the "how urgent" signal (mirrors
+// TICKET_STATUS's tone assignment for the same conceptual event); the glyph carries
+// "what kind." Icon chip uses the same subtle bg-tint + readable text pairing as
+// StatusBadge's tone variants (src/components/ui/badge.tsx) so the color system stays
+// one convention, just applied to a small icon circle instead of a pill.
+const NOTIFICATION_ICON: Record<NotificationType, LucideIcon> = {
+  TICKET_ASSIGNED: UserCheck,
+  TICKET_STATUS_CHANGED: RefreshCw,
+  TICKET_COMMENT: MessageSquare,
+}
+
+const TONE_ICON_BG: Record<StatusTone, string> = {
+  neutral: 'bg-muted text-foreground',
+  muted: 'bg-muted text-muted-foreground',
+  blue: 'bg-blue-100 text-blue-800 dark:bg-blue-500/20 dark:text-blue-300',
+  amber: 'bg-amber-100 text-amber-900 dark:bg-amber-500/20 dark:text-amber-300',
+  green: 'bg-green-100 text-green-800 dark:bg-green-500/20 dark:text-green-300',
+  red: 'bg-red-100 text-red-800 dark:bg-red-500/20 dark:text-red-300',
 }
 
 export default async function NotificationsPage({
@@ -99,6 +107,7 @@ export default async function NotificationsPage({
 function NotificationRow({ notification: n }: { notification: Notification }) {
   const unread = n.read_at === null
   const { tone } = statusBadge('notification_type', n.type)
+  const Icon = NOTIFICATION_ICON[n.type]
 
   return (
     <form action={markReadNotificationAction.bind(null, n.id, n.href)}>
@@ -109,7 +118,15 @@ function NotificationRow({ notification: n }: { notification: Notification }) {
           unread && 'bg-muted/40',
         )}
       >
-        <span className={cn('mt-1.5 size-2 shrink-0 rounded-full', TONE_DOT[tone])} aria-hidden />
+        <span
+          className={cn(
+            'mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full',
+            TONE_ICON_BG[tone],
+          )}
+          aria-hidden
+        >
+          <Icon className="size-3.5" />
+        </span>
         <span className="min-w-0 flex-1">
           <span className={cn('block text-sm text-foreground', unread && 'font-semibold')}>
             {n.title}

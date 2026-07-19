@@ -1,3 +1,4 @@
+import { UserPlus } from 'lucide-react'
 import { requirePermission } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { Button } from '@/components/ui/button'
@@ -51,7 +52,10 @@ export default async function UsersSettingsPage({
           <option value="ACCOUNTANT">Accountant</option>
           <option value="OWNER">Owner</option>
         </select>
-        <Button type="submit">Invite</Button>
+        <Button type="submit">
+          <UserPlus className="size-4" />
+          Invite
+        </Button>
       </form>
 
       {/* Mobile: stacked cards (the table's columns don't fit a phone; below sm it hides).

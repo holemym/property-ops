@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { DoorClosed } from 'lucide-react'
+import { DoorClosed, Plus } from 'lucide-react'
 import { requirePermission } from '@/lib/auth/session'
 import { can } from '@/lib/auth/permissions'
 import { createClient } from '@/lib/supabase/server'
@@ -36,7 +36,14 @@ export default async function UnitsPage({
       <PageHeader
         title="Units"
         subtitle="Individual units across your properties, with occupancy and access details."
-        actions={canWrite && <Button render={<Link href="/units/new" />} nativeButton={false}>New unit</Button>}
+        actions={
+          canWrite && (
+            <Button render={<Link href="/units/new" />} nativeButton={false}>
+              <Plus className="size-4" />
+              New unit
+            </Button>
+          )
+        }
       />
 
       <form className="flex items-center gap-2">
@@ -69,7 +76,10 @@ export default async function UnitsPage({
           }
           action={
             canWrite ? (
-              <Button render={<Link href="/units/new" />} nativeButton={false}>Add unit</Button>
+              <Button render={<Link href="/units/new" />} nativeButton={false}>
+                <Plus className="size-4" />
+                Add unit
+              </Button>
             ) : undefined
           }
         />

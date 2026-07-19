@@ -74,7 +74,7 @@ export default async function OccupancyPage() {
       <ErrorToast />
       <PageHeader
         title="Occupancy"
-        subtitle="Unit availability across the portfolio, in preview."
+        subtitle="Unit availability across the portfolio."
         actions={
           canWrite && unitOptions.length > 0 ? (
             <NewTenancyDialog action={createTenancyAction} units={unitOptions} tenants={tenants} />
@@ -98,8 +98,7 @@ export default async function OccupancyPage() {
   )
 }
 
-// A compact key for the segment tones + ticket markers. Read-only "preview" note lives
-// here so the header stays clean.
+// A compact key for the segment tones + ticket markers.
 function Legend() {
   return (
     <div className="flex flex-wrap items-center gap-x-5 gap-y-2 px-1 text-xs text-muted-foreground">
@@ -111,7 +110,6 @@ function Legend() {
         <span className="size-2.5 rounded-full bg-foreground/60" aria-hidden />
         Open ticket
       </span>
-      <span className="ml-auto">Read-only preview</span>
     </div>
   )
 }

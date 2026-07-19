@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { Wrench } from 'lucide-react'
+import { Plus, Wrench } from 'lucide-react'
 import { requirePermission } from '@/lib/auth/session'
 import { can } from '@/lib/auth/permissions'
 import { createClient } from '@/lib/supabase/server'
@@ -34,7 +34,14 @@ export default async function VendorsPage({
       <PageHeader
         title="Vendors"
         subtitle="Contractors and service providers you assign to maintenance work."
-        actions={canWrite && <Button render={<Link href="/vendors/new" />} nativeButton={false}>New vendor</Button>}
+        actions={
+          canWrite && (
+            <Button render={<Link href="/vendors/new" />} nativeButton={false}>
+              <Plus className="size-4" />
+              New vendor
+            </Button>
+          )
+        }
       />
 
       <form className="flex items-center gap-2">
@@ -67,7 +74,10 @@ export default async function VendorsPage({
           }
           action={
             canWrite ? (
-              <Button render={<Link href="/vendors/new" />} nativeButton={false}>Add vendor</Button>
+              <Button render={<Link href="/vendors/new" />} nativeButton={false}>
+                <Plus className="size-4" />
+                Add vendor
+              </Button>
             ) : undefined
           }
         />

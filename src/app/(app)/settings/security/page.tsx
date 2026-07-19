@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
+import { History } from 'lucide-react'
 import { requireWorkspace } from '@/lib/auth/session'
 import { isTenantRole, can } from '@/lib/auth/permissions'
 import { createClient } from '@/lib/supabase/server'
@@ -88,6 +89,7 @@ export default async function SecuritySettingsPage() {
           <CardContent>
             {events.length === 0 ? (
               <EmptyState
+                icon={<History />}
                 title="No activity recorded yet"
                 body="Sign-ins and account changes for this workspace will appear here."
               />

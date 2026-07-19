@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { Ticket as TicketIcon } from 'lucide-react'
+import { Plus, Ticket as TicketIcon } from 'lucide-react'
 import { requirePermission } from '@/lib/auth/session'
 import { can } from '@/lib/auth/permissions'
 import { createClient } from '@/lib/supabase/server'
@@ -85,7 +85,12 @@ export default async function TicketsPage({
         title="Tickets"
         subtitle="Maintenance requests across your properties, from triage to close."
         actions={
-          canWrite && <Button render={<Link href="/tickets/new" />} nativeButton={false}>New ticket</Button>
+          canWrite && (
+            <Button render={<Link href="/tickets/new" />} nativeButton={false}>
+              <Plus className="size-4" />
+              New ticket
+            </Button>
+          )
         }
       />
 
@@ -102,7 +107,10 @@ export default async function TicketsPage({
           }
           action={
             canWrite && !isFiltered ? (
-              <Button render={<Link href="/tickets/new" />} nativeButton={false}>New ticket</Button>
+              <Button render={<Link href="/tickets/new" />} nativeButton={false}>
+                <Plus className="size-4" />
+                New ticket
+              </Button>
             ) : undefined
           }
         />

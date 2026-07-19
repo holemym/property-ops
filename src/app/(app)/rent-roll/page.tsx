@@ -56,7 +56,7 @@ export default async function RentRollPage() {
       <ErrorToast />
       <PageHeader
         title="Rent roll"
-        subtitle="Occupancy, tenants, and monthly rent across the portfolio, in preview."
+        subtitle="Occupancy, tenants, and monthly rent across the portfolio."
       />
 
       {units.length === 0 ? (

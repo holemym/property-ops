@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import { Inbox, ChevronRight } from 'lucide-react'
+import { Inbox, ChevronRight, CirclePlus } from 'lucide-react'
 import { requireWorkspace } from '@/lib/auth/session'
 import { isTenantRole } from '@/lib/auth/permissions'
 import { createClient } from '@/lib/supabase/server'
@@ -33,7 +33,10 @@ export default async function PortalPage() {
         title="My requests"
         subtitle="Track the maintenance requests you've reported."
         actions={
-          <Button render={<Link href="/portal/new" />} nativeButton={false}>Report an issue</Button>
+          <Button render={<Link href="/portal/new" />} nativeButton={false}>
+            <CirclePlus className="size-4" />
+            Report an issue
+          </Button>
         }
       />
 
@@ -42,7 +45,12 @@ export default async function PortalPage() {
           icon={<Inbox />}
           title="No requests yet"
           body="Report a maintenance issue and follow its progress here."
-          action={<Button render={<Link href="/portal/new" />} nativeButton={false}>Report an issue</Button>}
+          action={
+            <Button render={<Link href="/portal/new" />} nativeButton={false}>
+              <CirclePlus className="size-4" />
+              Report an issue
+            </Button>
+          }
         />
       ) : (
         <Card className="p-0">

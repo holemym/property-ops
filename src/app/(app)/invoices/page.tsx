@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { ReceiptText, Download } from 'lucide-react'
+import { ReceiptText, Download, Plus } from 'lucide-react'
 import { requirePermission } from '@/lib/auth/session'
 import { can } from '@/lib/auth/permissions'
 import { createClient } from '@/lib/supabase/server'
@@ -119,7 +119,12 @@ export default async function InvoicesPage({
       Export CSV
     </Button>
   )
-  const newButton = canWrite ? <Button render={<Link href="/invoices/new" />} nativeButton={false}>New invoice</Button> : null
+  const newButton = canWrite ? (
+    <Button render={<Link href="/invoices/new" />} nativeButton={false}>
+      <Plus className="size-4" />
+      New invoice
+    </Button>
+  ) : null
   const generateRentButton = canWrite ? (
     <GenerateRentDialog action={generateRentInvoicesAction} defaultMonth={todayIso.slice(0, 7)} />
   ) : null

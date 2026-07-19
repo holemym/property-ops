@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { Building2, Search } from 'lucide-react'
+import { Building2, Plus, Search } from 'lucide-react'
 import { requirePermission } from '@/lib/auth/session'
 import { can } from '@/lib/auth/permissions'
 import { createClient } from '@/lib/supabase/server'
@@ -30,7 +30,10 @@ export default async function PropertiesPage({
         subtitle="Buildings you manage, with their units, vendors, and tickets."
         actions={
           canWrite && (
-            <Button render={<Link href="/properties/new" />} nativeButton={false}>New property</Button>
+            <Button render={<Link href="/properties/new" />} nativeButton={false}>
+              <Plus className="size-4" />
+              New property
+            </Button>
           )
         }
       />
@@ -62,7 +65,10 @@ export default async function PropertiesPage({
           }
           action={
             canWrite && !isFiltered ? (
-              <Button render={<Link href="/properties/new" />} nativeButton={false}>Add property</Button>
+              <Button render={<Link href="/properties/new" />} nativeButton={false}>
+                <Plus className="size-4" />
+                Add property
+              </Button>
             ) : undefined
           }
         />
