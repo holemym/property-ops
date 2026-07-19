@@ -24,6 +24,9 @@ import {
   CornerDownLeft,
   Clock,
   Loader2,
+  MapPinned,
+  ShieldCheck,
+  UserCog,
   type LucideIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -45,6 +48,7 @@ type Command = {
 const COMMANDS: Command[] = [
   { id: 'go-dashboard', label: 'Dashboard', icon: LayoutDashboard, href: '/dashboard', group: 'Go to' },
   { id: 'go-properties', label: 'Properties', icon: Building2, href: '/properties', group: 'Go to', permission: 'properties:read' },
+  { id: 'go-map', label: 'Map', icon: MapPinned, href: '/map', group: 'Go to', permission: 'properties:read' },
   { id: 'go-units', label: 'Units', icon: DoorOpen, href: '/units', group: 'Go to', permission: 'units:read' },
   { id: 'go-occupancy', label: 'Occupancy', icon: CalendarClock, href: '/occupancy', group: 'Go to', permission: 'occupancy:read' },
   { id: 'go-rent-roll', label: 'Rent roll', icon: ReceiptText, href: '/rent-roll', group: 'Go to', permission: 'occupancy:read' },
@@ -58,6 +62,8 @@ const COMMANDS: Command[] = [
   { id: 'go-invoices', label: 'Invoices', icon: Receipt, href: '/invoices', group: 'Go to', permission: 'finance:read' },
   { id: 'go-owners', label: 'Owners', icon: Users, href: '/owners', group: 'Go to', permission: 'finance:read' },
   { id: 'go-documents', label: 'Documents', icon: FileText, href: '/documents', group: 'Go to', permission: 'documents:read' },
+  { id: 'go-security', label: 'Security', icon: ShieldCheck, href: '/settings/security', group: 'Go to' },
+  { id: 'go-users', label: 'Users', icon: UserCog, href: '/settings/users', group: 'Go to', permission: 'users:invite' },
   { id: 'new-ticket', label: 'New ticket', icon: CirclePlus, href: '/tickets/new', group: 'Create', permission: 'tickets:write' },
   { id: 'new-invoice', label: 'New invoice', icon: CirclePlus, href: '/invoices/new', group: 'Create', permission: 'finance:write' },
   { id: 'new-property', label: 'New property', icon: CirclePlus, href: '/properties/new', group: 'Create', permission: 'properties:write' },

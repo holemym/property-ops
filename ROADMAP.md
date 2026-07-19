@@ -782,26 +782,22 @@ would otherwise show up as a false-positive violation during S2-3's browsing che
       `isTicketOpen`/`TERMINAL_TICKET_STATUSES` over all 9 `TicketStatus` values,
       pinning the RESOLVED regression case specifically. 320 tests green (315 + 5 new),
       build+lint clean. No migration, no RLS surface — pure application-layer refactor.)*
-- [ ] **H4** `[builder]` — Fix CommandPalette static-nav drift (flagged by P1-2). The
-      `COMMANDS` "Go to" list in `src/components/search/CommandPalette.tsx` never got a
-      `go-map` entry when M2 shipped `/map` (People is handled by P1-3, so don't add
-      `go-people` — it'll already be there). Add `go-map` (icon `MapPinned` — already
-      the Sidebar's map icon, href `/map`, permission `properties:read`), then audit
-      the whole `COMMANDS` list against the actual Sidebar nav destinations and add any
-      other missing operator-reachable routes in one pass so this list stops silently
-      drifting. **Sequence AFTER P1-3** — both edit `CommandPalette.tsx` and would
-      collide if concurrent. **Accept:** every operator Sidebar destination has a
-      matching go-to command with the correct permission gate; build+lint+tests green.
-- [ ] **H6** `[builder]` — Add a nav link to `/settings/users` (flagged live 2026-07-17
-      — the user couldn't find where to invite a teammate because the page exists but has
-      NO sidebar entry; only reachable by typing the URL). Add a small "Settings" nav
-      group to `src/components/layout/Sidebar.tsx` with a "Users" link
-      (`users:invite`-gated). **Note:** the S2-1a spec also plans this exact "Settings"
-      nav group (holding Users + a future Security page) — if S2-1a runs first this is
-      already covered; otherwise do the minimal Users link here now. Also add a
-      `go-users` entry to CommandPalette `COMMANDS` (fold into H4 if H4 hasn't run).
-      **Accept:** an owner/admin can reach the users page from the sidebar; build+lint+
-      tests green.
+- [x] **H4** `[builder]` — Fix CommandPalette static-nav drift (flagged by P1-2).
+      *(done 2026-07-19, orchestrator-implemented — trivial + folds with H6, no builder
+      dispatched. Audited every OPERATOR_GROUPS Sidebar destination against `COMMANDS`:
+      only three were missing — `/map` (M2), `/settings/security` (S2-1a), `/settings/users`
+      (S2-1a). Added `go-map` (MapPinned, `properties:read`, placed right after go-properties
+      to mirror the Sidebar), `go-security` (ShieldCheck, no permission — matches the
+      Sidebar Security entry, reachable by every non-tenant; the palette only renders for
+      non-tenant roles anyway), and `go-users` (UserCog, `users:invite`) — the last folds
+      in H6's palette item. Every operator Sidebar destination now has a matching go-to
+      command with the correct gate. 481 tests, build+lint clean.)*
+- [x] **H6** `[builder]` — Nav link to `/settings/users` + `go-users` palette entry.
+      *(done — split across two commits: the Sidebar "Settings" nav group (Security +
+      Users, `users:invite`-gated) was added by **S2-1a** (which the spec anticipated), so
+      the sidebar-link half was already live; the `go-users` CommandPalette entry landed
+      here with H4. An owner/admin can now reach the users page from both the sidebar and
+      ⌘K. Nothing left.)*
 - [x] **H5** `[builder]` — Add `nativeButton={false}` to every `<Button render={<Link/>}>`
       composite (flagged by P2-2, which fixed only its own new bell call site). Base
       UI's `useButton` logs a dev-console error on every mount of a `render`-as-anchor
