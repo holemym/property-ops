@@ -1503,7 +1503,13 @@ $$;
 revoke execute on function public.reset_demo_workspace() from public;
 grant execute on function public.reset_demo_workspace() to service_role;
 
-select public.reset_demo_workspace();
+-- SEED CALL DEFERRED TO THE END OF THIS BUNDLE: reset_demo_workspace()'s body wipes
+-- public.tenants (0025) and public.notifications (0026), which are created in later
+-- sections below. Defining the function here is fine (plpgsql defers name resolution),
+-- but CALLING it must wait until every table it references exists — see the deferred
+-- `select public.reset_demo_workspace();` at the very end of the file. (Applying the
+-- numbered migrations 0023→0026 in sequence never hit this: each redefinition of the
+-- function only referenced tables that already existed at that point.)
 
 drop policy if exists "attachments_objects_insert" on storage.objects;
 create policy "attachments_objects_insert"
@@ -1756,6 +1762,15 @@ create policy "auth_events_select_admin"
 
 -- INSERT: ZERO POLICY — intentional, service_role-only.
 -- No UPDATE/DELETE policy — intentional; reinforced by the trigger above.
+
+-- =============================================================================
+-- DEFERRED DEMO SEED — must run LAST (see the note in the DEMO MODE section).
+-- reset_demo_workspace() wipes+reseeds the demo workspace, deleting from
+-- public.tenants (0025) and public.notifications (0026); both are created in sections
+-- above, so this seed call only succeeds here at the end. Idempotent (wipe+reseed),
+-- so re-running the whole bundle is safe.
+-- =============================================================================
+select public.reset_demo_workspace();
 
 -- =============================================================================
 -- DONE. Verify: select count(*) from pg_tables where schemaname='public';  -- expect 20
