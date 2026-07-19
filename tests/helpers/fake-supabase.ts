@@ -47,6 +47,7 @@ export function createFakeSupabaseClient(seed: Record<string, Row[]> = {}) {
     let wantCount = false
     let rangeFrom: number | null = null
     let rangeTo: number | null = null
+    let limitTo: number | null = null
 
     const api: any = {
       // Second arg mirrors the real client's `{ count: 'exact', head: true }` shape
@@ -69,6 +70,9 @@ export function createFakeSupabaseClient(seed: Record<string, Row[]> = {}) {
       // Added minimally for P2-1's listNotificationsPage (house `.range()` pattern,
       // same shape listTicketsPage already uses). Applied AFTER sort, like Postgrest.
       range(from: number, to: number) { rangeFrom = from; rangeTo = to; return api },
+      // Added minimally for S2-2's listRecentAuthEvents (`.order().limit(n)`, no
+      // pagination needed). Applied AFTER sort, like Postgrest's own LIMIT.
+      limit(n: number) { limitTo = n; return api },
       single() { single = true; return api },
       insert(row: Row) { op = 'insert'; payload = row; return api },
       update(row: Row) { op = 'update'; payload = row; return api },
@@ -97,6 +101,9 @@ export function createFakeSupabaseClient(seed: Record<string, Row[]> = {}) {
         const matchedCount = found.length
         if (rangeFrom !== null && rangeTo !== null) {
           found = found.slice(rangeFrom, rangeTo + 1)
+        }
+        if (limitTo !== null) {
+          found = found.slice(0, limitTo)
         }
         if (single && found.length === 0) { resolve({ data: null, error: new Error('not found') }); return }
         resolve({ data: single ? found[0] : found, error: null, count: wantCount ? matchedCount : undefined })

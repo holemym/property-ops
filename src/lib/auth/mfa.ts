@@ -24,3 +24,24 @@ export function isValidTotpCode(code: string): boolean {
 export function needsMfaChallenge(currentLevel: string | null, nextLevel: string | null): boolean {
   return nextLevel === 'aal2' && currentLevel === 'aal1'
 }
+
+// Server-side anti-forgery guard for the MFA-challenge audit write (S2-2,
+// logMfaChallengeOutcome). That action is a client-triggered write into the
+// service-role-only `auth_events` log, so the client-supplied `success` flag can NOT be
+// trusted — it's corroborated here against the session's OWN assurance level (a local
+// JWT read the caller can't fake):
+//   - a SUCCESS is real only if the session actually reached aal2 — and ONLY a genuine
+//     mfa.verify() elevates a session to aal2, so a password-only aal1 caller can never
+//     forge an MFA_CHALLENGE_SUCCESS row;
+//   - a FAILURE is logged only for a session genuinely mid-challenge (aal1 with a
+//     verified factor pending, i.e. needsMfaChallenge) — a no-factor or already-elevated
+//     caller has nothing to fail and can't inject failure noise.
+// The caller still enforces "a live session exists" separately (ctx.userId != null)
+// before this runs, closing the unauthenticated-flood vector.
+export function mfaOutcomeIsCorroborated(
+  success: boolean,
+  currentLevel: string | null,
+  nextLevel: string | null,
+): boolean {
+  return success ? currentLevel === 'aal2' : needsMfaChallenge(currentLevel, nextLevel)
+}

@@ -1,5 +1,6 @@
 'use server'
 
+import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
@@ -15,6 +16,8 @@ import {
 } from '@/lib/demo'
 import { z } from 'zod'
 import { AUTH_CALLBACK_URL } from '@/lib/urls'
+import { clientIp } from '@/lib/rate-limit'
+import { logAuthEvent, clientUserAgent } from '@/lib/audit/log-auth-event'
 
 const inviteSchema = z.object({
   email: z.string().email('Enter a valid email address.'),
@@ -110,6 +113,19 @@ export async function inviteUser(formData: FormData) {
     redirectWithError('/settings/users', 'Could not add that person to the workspace.')
   }
 
+  // S2-2: best-effort audit write (never throws — see log-auth-event.ts).
+  // Reuses admin_client (already the service-role client this function built
+  // above) instead of constructing a second one.
+  const h = await headers()
+  await logAuthEvent(admin_client, {
+    eventType: 'INVITE_SENT',
+    userId: admin.id,
+    workspaceId: admin.workspaceId,
+    email,
+    ip: clientIp(h),
+    userAgent: clientUserAgent(h),
+  })
+
   revalidatePath('/settings/users')
 }
 
@@ -151,6 +167,34 @@ export async function setUserActive(formData: FormData) {
   // follow-up; the RLS is_active pin (migration 0007) + requireUser check are
   // sufficient to stop a deactivated user reading/writing workspace data or
   // loading app pages in the meantime.
+
+  // S2-2: audit only the DEACTIVATION direction (matches the spec's literal
+  // event list — reactivation isn't named there). actor_user_id is the ADMIN
+  // performing the action; the deactivated user goes in `email` (best-effort
+  // lookup, since profiles has no email column — mirrors resolveUserEmail's
+  // admin-API pattern in src/lib/email/notify.ts) and metadata_json's
+  // target_user_id, since a single actor_user_id column can't carry both
+  // "who did this" and "who it happened to".
+  if (!isActive) {
+    const service = createServiceClient()
+    let targetEmail: string | null = null
+    try {
+      const { data: targetUser } = await service.auth.admin.getUserById(userId)
+      targetEmail = targetUser.user?.email ?? null
+    } catch (e) {
+      console.error('[audit] could not resolve deactivated user email for', userId, e)
+    }
+    const h = await headers()
+    await logAuthEvent(service, {
+      eventType: 'DEACTIVATION',
+      userId: admin.id,
+      workspaceId: admin.workspaceId,
+      email: targetEmail,
+      ip: clientIp(h),
+      userAgent: clientUserAgent(h),
+      metadata: { target_user_id: userId },
+    })
+  }
 
   revalidatePath('/settings/users')
 }

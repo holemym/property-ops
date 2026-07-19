@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { isValidTotpCode, needsMfaChallenge } from '@/lib/auth/mfa'
+import { isValidTotpCode, needsMfaChallenge, mfaOutcomeIsCorroborated } from '@/lib/auth/mfa'
 
 describe('isValidTotpCode', () => {
   it('accepts exactly 6 digits', () => {
@@ -49,5 +49,47 @@ describe('needsMfaChallenge', () => {
     // Defensive: the real client never produces this shape, but the predicate should
     // still fail closed (no redirect) rather than throw or misfire.
     expect(needsMfaChallenge(null, 'aal2')).toBe(false)
+  })
+})
+
+describe('mfaOutcomeIsCorroborated', () => {
+  // The anti-forgery guard for the MFA-challenge audit write. A client-supplied
+  // success/failure flag is only honored when the session's OWN assurance level backs it.
+  describe('SUCCESS', () => {
+    it('is true only when the session actually reached aal2 (a real verify())', () => {
+      expect(mfaOutcomeIsCorroborated(true, 'aal2', 'aal2')).toBe(true)
+    })
+
+    // THE FORGERY CASE: a password-only AAL1 caller (verified factor pending, or none)
+    // claims success. Must be rejected — only a genuine verify() elevates to aal2.
+    it('is false for an aal1 caller claiming success while a factor is pending (forged)', () => {
+      expect(mfaOutcomeIsCorroborated(true, 'aal1', 'aal2')).toBe(false)
+    })
+
+    it('is false for a no-factor aal1 caller claiming success (forged)', () => {
+      expect(mfaOutcomeIsCorroborated(true, 'aal1', 'aal1')).toBe(false)
+    })
+
+    it('is false for a no-session caller claiming success', () => {
+      expect(mfaOutcomeIsCorroborated(true, null, null)).toBe(false)
+    })
+  })
+
+  describe('FAILURE', () => {
+    it('is true only for a session genuinely mid-challenge (aal1 with factor pending)', () => {
+      expect(mfaOutcomeIsCorroborated(false, 'aal1', 'aal2')).toBe(true)
+    })
+
+    it('is false once the session is already elevated (nothing left to fail)', () => {
+      expect(mfaOutcomeIsCorroborated(false, 'aal2', 'aal2')).toBe(false)
+    })
+
+    it('is false for a no-factor caller claiming failure (no challenge to fail)', () => {
+      expect(mfaOutcomeIsCorroborated(false, 'aal1', 'aal1')).toBe(false)
+    })
+
+    it('is false for a no-session caller claiming failure', () => {
+      expect(mfaOutcomeIsCorroborated(false, null, null)).toBe(false)
+    })
   })
 })

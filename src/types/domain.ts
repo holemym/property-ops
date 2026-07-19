@@ -255,3 +255,20 @@ export type InvoiceLineItem = {
 // src/lib/data/notifications.ts, following the src/lib/data/tenants.ts (0025)
 // precedent. Written by src/lib/notifications/notify-inapp.ts.
 export type NotificationType = 'TICKET_ASSIGNED' | 'TICKET_STATUS_CHANGED' | 'TICKET_COMMENT'
+
+// Auth audit event type (migration 0028, Track S2.2). Written by
+// src/lib/audit/log-auth-event.ts (`logAuthEvent`) from the auth server
+// actions (login/signup/sign-out/password-change, settings/users
+// invite/deactivate) and the MFA challenge flow. Row type (`AuthEvent`) stays
+// local to src/lib/data/auth-events.ts, following the tenants (0025) /
+// notifications (0026) precedent for recently-added entities.
+export type AuthEventType =
+  | 'LOGIN_SUCCESS'
+  | 'LOGIN_FAILURE'
+  | 'SIGNUP_SUCCESS'
+  | 'SIGN_OUT'
+  | 'PASSWORD_CHANGE'
+  | 'INVITE_SENT'
+  | 'DEACTIVATION'
+  | 'MFA_CHALLENGE_SUCCESS'
+  | 'MFA_CHALLENGE_FAILURE'

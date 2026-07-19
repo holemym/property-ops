@@ -1682,5 +1682,81 @@ create policy "notifications_update_own"
 -- INSERT: ZERO POLICY — intentional, service_role-only. No DELETE policy.
 
 -- =============================================================================
--- DONE. Verify: select count(*) from pg_tables where schemaname='public';  -- expect 19
+-- AUTH AUDIT TRAIL (0028) — `public.auth_events`, an append-only security
+-- audit log for auth-adjacent actions (login/signup/sign-out, password
+-- change, MFA challenge outcomes, invite, deactivation). Written by
+-- src/lib/audit/log-auth-event.ts (`logAuthEvent`), best-effort/never-throw
+-- (a write failure must never block/delay/error the auth action that
+-- triggered it — see migration 0028 header). SELECT is admin-only
+-- (can_manage_users() — SUPER_ADMIN/OWNER, matching how /settings/users
+-- gates its own admin surface) plus a SUPER_ADMIN platform-wide override;
+-- INSERT is ZERO POLICY (service_role-only, same lock as notifications/
+-- rate_limit_buckets/vendor_job_tokens); UPDATE/DELETE are blocked by BOTH
+-- RLS (no policy for either) AND a hard append-only trigger, mirroring
+-- ticket_events. See migration 0028 for full rationale, including why the
+-- enum here is a superset of the security-hardening spec's §S2.2 event list.
+-- =============================================================================
+do $do$ begin
+  create type public.auth_event_type as enum (
+    'LOGIN_SUCCESS',
+    'LOGIN_FAILURE',
+    'SIGNUP_SUCCESS',
+    'SIGN_OUT',
+    'PASSWORD_CHANGE',
+    'INVITE_SENT',
+    'DEACTIVATION',
+    'MFA_CHALLENGE_SUCCESS',
+    'MFA_CHALLENGE_FAILURE'
+  );
+exception when duplicate_object then null; end $do$;
+
+create table if not exists public.auth_events (
+  id uuid primary key default gen_random_uuid(),
+  workspace_id uuid references public.workspaces (id) on delete cascade,
+  actor_user_id uuid references public.profiles (id) on delete set null,
+  event_type public.auth_event_type not null,
+  email text,
+  ip text,
+  user_agent text,
+  metadata_json jsonb,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists auth_events_workspace_created_idx
+  on public.auth_events (workspace_id, created_at desc);
+
+-- APPEND-ONLY ENFORCEMENT — mirrors ticket_events_prevent_mutation.
+create or replace function public.auth_events_prevent_mutation()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+begin
+  raise exception 'auth_events is append-only: % is not permitted', tg_op
+    using errcode = 'restrict_violation';
+end;
+$$;
+
+drop trigger if exists auth_events_no_mutation on public.auth_events;
+create trigger auth_events_no_mutation
+  before update or delete on public.auth_events
+  for each row execute function public.auth_events_prevent_mutation();
+
+alter table public.auth_events enable row level security;
+
+-- SELECT: admin-only (can_manage_users()), own workspace, plus SUPER_ADMIN
+-- platform-wide override (also covers workspace_id IS NULL rows — see 0028).
+drop policy if exists "auth_events_select_admin" on public.auth_events;
+create policy "auth_events_select_admin"
+  on public.auth_events for select
+  using (
+    (workspace_id = public.current_workspace_id() and public.can_manage_users())
+    or public.current_role() = 'SUPER_ADMIN'
+  );
+
+-- INSERT: ZERO POLICY — intentional, service_role-only.
+-- No UPDATE/DELETE policy — intentional; reinforced by the trigger above.
+
+-- =============================================================================
+-- DONE. Verify: select count(*) from pg_tables where schemaname='public';  -- expect 20
 -- =============================================================================

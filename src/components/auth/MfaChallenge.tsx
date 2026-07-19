@@ -3,6 +3,7 @@
 import { useState, type FormEvent } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { isValidTotpCode } from '@/lib/auth/mfa'
+import { logMfaChallengeOutcome } from '@/app/(auth)/actions'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -46,9 +47,18 @@ export function MfaChallenge({ factorId }: { factorId: string }) {
     if (verifyError) {
       setPending(false)
       setError('Incorrect code. Check your authenticator app and try again.')
+      // S2-2: best-effort audit write — logMfaChallengeOutcome never throws
+      // (see (auth)/actions.ts), so awaiting it here only orders the write
+      // before the error is shown; it can never turn a wrong code into a
+      // worse error or block the retry.
+      await logMfaChallengeOutcome(false)
       return
     }
 
+    // S2-2: same best-effort write on the success path, awaited before the
+    // hard navigation below so the request isn't aborted mid-flight by the
+    // page unload.
+    await logMfaChallengeOutcome(true)
     window.location.assign('/dashboard')
   }
 

@@ -7,9 +7,9 @@ of truth for what to build next.** Strategy lives in
 
 ---
 
-## ▶ HANDOVER — current state (as of 2026-07-17, HEAD `c019f72`)
+## ▶ HANDOVER — current state (as of 2026-07-19, post P3 + S2-1 + S2-2 + isDemo cleanup)
 
-**Where things are:** LIVE at property-ops-sandy.vercel.app, **420 tests green**, tree
+**Where things are:** LIVE at property-ops-sandy.vercel.app, **481 tests green**, tree
 clean, all pushed to `graphite-polish` (pushes auto-deploy prod). The multi-agent
 pipeline runs the board autonomously: agents `prop-builder` / `prop-rls-reviewer` /
 `prop-verifier` (all sonnet) in `clauderoom/.claude/agents/`. Orchestrate on **sonnet**;
@@ -18,17 +18,22 @@ diffs.
 
 **Build-complete:** S1 security (all) · Demo mode D1–D7 · Map M1–M2 · Perf PERF-1a
 (getClaims) + PERF-2 (speed-insights) · **Tenant directory P1-1/2/3** · **Notifications
-P2-1/2** · housekeeping H1/H2/H3/H5. Two migrations RLS-reviewed CLEAN this run (0025
-tenants, 0026 notifications).
+P2-1/2** · **Recurring rent P3-1/2** · **MFA S2-1a (enroll) + S2-1b (enforce, LIVE but
+dormant)** · **Auth audit log S2-2** · housekeeping H1/H2/H3/H5 + isDemo dead-prop cascade
+removal. Migrations RLS-reviewed this run: 0027 recurring-rent (CLEAN), 0028 auth_events
+(one HIGH app-layer forgery gap found + fixed before commit — see S2-2 note).
 
-**Next dispatch order:** `P3-2` (recurring-rent UI/action; `P3-1` ✓ committed 2026-07-19,
-RLS CLEAN, 420 tests) → `S2-1a/b/c` (MFA) → `S2-2` (audit log, `[rls]`) → `H4`
-(CommandPalette go-map) → `H6` (Settings nav link). All `[verify]` tasks (D6, M3, P1-4,
-P2-3, PERF-1c) are **USER-gated** — they can't pass until the console queue below is done.
+**Next dispatch order:** `H4` (CommandPalette go-map audit) → `H6` (Settings nav link —
+NOTE: S2-1a already added the Settings group + Users link, so H6 is now just the
+`go-users` palette entry; fold into H4) → `S2-3` (CSP enforce — USER-gated on clean
+browsing) → `S2-4` (npm audit). `[verify]` tasks (D6, M3, P1-4, P2-3, **P3-3**, PERF-1c,
+and **S2-1c** which needs a disposable test account) are **USER-gated** — blocked on the
+console queue (and, for S2-1c, a throwaway MFA test account — NEVER the real owner).
 
 **🔴 THE BOTTLENECK (nothing new is actually LIVE until the USER does these):** migrations
-**0022–0027 are committed but NOT applied to production Supabase** (0027 landed 2026-07-19
-with P3-1; all six are folded into `schema_bundle.sql`, so ONE paste applies them all).
+**0022–0028 are committed but NOT applied to production Supabase** (0027 landed with P3-1,
+0028 auth_events with S2-2, both 2026-07-19; all are folded into `schema_bundle.sql`, so
+ONE paste applies them all — the fold's table-count assertion is now `expect 20`).
 Prod logs currently show these degrading *safely* — "failed to fetch unread notification
 count", "tenants query failed", "rate limit RPC error" — because the guards we built catch
 them, but notifications / people-search / rate-limiting don't actually *work* yet. Fastest
@@ -647,9 +652,46 @@ S2-1 spec: `docs/superpowers/specs/2026-07-12-property-ops-s2-1-mfa-design.md`
       disposable test account per S2-1c gate.)*
 - [ ] **S2-1c** `[verify]` — Full playbook in spec §6 (needs a disposable test
       account from USER — never enroll MFA on the real owner account).
-- [ ] **S2-2** `[builder]` `[rls]` — `auth_events` audit table + writes from auth
+- [x] **S2-2** `[builder]` `[rls]` — `auth_events` audit table + writes from auth
       actions + admin table on `/settings/security`. Spec: security-hardening design
       §S2.2. Sequence after S2-1a (shares the security page).
+      *(done — NOT COMMITTED, awaiting prop-rls-reviewer per the `[rls]` gate.
+      Migration 0028 (`auth_events`, superset enum adding SIGNUP_SUCCESS/
+      SIGN_OUT/MFA_CHALLENGE_SUCCESS/MFA_CHALLENGE_FAILURE to the spec's
+      literal login_success/login_failure/deactivation/invite/password_change
+      list — MFA didn't exist when §S2.2 was written), folded into
+      schema_bundle.sql (table count assertion bumped 19→20). Writer
+      `src/lib/audit/log-auth-event.ts` (`logAuthEvent`, best-effort/
+      never-throw, mirrors notify-inapp.ts exactly) wired into
+      `(auth)/actions.ts` (signInWithPassword/signUpWithPassword/signOut/
+      setPassword/new `logMfaChallengeOutcome`), `settings/users/actions.ts`
+      (inviteUser/setUserActive-on-deactivate), and `MfaChallenge.tsx` (client
+      → server-action RPC, same pattern TopNav's signOut import already
+      proves). Reader `src/lib/data/auth-events.ts` (`listRecentAuthEvents`)
+      is the one data-layer read in this codebase that swallows its own error
+      instead of throwing, since the table doesn't exist in prod yet. New
+      "Recent activity" card on `/settings/security`, gated
+      `can(role,'users:invite')` (OWNER/SUPER_ADMIN only) — resolves the
+      spec's "SELECT manager-only" ambiguity to the STRICTER admin-only tier,
+      matching the board task's explicit direction to mirror `/settings/users`.
+      RLS mirrors that: `auth_events_select_admin` uses `can_manage_users()`
+      + a SUPER_ADMIN platform override, zero INSERT policy (service-role
+      only, P2-1 notifications pattern), and a ticket_events-style
+      append-only trigger. **RLS review (2026-07-19): migration/policies/trigger
+      CLEAN, but caught one HIGH app-layer gap — `logMfaChallengeOutcome`
+      trusted a client `success` boolean with no session gate, so an AAL1
+      (password-only) caller could forge `MFA_CHALLENGE_SUCCESS` rows and an
+      UNAUTHENTICATED caller could flood `workspace_id=NULL` rows (visible
+      platform-wide to every SUPER_ADMIN). Fixed before commit (orchestrator):
+      the action now (1) drops the write when there's no live session
+      (`ctx.userId` null) and (2) corroborates the outcome against the session's
+      OWN assurance level via a new pure `mfaOutcomeIsCorroborated` — a SUCCESS
+      is only logged when the session genuinely reached aal2 (only a real
+      `verify()` elevates it), a FAILURE only for a session genuinely
+      mid-challenge; 8 new tests pin both forgery cases. Residual LOW (a
+      genuinely-aal2 user could duplicate their own workspace's SUCCESS rows)
+      left for optional `checkRateLimit`. 481 tests (was 449, +32), build+lint
+      clean, committed + pushed.)*
 - [ ] **S2-3** `[builder]` — CSP: flip Report-Only → enforcing. **Blocked on USER
       confirming zero violations in normal browsing for a few days.** One-line header
       rename in `next.config.ts`.
