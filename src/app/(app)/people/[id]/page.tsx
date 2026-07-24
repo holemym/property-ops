@@ -1,5 +1,5 @@
 import { notFound } from 'next/navigation'
-import { DoorOpen } from 'lucide-react'
+import { DoorOpen, KeyRound, CircleCheck } from 'lucide-react'
 import { requirePermission } from '@/lib/auth/session'
 import { can } from '@/lib/auth/permissions'
 import { createClient } from '@/lib/supabase/server'
@@ -10,9 +10,11 @@ import { TenantForm } from '@/components/tenants/TenantForm'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { FormError } from '@/components/common/FormError'
 import { EmptyState } from '@/components/common/EmptyState'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { formatDate } from '@/lib/format-date'
 import { updateTenantAction } from '../actions'
+import { inviteTenantToPortal } from '@/app/(app)/settings/users/actions'
 
 // EUR, whole-euro (no cents) — matches the finance / rent-roll / occupancy convention
 // (each feature rolls its own Intl.NumberFormat rather than sharing one; see
@@ -32,10 +34,10 @@ export default async function PersonDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>
-  searchParams: Promise<{ error?: string }>
+  searchParams: Promise<{ error?: string; portal?: string }>
 }) {
   const { id } = await params
-  const { error } = await searchParams
+  const { error, portal } = await searchParams
   const user = await requirePermission('tenants:read')
   const supabase = await createClient()
   const tenant = await getTenant(supabase, user.workspaceId, id)
@@ -60,6 +62,7 @@ export default async function PersonDetailPage({
   )
 
   const canWrite = can(user.role, 'tenants:write')
+  const canInvite = can(user.role, 'users:invite')
   const boundUpdate = updateTenantAction.bind(null, id)
 
   return (
@@ -67,6 +70,48 @@ export default async function PersonDetailPage({
       <PageHeader title={tenant.full_name} subtitle="Tenant contact record." />
 
       <FormError message={error} />
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Portal access</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {tenant.auth_user_id ? (
+            <div className="flex items-center gap-2 text-sm text-foreground">
+              <CircleCheck className="size-4 shrink-0 text-muted-foreground" />
+              This person can sign in to the resident portal.
+            </div>
+          ) : !canInvite ? (
+            <p className="text-sm text-muted-foreground">
+              No portal access yet. A workspace admin can invite this person to the resident
+              portal.
+            </p>
+          ) : tenant.email ? (
+            <div className="flex flex-col items-start gap-3">
+              <p className="text-sm text-muted-foreground">
+                Give this person a login to the resident portal, where they can submit and
+                track maintenance requests. An invite goes to {tenant.email}.
+              </p>
+              <form action={inviteTenantToPortal}>
+                <input type="hidden" name="tenantId" value={tenant.id} />
+                <Button type="submit">
+                  <KeyRound className="size-4" />
+                  Invite to portal
+                </Button>
+              </form>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              Add an email address below to enable portal access.
+            </p>
+          )}
+          {portal === 'invited' && (
+            <p role="status" className="mt-3 text-sm text-muted-foreground">
+              Portal invitation sent.
+            </p>
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

@@ -884,6 +884,13 @@ no sign-off; zero product-decision risk). Pure UI/UX, no migrations/schema/RLS. 
 - [ ] Verify migration **0021** applied (`select column_name from
       information_schema.columns where table_name='invoices' and
       column_name='recipient_email';` — one row = done).
+- [ ] **NEW — Run migration 0029** (Phase 1A tenant portal link: `tenants.auth_user_id`
+      + `tenants_select_own` RLS) — folded into `schema_bundle.sql`. Migrations 0022–0028
+      were already applied 2026-07-19 (bundle paste, `pg_tables`=20); **0029 is the one new
+      pending migration.** Re-paste `supabase/schema_bundle.sql` (idempotent — re-applies
+      cleanly) or run just the "TENANT PORTAL LINK (0029)" block. Until applied, People →
+      "Invite to portal" degrades to a friendly error (the `auth_user_id` write hits a
+      missing column) rather than crashing — onboarding is inert but safe.
 - [ ] Run migration **0022** (rate limiting) in the Supabase SQL editor. Until then
       the limiter fails open (app works, no throttling).
 - [ ] Run migration **0023** (demo mode) — after/with D2–D5 landing.

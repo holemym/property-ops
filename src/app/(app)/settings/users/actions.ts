@@ -18,12 +18,68 @@ import { z } from 'zod'
 import { AUTH_CALLBACK_URL } from '@/lib/urls'
 import { clientIp } from '@/lib/rate-limit'
 import { logAuthEvent, clientUserAgent } from '@/lib/audit/log-auth-event'
+import { getTenant } from '@/lib/data/tenants'
+import type { Role } from '@/types/domain'
 
 const inviteSchema = z.object({
   email: z.string().email('Enter a valid email address.'),
   // SUPER_ADMIN deliberately excluded: platform-internal role, never workspace-assignable.
+  // TENANT/GUEST excluded too: residents are onboarded via inviteTenantToPortal (from a
+  // People directory contact), never mixed into the staff roster here.
   role: z.enum(['OPERATOR', 'ACCOUNTANT', 'OWNER']),
 })
+
+// Shared create-or-attach core behind both inviteUser (staff) and inviteTenantToPortal
+// (residents). Sends an invite email for a brand-new account, or — the c019f72 path —
+// gracefully ATTACHES an already-registered account (self-signed-up, invited elsewhere)
+// to THIS workspace with the given role instead of 500-ing on "email exists". Returns the
+// resolved auth user id, or a friendly error string for the caller to surface via its own
+// redirect target (this helper never redirects — it stays reusable across surfaces).
+async function inviteOrAttachUser(
+  admin_client: ReturnType<typeof createServiceClient>,
+  email: string,
+  role: Role,
+  workspaceId: string
+): Promise<{ userId: string } | { error: string }> {
+  const { data, error } = await admin_client.auth.admin.inviteUserByEmail(email, {
+    redirectTo: `${AUTH_CALLBACK_URL}?next=${encodeURIComponent('/auth/set-password')}`,
+  })
+
+  let userId: string
+  if (error) {
+    const code = (error as { code?: string }).code
+    const alreadyExists =
+      code === 'email_exists' ||
+      code === 'user_already_exists' ||
+      /already.*registered|already exists/i.test(error.message)
+    if (!alreadyExists) {
+      return { error: 'Could not send the invitation. Please try again.' }
+    }
+    const existingId = await findUserIdByEmail(admin_client, email)
+    if (!existingId) {
+      return {
+        error:
+          'That email already has an account elsewhere. Ask them to sign in once, then try inviting again.',
+      }
+    }
+    userId = existingId
+  } else {
+    userId = data.user.id
+  }
+
+  const { error: attachError } = await admin_client
+    .from('profiles')
+    .update({ workspace_id: workspaceId, role })
+    .eq('id', userId)
+    .select('id')
+    .single()
+
+  if (attachError) {
+    return { error: 'Could not add that person to the workspace.' }
+  }
+
+  return { userId }
+}
 
 // Find an existing auth user's id by email via the admin API. Returns null if none
 // matches. Paginates defensively (capped) so it still works past the first 50 users;
@@ -64,53 +120,10 @@ export async function inviteUser(formData: FormData) {
 
   const { email, role } = parsed.data
 
-  // next=/auth/set-password: invited users have no password yet — the callback route
-  // already supports ?next= (defaults to /dashboard for every other flow) and lands
-  // them straight on the set-password form instead of a passwordless dashboard visit.
   const admin_client = createServiceClient()
-  const { data, error } = await admin_client.auth.admin.inviteUserByEmail(email, {
-    redirectTo: `${AUTH_CALLBACK_URL}?next=${encodeURIComponent('/auth/set-password')}`,
-  })
-
-  // Resolve the target user id. The common failure is "email already registered" —
-  // someone self-signed-up (or was invited) before. That's not an error worth a 500:
-  // find their existing account and ATTACH it to this workspace below (they'll sign in
-  // with the credentials they already have — no new invite email is sent). Any OTHER
-  // invite failure becomes a friendly message instead of the raw error boundary.
-  let userId: string
-  if (error) {
-    const code = (error as { code?: string }).code
-    const alreadyExists =
-      code === 'email_exists' ||
-      code === 'user_already_exists' ||
-      /already.*registered|already exists/i.test(error.message)
-    if (!alreadyExists) {
-      redirectWithError('/settings/users', 'Could not send the invitation. Please try again.')
-    }
-    const existingId = await findUserIdByEmail(admin_client, email)
-    if (!existingId) {
-      redirectWithError(
-        '/settings/users',
-        'That email already has an account elsewhere. Ask them to sign in once, then try inviting again.'
-      )
-    }
-    userId = existingId
-  } else {
-    userId = data.user.id
-  }
-
-  // Attach the profile (created by handle_new_user for a fresh invite, or the existing
-  // one) to THIS workspace with the chosen role. For an existing user this moves them
-  // into this workspace as the chosen role.
-  const { error: attachError } = await admin_client
-    .from('profiles')
-    .update({ workspace_id: admin.workspaceId, role })
-    .eq('id', userId)
-    .select('id')
-    .single()
-
-  if (attachError) {
-    redirectWithError('/settings/users', 'Could not add that person to the workspace.')
+  const result = await inviteOrAttachUser(admin_client, email, role, admin.workspaceId)
+  if ('error' in result) {
+    redirectWithError('/settings/users', result.error)
   }
 
   // S2-2: best-effort audit write (never throws — see log-auth-event.ts).
@@ -127,6 +140,73 @@ export async function inviteUser(formData: FormData) {
   })
 
   revalidatePath('/settings/users')
+}
+
+// Phase 1A — the tenant portal front door. Onboards a People-directory CONTACT
+// (`tenants` row) into a real resident login: creates-or-attaches an auth account with
+// role TENANT and links it via tenants.auth_user_id (migration 0029). Gated on
+// users:invite (managers only), same tier as staff invites. The email is resolved
+// server-side from the tenant record — never taken from the client — so a caller can't
+// point a portal invite at an arbitrary address.
+export async function inviteTenantToPortal(formData: FormData) {
+  const admin = await requirePermission('users:invite')
+  const tenantId = String(formData.get('tenantId') ?? '')
+  const backTo = tenantId ? `/people/${tenantId}` : '/people'
+
+  if (isDemoWorkspace(admin.workspaceId)) {
+    redirectWithError(backTo, DEMO_USERS_BLOCKED_MESSAGE)
+  }
+  if (!tenantId) {
+    redirectWithError('/people', 'Missing tenant.')
+  }
+
+  const admin_client = createServiceClient()
+  // Resolve the contact server-side, workspace-scoped — the client only supplies an id.
+  const tenant = await getTenant(admin_client, admin.workspaceId, tenantId)
+  if (!tenant) {
+    redirectWithError('/people', 'That person was not found in your workspace.')
+  }
+  if (tenant.auth_user_id) {
+    redirectWithError(backTo, 'This person already has portal access.')
+  }
+  if (!tenant.email) {
+    redirectWithError(
+      backTo,
+      'Add an email address to this person before inviting them to the portal.'
+    )
+  }
+
+  const result = await inviteOrAttachUser(admin_client, tenant.email, 'TENANT', admin.workspaceId)
+  if ('error' in result) {
+    redirectWithError(backTo, result.error)
+  }
+
+  // Link the auth account to this directory contact (service role; workspace-scoped).
+  const { error: linkError } = await admin_client
+    .from('tenants')
+    .update({ auth_user_id: result.userId })
+    .eq('id', tenantId)
+    .eq('workspace_id', admin.workspaceId)
+    .select('id')
+    .single()
+
+  if (linkError) {
+    redirectWithError(backTo, 'Could not link the portal account. Please try again.')
+  }
+
+  const h = await headers()
+  await logAuthEvent(admin_client, {
+    eventType: 'INVITE_SENT',
+    userId: admin.id,
+    workspaceId: admin.workspaceId,
+    email: tenant.email,
+    ip: clientIp(h),
+    userAgent: clientUserAgent(h),
+    metadata: { tenant_id: tenantId, portal: true },
+  })
+
+  revalidatePath(backTo)
+  redirect(`${backTo}?portal=invited`)
 }
 
 export async function setUserActive(formData: FormData) {

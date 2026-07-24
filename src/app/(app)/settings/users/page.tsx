@@ -18,10 +18,13 @@ export default async function UsersSettingsPage({
   const params = await searchParams
   const admin = await requirePermission('users:invite')
   const supabase = await createClient()
+  // Staff roster only — residents (role TENANT/GUEST, onboarded via People →
+  // "Invite to portal") are managed on their directory record, not mixed in here.
   const { data: users } = await supabase
     .from('profiles')
     .select('id, full_name, role, is_active')
     .eq('workspace_id', admin.workspaceId)
+    .not('role', 'in', '(TENANT,GUEST)')
     .order('full_name')
 
   return (

@@ -18,6 +18,11 @@ export type Tenant = {
   // (German i18n).
   language: string | null
   notes: string | null
+  // Migration 0029: links this directory CONTACT to a Supabase Auth account so the
+  // person can sign in to /portal. null = not yet invited. Written only by the
+  // manager-gated `inviteTenantToPortal` action (service role); a tenant can read
+  // (never set) their own row's value via the `tenants_select_own` RLS policy.
+  auth_user_id: string | null
   created_by_user_id: string
   created_at: string
   updated_at: string

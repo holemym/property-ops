@@ -1764,6 +1764,31 @@ create policy "auth_events_select_admin"
 -- No UPDATE/DELETE policy — intentional; reinforced by the trigger above.
 
 -- =============================================================================
+-- TENANT PORTAL LINK (0029) — links a `tenants` directory CONTACT (0025) to a real
+-- Supabase Auth account so a resident can reach /portal. Additive: the 0025
+-- manager/accountant-read + manager-write policies are untouched; this only ADDS a
+-- tenant-own-row SELECT. The own-row policy conjoins workspace_id =
+-- current_workspace_id() (beyond a bare auth_user_id = auth.uid()) so a stale link
+-- can never leak another workspace's contact PII after a profile is moved. Written
+-- only by the manager-gated inviteTenantToPortal action (service role); no tenant
+-- write policy of any kind. See migration 0029 for full rationale.
+-- =============================================================================
+alter table public.tenants
+  add column if not exists auth_user_id uuid references auth.users (id) on delete set null;
+
+create unique index if not exists tenants_auth_user_unique
+  on public.tenants (workspace_id, auth_user_id)
+  where auth_user_id is not null;
+
+drop policy if exists "tenants_select_own" on public.tenants;
+create policy "tenants_select_own"
+  on public.tenants for select
+  using (
+    auth_user_id = auth.uid()
+    and workspace_id = public.current_workspace_id()
+  );
+
+-- =============================================================================
 -- DEFERRED DEMO SEED — must run LAST (see the note in the DEMO MODE section).
 -- reset_demo_workspace() wipes+reseeds the demo workspace, deleting from
 -- public.tenants (0025) and public.notifications (0026); both are created in sections
