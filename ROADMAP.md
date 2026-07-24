@@ -938,10 +938,61 @@ in the USER-action list below, same as every other migration since 0022.
       `/portal/announcements` against this backend. NOT PUSHED — committed locally
       only, per this task's explicit instruction; push + the migration-0030 SQL
       paste are both still USER actions, queued below.)*
-- [ ] **P1B-2** `[builder]` — UI: `/portal/home`, `/portal/documents`,
+- [x] **P1B-2** `[builder]` — UI: `/portal/home`, `/portal/documents`,
       `/portal/charges`, `/portal/announcements` pages + Sidebar nav entries +
       loading skeletons, per the four inline designs P1B-1 was handed. Depends
       P1B-1 (this migration + data layer) + USER ran 0030.
+      *(committed 2026-07-24 — built all four tenant-portal pages against the
+      existing P1B-1 backend, no code changes needed there: `portal/home/page.tsx`
+      (listMyTenancies + pickCurrentTenancy -> tenancy Card with property/unit/rent/
+      lease-term + a new pure `leaseState()` helper in `lib/portal-tenancy.ts` for
+      the Current/Ending soon/Ended badge (reuses the existing 90-day "expiring
+      soon" horizon from rent-roll.ts/documents' EXPIRY_WINDOW_DAYS rather than a
+      new threshold); a single resolved contact via `listWorkspaceOperators`
+      (reused verbatim) — never the full profiles roster); `portal/documents/
+      page.tsx` (listDocuments reused verbatim, 60s signed URLs via
+      createServiceClient AFTER the RLS-scoped read, same invariant as the
+      operator hub); `portal/charges/page.tsx` (listTenantCharges +
+      listLineItemsForInvoices + invoiceTotals/isInvoiceOverdue, a new
+      `tenantInvoiceStatusLabel()` in `lib/portal-status.ts` alongside
+      `tenantStatusLabel` — same tone from the shared `statusBadge()`, only the
+      VOID->'Cancelled' copy differs — plus a static "how to pay" card, Stripe
+      still deferred); `portal/announcements/page.tsx`
+      (listPublishedAnnouncementsForTenant + getProperty for target labels).
+      Sidebar TENANT_GROUPS broadened from 2 to 6 items (Home/My requests/Report
+      an issue/My documents/My charges/Announcements), Home first; `/portal/home`
+      is now the actual tenant landing page (`src/app/page.tsx`,
+      `dashboard/page.tsx`, `settings/security/page.tsx` all redirect
+      isTenantRole users there instead of bare `/portal`, which stays the "My
+      requests" ticket list, now reached via its own nav item). All four routes
+      got a `loading.tsx` skeleton mirroring `portal/loading.tsx`'s style.
+      ADDED BEYOND THE TICKET TEXT, per this task's explicit build instructions
+      (the announcements design's own RISKS section calls the write side "a
+      SEPARATE, out-of-scope deliverable" — flagging the discrepancy plainly): a
+      manager-side compose surface at `/announcements` (list all statuses +
+      compose-as-DRAFT dialog + Publish/Move-to-draft actions), gated on two new
+      `announcements:read`/`announcements:write` permissions
+      (`lib/auth/permissions.ts`, same manager-read/accountant-read-only split as
+      `documents:*`) — RLS already supported this from P1B-1 unchanged. New data
+      fns `listAnnouncements`/`createAnnouncement`/`setAnnouncementStatus` in
+      `lib/data/announcements.ts` (published_at stamped symmetric with
+      `setInvoiceStatus`'s paid_at). Synced both Sidebar OPERATOR_GROUPS (Records)
+      and CommandPalette's `COMMANDS` with the new `/announcements` entry, per the
+      H4/H6 "keep the palette and sidebar in sync" lesson.
+      SPEC DEVIATION (flagging, not silently working around): the my-home design
+      asked for the contact card to show "the designated manager's full_name and
+      email (mailto)" — `public.profiles` has no `email` column (email lives only
+      in `auth.users`, reachable solely via the service-role admin API), so the
+      card shows the resolved manager's name + role only, with the existing
+      "Report an issue" button as the actual contact channel; no service-role
+      lookup was added purely to backfill a display email. 18 new tests (523 vs.
+      505 baseline: `leaseState` cases in `portal-tenancy.test.ts`,
+      `tenantInvoiceStatusLabel` cases in `portal-status.test.ts`, and the new
+      manager-side `listAnnouncements`/`createAnnouncement`/`setAnnouncementStatus`
+      cases in `data-announcements.test.ts`), build+lint clean. Not pushed —
+      committed locally only, per this task's explicit instruction; still
+      depends on the still-queued "Run migration 0030" USER action below before
+      any of this shows real data live.)*
 
 - [ ] Verify migration **0021** applied (`select column_name from
       information_schema.columns where table_name='invoices' and
@@ -965,8 +1016,9 @@ in the USER-action list below, same as every other migration since 0022.
       `tenants.auth_user_id`), so apply 0029 first if running numbered files
       individually rather than the bundle. Until applied, a linked tenant's
       `/portal/home` / `/portal/documents` / `/portal/charges` /
-      `/portal/announcements` (P1B-2, not yet built) would see empty results, not
-      an error — RLS simply hasn't started returning their rows yet.
+      `/portal/announcements` (P1B-2, code-complete and built against this
+      backend) would see empty results, not an error — RLS simply hasn't started
+      returning their rows yet.
 - [ ] Run migration **0022** (rate limiting) in the Supabase SQL editor. Until then
       the limiter fails open (app works, no throttling).
 - [ ] Run migration **0023** (demo mode) — after/with D2–D5 landing.

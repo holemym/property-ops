@@ -22,6 +22,8 @@ export type Permission =
   | 'documents:write'
   | 'tenants:read'
   | 'tenants:write'
+  | 'announcements:read'
+  | 'announcements:write'
 
 const MANAGER_PERMISSIONS: Permission[] = [
   'properties:read',
@@ -67,6 +69,16 @@ const MANAGER_PERMISSIONS: Permission[] = [
   // writes in migration 0025), which mirrors tenancies (0016) PII posture exactly.
   'tenants:read',
   'tenants:write',
+  // announcements:read / announcements:write — the building-notice compose surface
+  // (Phase 1B). Same split as documents: managers (OPERATOR + OWNER/SUPER_ADMIN via
+  // ADMIN) both read and write; ACCOUNTANT gets read-only below. Matches the RLS in
+  // migration 0030: SELECT (incl. DRAFT) is manager+accountant
+  // (announcements_select_manager_or_accountant), INSERT/UPDATE is
+  // is_workspace_manager() (excludes ACCOUNTANT). Tenants/guests read published
+  // announcements through the SEPARATE isTenantRole portal surface, not this matrix —
+  // TENANT/GUEST hold zero entries here, same as every other tenant-portal surface.
+  'announcements:read',
+  'announcements:write',
 ]
 
 const ADMIN_PERMISSIONS: Permission[] = [
@@ -102,6 +114,10 @@ const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     // (no tenants:write). Matches the 0025 RLS: SELECT includes ACCOUNTANT, but
     // INSERT/UPDATE is is_workspace_manager() (excludes it).
     'tenants:read',
+    // announcements:read only — same read-only oversight shape as documents:read /
+    // tenants:read above (no announcements:write). Matches 0030's RLS: SELECT includes
+    // ACCOUNTANT, but INSERT/UPDATE is is_workspace_manager() (excludes it).
+    'announcements:read',
   ],
   TENANT: [],
   GUEST: [],

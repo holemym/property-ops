@@ -69,3 +69,97 @@ export async function getAnnouncement(
   if (error) return null
   return data as Announcement
 }
+
+// =============================================================================
+// MANAGER COMPOSE SURFACE (the /announcements operator page). Everything below is
+// gated app-side by the new announcements:read / announcements:write permissions
+// (src/lib/auth/permissions.ts) and, for real enforcement, by RLS:
+// announcements_select_manager_or_accountant (read, includes DRAFT) and
+// announcements_insert_manager / announcements_update_manager (write,
+// is_workspace_manager() only — ACCOUNTANT is read-only here, matching documents).
+// =============================================================================
+
+/**
+ * Manager/accountant roster read — ALL statuses (DRAFT + PUBLISHED), own workspace,
+ * newest-composed-first. Unlike listPublishedAnnouncementsForTenant above (which orders
+ * by published_at, since that's what a tenant cares about), a DRAFT has no published_at
+ * yet, so this orders by created_at instead. RLS narrows the actual rows returned; this
+ * layer just applies workspace scope + ordering, same discipline as listDocuments.
+ */
+export async function listAnnouncements(
+  supabase: SupabaseClient,
+  workspaceId: string
+): Promise<Announcement[]> {
+  const { data, error } = await supabase
+    .from('announcements')
+    .select('*')
+    .eq('workspace_id', workspaceId)
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return data as Announcement[]
+}
+
+export type CreateAnnouncementInput = {
+  workspaceId: string
+  createdByUserId: string
+  title: string
+  body: string
+  // null/omitted = workspace-wide; set = targeted at one property (composite FK,
+  // announcements_property_fk). The action layer re-validates the id belongs to this
+  // workspace (via getProperty) before calling this, same discipline as
+  // reportIssueAction's property re-check (portal/actions.ts).
+  propertyId?: string | null
+}
+
+/**
+ * Compose a new announcement. Always born DRAFT — mirrors createInvoice's "a new
+ * invoice is born DRAFT" convention (src/lib/data/invoices.ts): a separate, explicit
+ * publish step (setAnnouncementStatus below) is what makes it visible to tenants, so a
+ * half-written notice never accidentally goes live mid-edit.
+ */
+export async function createAnnouncement(
+  supabase: SupabaseClient,
+  input: CreateAnnouncementInput
+): Promise<Announcement> {
+  const { data, error } = await supabase
+    .from('announcements')
+    .insert({
+      workspace_id: input.workspaceId,
+      created_by_user_id: input.createdByUserId,
+      title: input.title,
+      body: input.body,
+      property_id: input.propertyId ?? null,
+      status: 'DRAFT',
+    })
+    .select()
+    .single()
+  if (error) throw error
+  return data as Announcement
+}
+
+/**
+ * Transition status (Publish / move back to Draft). Stamps published_at on entering
+ * PUBLISHED and clears it on leaving — symmetric with setInvoiceStatus's paid_at
+ * stamping (src/lib/data/invoices.ts), so published_at always reflects "currently
+ * live", never a stale first-publish instant from an earlier publish/unpublish cycle.
+ */
+export async function setAnnouncementStatus(
+  supabase: SupabaseClient,
+  workspaceId: string,
+  id: string,
+  status: AnnouncementStatus
+): Promise<Announcement> {
+  const payload: Record<string, unknown> = {
+    status,
+    published_at: status === 'PUBLISHED' ? new Date().toISOString() : null,
+  }
+  const { data, error } = await supabase
+    .from('announcements')
+    .update(payload)
+    .eq('workspace_id', workspaceId)
+    .eq('id', id)
+    .select()
+    .single()
+  if (error) throw error
+  return data as Announcement
+}

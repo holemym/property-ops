@@ -1,6 +1,12 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { createFakeSupabaseClient } from '../helpers/fake-supabase'
-import { listPublishedAnnouncementsForTenant, getAnnouncement } from '@/lib/data/announcements'
+import {
+  listPublishedAnnouncementsForTenant,
+  getAnnouncement,
+  listAnnouncements,
+  createAnnouncement,
+  setAnnouncementStatus,
+} from '@/lib/data/announcements'
 
 const WS_A = 'workspace-a'
 const WS_B = 'workspace-b'
@@ -61,5 +67,64 @@ describe('announcements data access (tenant portal read)', () => {
 
   it('getAnnouncement returns null for an unknown id', async () => {
     expect(await getAnnouncement(client, WS_A, 'nonexistent')).toBeNull()
+  })
+})
+
+describe('announcements data access (manager compose surface)', () => {
+  let client: ReturnType<typeof createFakeSupabaseClient>
+
+  beforeEach(() => {
+    client = createFakeSupabaseClient({
+      announcements: [
+        announcement({ id: 'a-published', title: 'Published notice', status: 'PUBLISHED' }),
+        announcement({ id: 'a-draft', title: 'Draft notice', status: 'DRAFT', published_at: null }),
+        announcement({ id: 'a-other-ws', workspace_id: WS_B, title: 'Other workspace notice' }),
+      ],
+    })
+  })
+
+  it('listAnnouncements returns every status (DRAFT + PUBLISHED) for the workspace', async () => {
+    const result = await listAnnouncements(client, WS_A)
+    expect(result.map((a) => a.id).sort()).toEqual(['a-draft', 'a-published'])
+  })
+
+  it('listAnnouncements never leaks another workspace\'s announcement', async () => {
+    const result = await listAnnouncements(client, WS_A)
+    expect(result.map((a) => a.id)).not.toContain('a-other-ws')
+  })
+
+  it('createAnnouncement always creates a DRAFT regardless of caller input', async () => {
+    const created = await createAnnouncement(client, {
+      workspaceId: WS_A,
+      createdByUserId: 'manager-1',
+      title: 'New notice',
+      body: 'Please note the elevator is under maintenance.',
+    })
+    expect(created.status).toBe('DRAFT')
+    expect(created.property_id).toBeNull()
+    expect(created.title).toBe('New notice')
+  })
+
+  it('createAnnouncement stores an explicit property scope', async () => {
+    const created = await createAnnouncement(client, {
+      workspaceId: WS_A,
+      createdByUserId: 'manager-1',
+      title: 'Targeted notice',
+      body: 'For one building only.',
+      propertyId: 'prop-1',
+    })
+    expect(created.property_id).toBe('prop-1')
+  })
+
+  it('setAnnouncementStatus stamps published_at when entering PUBLISHED', async () => {
+    const updated = await setAnnouncementStatus(client, WS_A, 'a-draft', 'PUBLISHED')
+    expect(updated.status).toBe('PUBLISHED')
+    expect(updated.published_at).not.toBeNull()
+  })
+
+  it('setAnnouncementStatus clears published_at when leaving PUBLISHED', async () => {
+    const updated = await setAnnouncementStatus(client, WS_A, 'a-published', 'DRAFT')
+    expect(updated.status).toBe('DRAFT')
+    expect(updated.published_at).toBeNull()
   })
 })

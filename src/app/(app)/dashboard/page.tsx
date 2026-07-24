@@ -51,10 +51,11 @@ function agingTone(iso: string): string {
 }
 
 export default async function DashboardPage() {
-  // Tenants/guests have no operator dashboard — land them on their portal instead
-  // (preserved from the P3.7 placeholder). Managers/OWNER/SUPER_ADMIN/ACCOUNTANT stay.
+  // Tenants/guests have no operator dashboard — land them on their portal's My Home
+  // surface instead (Phase 1B's real landing page, superseding the plain /portal ticket
+  // list this redirect used pre-1B). Managers/OWNER/SUPER_ADMIN/ACCOUNTANT stay.
   const user = await requireWorkspace()
-  if (isTenantRole(user.role)) redirect('/portal')
+  if (isTenantRole(user.role)) redirect('/portal/home')
 
   const supabase = await createClient()
   // A handful of curated slices + one status tally + the property name map, all in

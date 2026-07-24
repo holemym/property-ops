@@ -27,6 +27,7 @@ import {
   MapPinned,
   ShieldCheck,
   UserCog,
+  Megaphone,
   type LucideIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -62,6 +63,7 @@ const COMMANDS: Command[] = [
   { id: 'go-invoices', label: 'Invoices', icon: Receipt, href: '/invoices', group: 'Go to', permission: 'finance:read' },
   { id: 'go-owners', label: 'Owners', icon: Users, href: '/owners', group: 'Go to', permission: 'finance:read' },
   { id: 'go-documents', label: 'Documents', icon: FileText, href: '/documents', group: 'Go to', permission: 'documents:read' },
+  { id: 'go-announcements', label: 'Announcements', icon: Megaphone, href: '/announcements', group: 'Go to', permission: 'announcements:read' },
   { id: 'go-security', label: 'Security', icon: ShieldCheck, href: '/settings/security', group: 'Go to' },
   { id: 'go-users', label: 'Users', icon: UserCog, href: '/settings/users', group: 'Go to', permission: 'users:invite' },
   { id: 'new-ticket', label: 'New ticket', icon: CirclePlus, href: '/tickets/new', group: 'Create', permission: 'tickets:write' },

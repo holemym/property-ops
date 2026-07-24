@@ -45,3 +45,42 @@ function mostRecentByStartDate(tenancies: Tenancy[]): Tenancy {
     return a.start_date < b.start_date ? 1 : -1
   })[0]
 }
+
+// The lease-state badge shown on My Home, alongside the tenancy card. Reuses the SAME
+// 90-day "expiring soon" horizon already established for lease alerts elsewhere
+// (src/lib/occupancy/rent-roll.ts's expiringLeases default, and documents/page.tsx's
+// EXPIRY_WINDOW_DAYS) rather than inventing a new threshold, per the house convention
+// of one number for "coming up soon" across the app.
+const LEASE_ENDING_SOON_WINDOW_DAYS = 90
+
+export type LeaseState = 'current' | 'ending_soon' | 'ended'
+
+// One UTC day, matching rent-roll.ts's MS_PER_DAY discipline.
+const MS_PER_DAY = 86_400_000
+
+function addDaysIso(iso: string, days: number): string {
+  const ms = Date.parse(`${iso}T00:00:00Z`) + days * MS_PER_DAY
+  return new Date(ms).toISOString().slice(0, 10)
+}
+
+/**
+ * Classify a tenancy's lease state as of `todayIso`, for the My Home badge (Current /
+ * Ending soon / Ended). Pure + DB-free, same no-hidden-clock discipline as
+ * pickCurrentTenancy above — `todayIso` is always caller-supplied.
+ *
+ * An open-ended (month-to-month) lease is always 'current' — it has no end date to
+ * count down to. A lease that already ended (end_date < todayIso) is 'ended' — this can
+ * happen when pickCurrentTenancy falls back to a past lease because none is current. A
+ * lease ending within the window (todayIso <= end_date <= todayIso + windowDays) is
+ * 'ending_soon'; anything further out is 'current'.
+ */
+export function leaseState(
+  tenancy: Tenancy,
+  todayIso: string,
+  windowDays: number = LEASE_ENDING_SOON_WINDOW_DAYS
+): LeaseState {
+  if (tenancy.end_date === null) return 'current'
+  if (tenancy.end_date < todayIso) return 'ended'
+  const horizon = addDaysIso(todayIso, windowDays)
+  return tenancy.end_date <= horizon ? 'ending_soon' : 'current'
+}

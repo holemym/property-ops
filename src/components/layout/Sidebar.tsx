@@ -25,6 +25,8 @@ import {
   Contact,
   ShieldCheck,
   UserCog,
+  Home,
+  Megaphone,
   type LucideIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -79,6 +81,9 @@ const OPERATOR_GROUPS: NavGroup[] = [
     label: 'Records',
     items: [
       { href: '/documents', label: 'Documents', icon: FileText, permission: 'documents:read' },
+      // Announcements — the manager compose surface for tenant-portal building notices
+      // (Phase 1B). Gated on the new announcements:read permission, mirroring documents.
+      { href: '/announcements', label: 'Announcements', icon: Megaphone, permission: 'announcements:read' },
     ],
   },
   // Settings — S2-1a. "Security" has no `permission`: every non-tenant role manages its
@@ -104,13 +109,22 @@ const OPERATOR_GROUPS: NavGroup[] = [
 // have all shipped for real now, so the `src/app/(app)/preview/` directory and the
 // PREVIEW_GROUP nav concept it fed are retired.
 
-// Minimal tenant/guest nav — the self-service portal only, headerless.
+// Tenant/guest nav — the self-service portal (Phase 1B broadens this from the original
+// two items to the full read-surface set: Home is the portal's real landing page (see
+// the isTenantRole redirects in src/app/page.tsx, dashboard/page.tsx, and
+// settings/security/page.tsx, all pointed at /portal/home), followed by the existing
+// ticket flow, then the three new read-only surfaces. matchesPath's longest-href-wins
+// rule (below) keeps /portal (My requests) from lighting on any /portal/* subpage.
 const TENANT_GROUPS: NavGroup[] = [
   {
     label: '',
     items: [
+      { href: '/portal/home', label: 'Home', icon: Home },
       { href: '/portal', label: 'My requests', icon: Inbox },
       { href: '/portal/new', label: 'Report an issue', icon: CirclePlus },
+      { href: '/portal/documents', label: 'My documents', icon: FileText },
+      { href: '/portal/charges', label: 'My charges', icon: ReceiptText },
+      { href: '/portal/announcements', label: 'Announcements', icon: Megaphone },
     ],
   },
 ]

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { tenantProgress, tenantStatusLabel, TENANT_STAGES } from '@/lib/portal-status'
-import type { TicketStatus } from '@/types/domain'
+import { tenantProgress, tenantStatusLabel, tenantInvoiceStatusLabel, TENANT_STAGES } from '@/lib/portal-status'
+import type { InvoiceStatus, TicketStatus } from '@/types/domain'
 
 describe('tenantProgress', () => {
   it('maps early statuses to the Received stage', () => {
@@ -56,5 +56,28 @@ describe('tenantStatusLabel', () => {
 describe('TENANT_STAGES', () => {
   it('has the four journey stages in order', () => {
     expect(TENANT_STAGES).toEqual(['Received', 'Scheduled', 'In progress', 'Resolved'])
+  })
+})
+
+describe('tenantInvoiceStatusLabel', () => {
+  it('renames VOID to Cancelled (a tenant would not recognise "Void")', () => {
+    expect(tenantInvoiceStatusLabel('VOID')).toBe('Cancelled')
+  })
+
+  it('gives a plain label for every invoice status', () => {
+    const statuses: InvoiceStatus[] = ['DRAFT', 'SENT', 'PARTIAL', 'PAID', 'OVERDUE', 'VOID']
+    for (const s of statuses) {
+      expect(tenantInvoiceStatusLabel(s)).toBeTruthy()
+    }
+  })
+
+  it('labels SENT as Due and PARTIAL as Partially paid', () => {
+    expect(tenantInvoiceStatusLabel('SENT')).toBe('Due')
+    expect(tenantInvoiceStatusLabel('PARTIAL')).toBe('Partially paid')
+  })
+
+  it('labels PAID and OVERDUE plainly', () => {
+    expect(tenantInvoiceStatusLabel('PAID')).toBe('Paid')
+    expect(tenantInvoiceStatusLabel('OVERDUE')).toBe('Overdue')
   })
 })

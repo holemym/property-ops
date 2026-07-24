@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { pickCurrentTenancy } from '@/lib/portal-tenancy'
+import { pickCurrentTenancy, leaseState } from '@/lib/portal-tenancy'
 import type { Tenancy } from '@/types/domain'
 
 const TODAY = '2026-07-24'
@@ -74,5 +74,48 @@ describe('pickCurrentTenancy', () => {
     const a = tenancy({ id: 'a', start_date: '2026-01-01', end_date: null })
     const b = tenancy({ id: 'b', start_date: '2026-01-01', end_date: null })
     expect(pickCurrentTenancy([b, a], TODAY)?.id).toBe(pickCurrentTenancy([a, b], TODAY)?.id)
+  })
+})
+
+describe('leaseState', () => {
+  it('is current for an open-ended (month-to-month) lease', () => {
+    const t = tenancy({ end_date: null })
+    expect(leaseState(t, TODAY)).toBe('current')
+  })
+
+  it('is current when the end date is well beyond the ending-soon window', () => {
+    const t = tenancy({ end_date: '2027-01-01' })
+    expect(leaseState(t, TODAY)).toBe('current')
+  })
+
+  it('is ending_soon when the end date is within the window (default 90 days)', () => {
+    const t = tenancy({ end_date: '2026-08-15' }) // ~22 days after TODAY
+    expect(leaseState(t, TODAY)).toBe('ending_soon')
+  })
+
+  it('is ending_soon at the exact edge of the window', () => {
+    const t = tenancy({ end_date: '2026-10-22' }) // exactly 90 days after TODAY
+    expect(leaseState(t, TODAY)).toBe('ending_soon')
+  })
+
+  it('is current just past the edge of the window', () => {
+    const t = tenancy({ end_date: '2026-10-23' }) // 91 days after TODAY
+    expect(leaseState(t, TODAY)).toBe('current')
+  })
+
+  it('is ending_soon when the end date is exactly today (0 days left, not yet ended)', () => {
+    const t = tenancy({ end_date: TODAY })
+    expect(leaseState(t, TODAY)).toBe('ending_soon')
+  })
+
+  it('is ended when the end date is in the past', () => {
+    const t = tenancy({ end_date: '2026-01-01' })
+    expect(leaseState(t, TODAY)).toBe('ended')
+  })
+
+  it('respects a custom window', () => {
+    const t = tenancy({ end_date: '2026-08-15' }) // ~22 days after TODAY
+    expect(leaseState(t, TODAY, 10)).toBe('current')
+    expect(leaseState(t, TODAY, 30)).toBe('ending_soon')
   })
 })

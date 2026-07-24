@@ -15,12 +15,13 @@ import { relativeDay } from '@/lib/relative-date'
 
 // Reachable by every authenticated non-tenant role (S2-1 spec §2) — tenants/guests get
 // the simple self-service portal and have no operator-style account settings, so a direct
-// visit bounces them to /portal same as dashboard/tickets/etc. Unlike /settings/users this
-// page has NO permission gate: every manager/accountant/owner role may manage their own
-// two-factor + password, matching "reachable by every non-tenant role" in the spec.
+// visit bounces them to their portal landing (/portal/home) same as dashboard/tickets/etc.
+// Unlike /settings/users this page has NO permission gate: every manager/accountant/owner
+// role may manage their own two-factor + password, matching "reachable by every
+// non-tenant role" in the spec.
 export default async function SecuritySettingsPage() {
   const user = await requireWorkspace()
-  if (isTenantRole(user.role)) redirect('/portal')
+  if (isTenantRole(user.role)) redirect('/portal/home')
 
   const supabase = await createClient()
   // mfa.listFactors() reads the current session server-side — no client round-trip needed
