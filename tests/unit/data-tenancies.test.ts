@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { createFakeSupabaseClient } from '../helpers/fake-supabase'
-import { listTenancies, listTenanciesForUnit, createTenancy } from '@/lib/data/tenancies'
+import { listTenancies, listTenanciesForUnit, createTenancy, listMyTenancies } from '@/lib/data/tenancies'
 
 const WORKSPACE_A = 'workspace-a'
 const WORKSPACE_B = 'workspace-b'
@@ -89,6 +89,22 @@ describe('tenancies data access', () => {
         startDate: '2026-05-01',
       })
     ).rejects.toThrow('Selected person was not found in your workspace.')
+  })
+
+  // Phase 1B (My Home): listMyTenancies passes NO tenant_id filter — the real
+  // per-tenant scoping is RLS (tenancies_select_own_tenant, migration 0030), which
+  // this in-memory fake stub does not model (it only emulates the `.eq()` filter
+  // chain, not Postgres row-level security). So at the data-layer-unit-test level
+  // this only proves the WORKSPACE scope + ordering contract, same as
+  // listTenancies above; see tests/rls for the actual RLS-enforcement coverage.
+  it('lists a workspace\'s tenancies newest-start-first (My Home)', async () => {
+    const result = await listMyTenancies(client, WORKSPACE_A)
+    expect(result.map((t) => t.id)).toEqual(['ten-2', 'ten-3', 'ten-1'])
+  })
+
+  it('does not leak another workspace\'s tenancies via listMyTenancies', async () => {
+    const result = await listMyTenancies(client, WORKSPACE_A)
+    expect(result.map((t) => t.tenant_name)).not.toContain('Other WS')
   })
 
   it('throws when the linked person id does not exist at all', async () => {

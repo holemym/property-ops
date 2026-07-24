@@ -272,3 +272,12 @@ export type AuthEventType =
   | 'DEACTIVATION'
   | 'MFA_CHALLENGE_SUCCESS'
   | 'MFA_CHALLENGE_FAILURE'
+
+// Announcement status (migration 0030, Phase 1B tenant portal read-surfaces).
+// DRAFT = manager-composed, not yet visible to any tenant/guest; PUBLISHED = live
+// on the tenant portal (announcements_select_published_for_tenant RLS pins this
+// exact value — a tenant never sees a DRAFT regardless of workspace/property
+// match). The `Announcement` row type itself stays local to
+// src/lib/data/announcements.ts, following the tenants (0025) / notifications
+// (0026) / auth-events (0028) precedent for recently-added entities.
+export type AnnouncementStatus = 'DRAFT' | 'PUBLISHED'

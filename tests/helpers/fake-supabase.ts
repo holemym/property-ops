@@ -38,6 +38,7 @@ export function createFakeSupabaseClient(seed: Record<string, Row[]> = {}) {
   function builder(table: string) {
     if (!tables[table]) tables[table] = []
     const filters: Array<[string, any]> = []
+    const notEqFilters: Array<[string, any]> = []
     let op: 'select' | 'insert' | 'update' = 'select'
     let payload: Row | null = null
     let single = false
@@ -59,6 +60,9 @@ export function createFakeSupabaseClient(seed: Record<string, Row[]> = {}) {
         return api
       },
       eq(col: string, val: any) { filters.push([col, val]); return api },
+      // Added minimally for Phase 1B's listTenantCharges (src/lib/data/invoices.ts) —
+      // its DRAFT exclusion is a plain `!==`, matching PostgREST's `.neq()` semantics.
+      neq(col: string, val: any) { notEqFilters.push([col, val]); return api },
       ilike(col: string, val: any) { filters.push([col, val]); return api },
       // `.is(col, null)` — added minimally for P2-1's notifications data layer
       // (read_at IS NULL). Reuses the plain equality filter list; matches() does
@@ -90,7 +94,12 @@ export function createFakeSupabaseClient(seed: Record<string, Row[]> = {}) {
           resolve({ data: single ? targets[0] : targets, error: null })
           return
         }
-        let found = tables[table].filter((r) => matches(r, filters) && matchesOrFilter(r, orFilter))
+        let found = tables[table].filter(
+          (r) =>
+            matches(r, filters) &&
+            matchesOrFilter(r, orFilter) &&
+            notEqFilters.every(([col, val]) => r[col] !== val)
+        )
         if (orderBy) {
           found = [...found].sort((a, b) => {
             if (a[orderBy!] === b[orderBy!]) return 0

@@ -24,6 +24,33 @@ export async function listTenancies(
 }
 
 /**
+ * The logged-in TENANT's own tenancies (Phase 1B, My Home). Deliberately passes NO
+ * tenant_id filter — unlike listTenancies/listTenanciesForUnit (which run under a
+ * manager/accountant session and rely on tenancies_select_manager_or_accountant,
+ * migration 0016, to see the whole roster), this is called with the CALLER'S OWN
+ * RLS-bound client, and the additive tenancies_select_own_tenant policy (migration
+ * 0030) already narrows the result to exactly the caller's own tenancy rows (via
+ * their linked tenants.auth_user_id -> tenancies.tenant_id chain). Adding a
+ * `.eq('tenant_id', ...)` filter here would be redundant with — and no tighter
+ * than — what RLS already guarantees, so this stays a plain workspace-scoped read,
+ * same shape as listTenanciesForTenant (src/lib/data/tenants.ts:137-150). Ordered
+ * newest-lease-first; pickCurrentTenancy (src/lib/portal-tenancy.ts) is the pure
+ * helper that then picks which one is "home" right now.
+ */
+export async function listMyTenancies(
+  supabase: SupabaseClient,
+  workspaceId: string
+): Promise<Tenancy[]> {
+  const { data, error } = await supabase
+    .from('tenancies')
+    .select('*')
+    .eq('workspace_id', workspaceId)
+    .order('start_date', { ascending: false })
+  if (error) throw error
+  return data as Tenancy[]
+}
+
+/**
  * The tenancies for a single unit (same workspace + unit scope), ordered by start_date.
  * Trivial convenience over listTenancies for callers that only need one unit's spans.
  */

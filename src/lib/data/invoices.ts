@@ -39,6 +39,40 @@ export async function listInvoices(
   return data as Invoice[]
 }
 
+/**
+ * The logged-in TENANT's own charges (Phase 1B, My Charges). Called with the
+ * caller's OWN RLS-bound client — invoices_select_own_tenant + invoice_line_items_
+ * select_own_tenant (migration 0030) already narrow every read on these two tables
+ * to invoices tied to the caller's own tenancy (via the invoice_visible_to_
+ * current_tenant SECURITY DEFINER helper), so no service client and no app-side
+ * tenant_id filter is needed or possible here (a tenant has no `tenants.id` to
+ * filter by from this layer anyway — that lookup happens inside the RLS helper).
+ *
+ * The `.eq('direction', 'OUTBOUND')` and `.neq('status', 'DRAFT')` filters are
+ * belt-and-suspenders over RLS (which already pins both), same "double-scoped,
+ * not load-bearing for the security boundary" discipline as every other lib/data
+ * reader in this project (e.g. listDocuments, listNotificationsPage) — not a
+ * substitute for the RLS policy, just defense-in-depth + a query-level guarantee
+ * that survives even if a future edit ever loosened the policy's own predicate.
+ * Ordered newest-issued-first; pair with listLineItemsForInvoices (above) + the
+ * existing invoiceTotals/isInvoiceOverdue (src/lib/invoices/compute.ts) to compute
+ * per-invoice totals and overdue state, exactly like /invoices/page.tsx does.
+ */
+export async function listTenantCharges(
+  supabase: SupabaseClient,
+  workspaceId: string,
+): Promise<Invoice[]> {
+  const { data, error } = await supabase
+    .from('invoices')
+    .select('*')
+    .eq('workspace_id', workspaceId)
+    .eq('direction', 'OUTBOUND')
+    .neq('status', 'DRAFT')
+    .order('issue_date', { ascending: false })
+  if (error) throw error
+  return data as Invoice[]
+}
+
 export async function getInvoice(
   supabase: SupabaseClient,
   workspaceId: string,

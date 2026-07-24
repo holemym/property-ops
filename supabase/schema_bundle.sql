@@ -1406,6 +1406,7 @@ begin
   delete from public.invoice_line_items where workspace_id = demo_ws;
   delete from public.invoices where workspace_id = demo_ws;
   delete from public.documents where workspace_id = demo_ws;
+  delete from public.announcements where workspace_id = demo_ws;
   delete from public.expense_records where workspace_id = demo_ws;
   delete from public.income_records where workspace_id = demo_ws;
   delete from public.notifications where workspace_id = demo_ws;
@@ -1504,12 +1505,13 @@ revoke execute on function public.reset_demo_workspace() from public;
 grant execute on function public.reset_demo_workspace() to service_role;
 
 -- SEED CALL DEFERRED TO THE END OF THIS BUNDLE: reset_demo_workspace()'s body wipes
--- public.tenants (0025) and public.notifications (0026), which are created in later
--- sections below. Defining the function here is fine (plpgsql defers name resolution),
--- but CALLING it must wait until every table it references exists — see the deferred
--- `select public.reset_demo_workspace();` at the very end of the file. (Applying the
--- numbered migrations 0023→0026 in sequence never hit this: each redefinition of the
--- function only referenced tables that already existed at that point.)
+-- public.tenants (0025), public.notifications (0026), and public.announcements
+-- (0030), all created in later sections below. Defining the function here is fine
+-- (plpgsql defers name resolution), but CALLING it must wait until every table it
+-- references exists — see the deferred `select public.reset_demo_workspace();` at
+-- the very end of the file. (Applying the numbered migrations 0023→0030 in
+-- sequence never hit this: each redefinition of the function only referenced
+-- tables that already existed at that point.)
 
 drop policy if exists "attachments_objects_insert" on storage.objects;
 create policy "attachments_objects_insert"
@@ -1789,14 +1791,202 @@ create policy "tenants_select_own"
   );
 
 -- =============================================================================
+-- TENANT PORTAL READ-SURFACES (0030) — Phase 1B. A linked tenant (0029 gave them a
+-- portal LOGIN) still could not read their OWN lease, documents, or invoices —
+-- those tables are role-gated to managers+accountant, correctly excluding TENANT/
+-- GUEST from the workspace ROSTER but also excluding a tenant from their own
+-- single row. Four ADDITIVE tenant SELECT policies (tenancies, documents,
+-- invoices, invoice_line_items) + one new table (announcements). TENANT holds
+-- ZERO app-layer permissions; every guarantee here is RLS-enforced. See migration
+-- 0030 for full rationale (this section must be placed AFTER the TENANT PORTAL
+-- LINK (0029) block above: current_tenant_id() reads tenants.auth_user_id, which
+-- that block is what adds).
+-- =============================================================================
+
+-- --- SECTION A: MY HOME — a tenant reads their OWN tenancy/tenancies ----------
+create or replace function public.current_tenant_id()
+returns uuid
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select id from public.tenants
+  where auth_user_id = auth.uid()
+    and workspace_id = public.current_workspace_id()
+$$;
+
+drop policy if exists "tenancies_select_own_tenant" on public.tenancies;
+create policy "tenancies_select_own_tenant"
+  on public.tenancies for select
+  using (
+    workspace_id = public.current_workspace_id()
+    and tenant_id is not null
+    and tenant_id = public.current_tenant_id()
+  );
+
+-- --- SECTION B: DOCUMENTS — a tenant reads documents attached to their OWN
+--     tenancy / unit / property -------------------------------------------------
+create or replace function public.tenant_can_read_document(
+  p_property_id uuid, p_unit_id uuid, p_tenancy_id uuid
+) returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.tenants t
+    join public.tenancies tn
+      on tn.tenant_id = t.id and tn.workspace_id = t.workspace_id
+    left join public.units u
+      on u.id = tn.unit_id and u.workspace_id = tn.workspace_id
+    where t.auth_user_id = auth.uid()
+      and t.workspace_id = public.current_workspace_id()
+      and (
+           (p_tenancy_id is not null and p_tenancy_id = tn.id)
+        or (p_unit_id    is not null and p_unit_id    = tn.unit_id)
+        or (p_property_id is not null and p_property_id = u.property_id)
+      )
+  )
+$$;
+
+drop policy if exists "documents_select_own_tenant" on public.documents;
+create policy "documents_select_own_tenant"
+  on public.documents for select
+  using (
+    workspace_id = public.current_workspace_id()
+    and public.tenant_can_read_document(property_id, unit_id, tenancy_id)
+  );
+
+-- --- SECTION C: MY CHARGES — a tenant reads their OWN invoices + line items ---
+create or replace function public.invoice_visible_to_current_tenant(p_invoice_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.invoices inv
+    join public.tenancies tn
+      on tn.id = inv.tenancy_id
+     and tn.workspace_id = inv.workspace_id
+    where inv.id = p_invoice_id
+      and inv.workspace_id = public.current_workspace_id()
+      and inv.direction = 'OUTBOUND'
+      and inv.status <> 'DRAFT'
+      and tn.tenant_id = public.current_tenant_id()
+  )
+$$;
+
+drop policy if exists "invoices_select_own_tenant" on public.invoices;
+create policy "invoices_select_own_tenant"
+  on public.invoices for select
+  using (public.invoice_visible_to_current_tenant(id));
+
+drop policy if exists "invoice_line_items_select_own_tenant" on public.invoice_line_items;
+create policy "invoice_line_items_select_own_tenant"
+  on public.invoice_line_items for select
+  using (public.invoice_visible_to_current_tenant(invoice_id));
+
+-- --- SECTION D: ANNOUNCEMENTS — manager-composed, tenant-read building notices -
+do $do$ begin
+  create type public.announcement_status as enum ('DRAFT', 'PUBLISHED');
+exception when duplicate_object then null; end $do$;
+
+create table if not exists public.announcements (
+  id uuid primary key default gen_random_uuid(),
+  workspace_id uuid not null references public.workspaces (id) on delete cascade,
+  property_id uuid,
+  title text not null,
+  body  text not null,
+  status public.announcement_status not null default 'DRAFT',
+  published_at timestamptz,
+  created_by_user_id uuid not null references public.profiles (id),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint announcements_property_fk
+    foreign key (property_id, workspace_id)
+    references public.properties (id, workspace_id) on delete cascade
+);
+
+create index if not exists announcements_workspace_status_idx
+  on public.announcements (workspace_id, status, published_at desc);
+
+drop trigger if exists announcements_set_updated_at on public.announcements;
+create trigger announcements_set_updated_at
+  before update on public.announcements
+  for each row execute function public.set_updated_at();
+
+alter table public.announcements enable row level security;
+
+create or replace function public.tenant_can_read_announcement(a_workspace_id uuid, a_property_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select
+    a_workspace_id = public.current_workspace_id()
+    and public.current_role() in ('TENANT', 'GUEST')
+    and coalesce(public.current_is_active(), false)
+    and (
+      a_property_id is null
+      or exists (
+        select 1
+        from public.tenants t
+        join public.tenancies ten on ten.tenant_id = t.id and ten.workspace_id = t.workspace_id
+        join public.units u       on u.id = ten.unit_id      and u.workspace_id = ten.workspace_id
+        where t.auth_user_id = auth.uid()
+          and t.workspace_id = a_workspace_id
+          and u.property_id = a_property_id
+          and ten.start_date <= current_date
+          and (ten.end_date is null or ten.end_date >= current_date)
+      )
+    )
+$$;
+
+drop policy if exists "announcements_select_published_for_tenant" on public.announcements;
+create policy "announcements_select_published_for_tenant"
+  on public.announcements for select
+  using (status = 'PUBLISHED' and public.tenant_can_read_announcement(workspace_id, property_id));
+
+drop policy if exists "announcements_select_manager_or_accountant" on public.announcements;
+create policy "announcements_select_manager_or_accountant"
+  on public.announcements for select
+  using (
+    (workspace_id = public.current_workspace_id()
+       and public.current_role() in ('SUPER_ADMIN', 'OWNER', 'OPERATOR', 'ACCOUNTANT'))
+    or public.current_role() = 'SUPER_ADMIN'
+  );
+
+drop policy if exists "announcements_insert_manager" on public.announcements;
+create policy "announcements_insert_manager"
+  on public.announcements for insert
+  with check (workspace_id = public.current_workspace_id() and public.is_workspace_manager());
+
+drop policy if exists "announcements_update_manager" on public.announcements;
+create policy "announcements_update_manager"
+  on public.announcements for update
+  using (workspace_id = public.current_workspace_id() and public.is_workspace_manager())
+  with check (workspace_id = public.current_workspace_id() and public.is_workspace_manager());
+
+-- No DELETE policy — matches the no-DELETE convention. See migration 0030 for
+-- full smoke-test list (23 scenarios across sections A-D).
+
+-- =============================================================================
 -- DEFERRED DEMO SEED — must run LAST (see the note in the DEMO MODE section).
 -- reset_demo_workspace() wipes+reseeds the demo workspace, deleting from
--- public.tenants (0025) and public.notifications (0026); both are created in sections
--- above, so this seed call only succeeds here at the end. Idempotent (wipe+reseed),
--- so re-running the whole bundle is safe.
+-- public.tenants (0025), public.notifications (0026), and public.announcements
+-- (0030); all are created in sections above, so this seed call only succeeds here
+-- at the end. Idempotent (wipe+reseed), so re-running the whole bundle is safe.
 -- =============================================================================
 select public.reset_demo_workspace();
 
 -- =============================================================================
--- DONE. Verify: select count(*) from pg_tables where schemaname='public';  -- expect 20
+-- DONE. Verify: select count(*) from pg_tables where schemaname='public';  -- expect 21
 -- =============================================================================

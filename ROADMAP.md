@@ -881,6 +881,68 @@ no sign-off; zero product-decision risk). Pure UI/UX, no migrations/schema/RLS. 
       restart + a direct HTTP curl of the rendered HTML). Icon-only change, no new pure
       logic to unit-test.)*
 
+## Track P1B — Tenant portal read-surfaces (Product Deepening Phase 1B)
+Plan: `docs/superpowers/plans/2026-07-19-product-deepening.md` §3 ("1B — Make the
+portal worth logging into"). NOTE — naming collision with the OLDER **Track P1**
+above (Tenant directory / People, roadmap v2, migration 0025): that P1 is unrelated
+to this P1B; P1B continues the product-deepening plan's OWN Phase 0/1A/1B numbering
+(Phase 0 = Track P0 above, Phase 1A = the 4d59e7e tenant-portal-link commit,
+migration 0029). Depends on Phase 1A (`tenants.auth_user_id` + the "Invite to
+portal" flow) — code-complete (4d59e7e); migration 0029 itself is still queued
+in the USER-action list below, same as every other migration since 0022.
+
+- [x] **P1B-1** `[builder]` `[rls]` — Migration 0030: additive tenant-read RLS for
+      `tenancies` (My home), `documents` (My documents), `invoices` +
+      `invoice_line_items` (My charges), plus a new `announcements` table
+      (workspace-scoped, optional property_id composite FK, manager-write /
+      published-tenant-read). Data layer only (no UI routes — those are a separate
+      follow-up task per surface). Spec: the four inline per-surface designs
+      (my-home / documents / charges / announcements) handed to the builder for
+      this task; no dedicated spec file yet under `docs/superpowers/specs/`.
+      *(committed 2026-07-24 — built `supabase/migrations/0030_tenant_portal_read_
+      surfaces.sql` (idempotent, `[rls]`-flagged for prop-rls-reviewer) + folded
+      into `schema_bundle.sql` (new section right after TENANT PORTAL LINK (0029),
+      since `current_tenant_id()` reads `tenants.auth_user_id` which that section
+      adds; `reset_demo_workspace()` updated in place with one new `delete from
+      public.announcements` line; demo-seed call stays LAST, per the bf8c811
+      ordering-bug lesson; `expect 20` -> `expect 21`). FOUR additive SELECT
+      policies + FIVE new SECURITY DEFINER helpers: `current_tenant_id()` (mirrors
+      `current_workspace_id()`) backs `tenancies_select_own_tenant`;
+      `tenant_can_read_document(property_id, unit_id, tenancy_id)` (mirrors
+      `user_owns_ticket`'s "bypass the manager-only parent RLS" shape) backs
+      `documents_select_own_tenant`; `invoice_visible_to_current_tenant(invoice_id)`
+      (one helper, reused by BOTH `invoices_select_own_tenant` and
+      `invoice_line_items_select_own_tenant` so a line item can never outlive its
+      invoice's visibility) pins `direction='OUTBOUND'` + `status<>'DRAFT'` +
+      tenancy ownership; `tenant_can_read_announcement(workspace_id, property_id)`
+      gates the new `announcements_select_published_for_tenant` policy (workspace-
+      wide when `property_id` is null, else requires an ACTIVE tenancy in that
+      property). Zero existing operator/manager/accountant policy touched —
+      verified byte-for-byte via diff against 0016/0018/0019 before commit.
+      Data layer: `listMyTenancies` (`src/lib/data/tenancies.ts`, no tenant_id
+      filter — RLS alone narrows it) + a new pure `pickCurrentTenancy` helper
+      (`src/lib/portal-tenancy.ts`, mirrors the `portal-status.ts` precedent for
+      DB-free portal logic); `getWorkspace` (`src/lib/data/workspaces.ts`, first
+      reader on that table — local `Workspace` row type added); `listTenantCharges`
+      (`src/lib/data/invoices.ts`); `listPublishedAnnouncementsForTenant` +
+      `getAnnouncement` + local `Announcement` row type (new
+      `src/lib/data/announcements.ts`) + `AnnouncementStatus` enum in
+      `src/types/domain.ts`. `getUnit`/`getProperty`/`listDocuments` reused
+      VERBATIM (no changes) per the designs' explicit "no new function required"
+      calls. `tests/helpers/fake-supabase.ts` gained minimal `.neq()` support (for
+      `listTenantCharges`'s DRAFT exclusion). 24 new tests (505 vs. 481 baseline),
+      build+lint clean. UI (the four `/portal/*` pages + Sidebar nav entries) is
+      explicitly OUT OF SCOPE for this task — the designs describe it in full but
+      the task's BUILD list was migration + data layer + types only; a follow-up
+      task should build `/portal/home`, `/portal/documents`, `/portal/charges`,
+      `/portal/announcements` against this backend. NOT PUSHED — committed locally
+      only, per this task's explicit instruction; push + the migration-0030 SQL
+      paste are both still USER actions, queued below.)*
+- [ ] **P1B-2** `[builder]` — UI: `/portal/home`, `/portal/documents`,
+      `/portal/charges`, `/portal/announcements` pages + Sidebar nav entries +
+      loading skeletons, per the four inline designs P1B-1 was handed. Depends
+      P1B-1 (this migration + data layer) + USER ran 0030.
+
 - [ ] Verify migration **0021** applied (`select column_name from
       information_schema.columns where table_name='invoices' and
       column_name='recipient_email';` — one row = done).
@@ -891,6 +953,20 @@ no sign-off; zero product-decision risk). Pure UI/UX, no migrations/schema/RLS. 
       cleanly) or run just the "TENANT PORTAL LINK (0029)" block. Until applied, People →
       "Invite to portal" degrades to a friendly error (the `auth_user_id` write hits a
       missing column) rather than crashing — onboarding is inert but safe.
+- [ ] **NEW — Run migration 0030** (Phase 1B tenant portal read-surfaces: additive
+      tenant-read RLS on `tenancies`/`documents`/`invoices`/`invoice_line_items` +
+      the new `announcements` table + its own RLS) — folded into `schema_bundle.sql`
+      (`expect 21` tables once applied). Flagged for prop-rls-reviewer before this
+      is run live (additive-only, but touches four existing tables' RLS surface —
+      review the diff against 0016/0018/0019 first). Re-paste
+      `supabase/schema_bundle.sql` (idempotent) or run
+      `supabase/migrations/0030_tenant_portal_read_surfaces.sql` directly — note it
+      depends on 0029 already being applied (`current_tenant_id()` reads
+      `tenants.auth_user_id`), so apply 0029 first if running numbered files
+      individually rather than the bundle. Until applied, a linked tenant's
+      `/portal/home` / `/portal/documents` / `/portal/charges` /
+      `/portal/announcements` (P1B-2, not yet built) would see empty results, not
+      an error — RLS simply hasn't started returning their rows yet.
 - [ ] Run migration **0022** (rate limiting) in the Supabase SQL editor. Until then
       the limiter fails open (app works, no throttling).
 - [ ] Run migration **0023** (demo mode) — after/with D2–D5 landing.
