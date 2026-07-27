@@ -78,6 +78,12 @@ as $$
   select id from public.tenants
   where auth_user_id = auth.uid()
     and workspace_id = public.current_workspace_id()
+    -- LOW finding (RLS review 0030): a DEACTIVATED tenant (profiles.is_active=false)
+    -- reads nothing. Gating here fails closed for BOTH tenancies_select_own_tenant and
+    -- the invoice helper (both resolve the caller via current_tenant_id()), matching
+    -- Section D's explicit is_active gate. requireUser already blocks the app pages;
+    -- this is the RLS-layer defense in depth.
+    and coalesce(public.current_is_active(), false)
 $$;
 
 -- SELECT: a tenant reads ONLY tenancies linked (tenant_id) to their own directory
@@ -129,7 +135,7 @@ stable
 security definer
 set search_path = public
 as $$
-  select exists (
+  select coalesce(public.current_is_active(), false) and exists (
     select 1
     from public.tenants t
     join public.tenancies tn
@@ -139,9 +145,20 @@ as $$
     where t.auth_user_id = auth.uid()
       and t.workspace_id = public.current_workspace_id()
       and (
+           -- own lease: exact tenancy match, current OR past — a resident always sees
+           -- their OWN historical lease (tenancy_id is a single-row identifier, safe).
            (p_tenancy_id is not null and p_tenancy_id = tn.id)
-        or (p_unit_id    is not null and p_unit_id    = tn.unit_id)
-        or (p_property_id is not null and p_property_id = u.property_id)
+           -- HIGH finding (RLS review 0030): unit/property attribution is a SHARED
+           -- identifier, so gate these arms to an ACTIVE tenancy (same start/end filter
+           -- as Section D's announcements). Otherwise a FORMER tenant of the unit keeps
+           -- reading documents a manager later attaches at the unit/property level for
+           -- the NEW occupant (lease, ID, insurance) — a cross-tenant PII leak.
+        or (p_unit_id is not null and p_unit_id = tn.unit_id
+            and tn.start_date <= current_date
+            and (tn.end_date is null or tn.end_date >= current_date))
+        or (p_property_id is not null and p_property_id = u.property_id
+            and tn.start_date <= current_date
+            and (tn.end_date is null or tn.end_date >= current_date))
       )
   )
 $$;
