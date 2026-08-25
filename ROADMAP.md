@@ -1040,6 +1040,19 @@ in the USER-action list below, same as every other migration since 0022.
       `/portal/announcements` (P1B-2, code-complete and built against this
       backend) would see empty results, not an error — RLS simply hasn't started
       returning their rows yet.
+
+- [ ] **NEW — Run migration 0031** (Betriebskosten U-A: `units.usable_area_m2` +
+      `settlement_periods` / `_cost_positions` / `_allocation_rules` /
+      `_unit_allocations` + the `operating_cost_category` / `allocation_basis` /
+      `settlement_status` enums) — folded into `schema_bundle.sql` (**`expect 25`**
+      tables once applied). RLS-reviewed CLEAN across three lenses after four fixes
+      (see `fc5fd99`). Manager/accountant-only: no tenant-reachable surface in this
+      slice. Idempotent — re-paste `supabase/schema_bundle.sql`, or run
+      `supabase/migrations/0031_betriebskosten_settlements.sql` directly (it now
+      guards every enum/table, so a partial apply can be retried). **Nothing in the
+      app calls this yet** — `src/lib/data/settlements.ts` is not wired to any route
+      or action, so leaving it unapplied changes no user-visible behaviour; it
+      becomes load-bearing when the U-A operator UI lands.
 - [ ] Run migration **0022** (rate limiting) in the Supabase SQL editor. Until then
       the limiter fails open (app works, no throttling).
 - [ ] Run migration **0023** (demo mode) — after/with D2–D5 landing.
