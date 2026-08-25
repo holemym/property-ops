@@ -9,6 +9,21 @@ of truth for what to build next.** Strategy lives in
 
 ## ▶ HANDOVER — current state (as of 2026-07-30, post rentee portal + loading polish)
 
+**U-B Betriebskosten SHIPPED** (`23d8676`, migration **0032**, 602 tests) — meters +
+readings + CONSUMPTION basis + the HeizKG heat split, with HEATING/HOT_WATER now unlocked
+in the §21 catalog. Three adversarial reviews found **2 CRITICAL + 2 HIGH**, all fixed
+before push: a *circular* heat-split bound (operator-chosen min/max validated against
+itself → a lawful-looking 100%-area heat statement) now clamped to the statutory envelope
+[50,75] in DB **and** TS; a replaced meter silently dropped from a past period by an
+`is_active` filter (understating one unit, overcharging the rest); heat-split rows
+persisting a `share_pct` that disagreed with the amount billed; and 10 unguarded
+statements after the required mid-file `commit;` that made a retry impossible. Also added
+`units_property_move_guard` (a unit could be moved between properties, orphaning its
+meter's `property_id`). **KNOWN GAP: `src/lib/data/settlements.ts` has NO test harness** —
+two of those fixes are verified by reading, not by test. Build a `persistAllocationRun`
+harness before U-C stacks reconciliation on top. **NEXT: U-C** (advance payments + annual
+Nachzahlung/Guthaben + tenant-portal statement), then the operator UI.
+
 **U-A Betriebskosten SHIPPED** (`fc5fd99`, migration **0031**, 551 tests). The user
 signed off on the utility engine (**Austrian/DACH-first**, **full U-A+U-B+U-C**), so that
 gate is LIFTED. U-A = the annual operating-cost core, operator-only: `units.usable_area_m2`
