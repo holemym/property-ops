@@ -9,22 +9,19 @@ of truth for what to build next.** Strategy lives in
 
 ## ▶ HANDOVER — current state (as of 2026-07-30, post rentee portal + loading polish)
 
-**⚠ UNFINISHED WORK PARKED IN `git stash@{0}` — U-A Betriebskosten (READ THIS FIRST).**
-The user HAS signed off on the utility engine (chose **Austrian/DACH-first** + **full
-engine U-A+U-B+U-C**), so the old "no code until sign-off" gate is LIFTED. A builder got
-partway through U-A then died on a session limit, leaving migration `0031_betriebskosten_
-settlements.sql`, `src/lib/betriebskosten/{allocate,catalog}.ts`, `src/lib/data/settlements.ts`
-and edits to `units.ts`/`domain.ts`/`schema_bundle.sql`/`fake-supabase.ts`. It is
-**INCOMPLETE and UNREVIEWED** — do not push it as-is:
-  • **no tests at all** (test count never moved off 523),
-  • `allocate.ts` uses **BigInt literals the tsconfig target rejects** (tsc error),
-  • `units.usable_area_m2` was added **required**, breaking existing test fixtures,
-  • all three adversarial RLS reviewers died before reviewing it.
-Recover with `git stash pop`, finish it (tests + fix the two type errors), then run the
-3-lens review (cross-workspace FK · privilege scope · **allocation-math-as-money-safety**)
-BEFORE committing. Then U-B (meters + HeizKG 55–75% heat split) and U-C (advance payments
-+ annual Nachzahlung/Guthaben + portal statement). Design: `docs/superpowers/plans/
-2026-07-19-product-deepening.md` §4.
+**U-A Betriebskosten SHIPPED** (`fc5fd99`, migration **0031**, 551 tests). The user
+signed off on the utility engine (**Austrian/DACH-first**, **full U-A+U-B+U-C**), so that
+gate is LIFTED. U-A = the annual operating-cost core, operator-only: `units.usable_area_m2`
++ settlement periods/cost-positions/allocation-rules/unit-allocations, the §21 MRG category
+enum (no `OTHER`, no heating — heating is HeizKG and needs U-B's measured basis), and the
+pure §17 area allocation (integer cents, largest-remainder, fail-closed on unknown area).
+Three adversarial reviews caught 4 real defects, all fixed pre-push — including two money
+bugs that **conserved to the cent and so passed every sum-based test** (a duplicated
+`participatingUnitIds` entry double-weighted a unit; an empty list vanished a position's
+cost). **NEXT: U-B** (meters + readings + consumption basis + the HeizKG 55–75% measured
+heat split), then **U-C** (advance payments + annual Nachzahlung/Guthaben + portal
+statement), then the operator UI (config, reading entry, allocation-run wizard).
+Design: `docs/superpowers/plans/2026-07-19-product-deepening.md` §4.
 
 **⚠ PENDING USER SQL:** migrations **0029 + 0030** (tenant portal) may still be unapplied —
 verify with the per-object query, NOT a bare table count:
