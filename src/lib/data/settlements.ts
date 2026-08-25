@@ -524,7 +524,17 @@ async function buildUnitConsumption(
   periodStart: string,
   periodEnd: string,
 ): Promise<UnitConsumptionInput[]> {
-  const meters = await listMeters(supabase, workspaceId, { propertyId, kind, isActive: true })
+  // NOT filtered by is_active, deliberately (RLS-review CRITICAL finding): is_active is
+  // a POINT-IN-TIME flag, but a settlement covers a PAST period. When a meter is
+  // replaced mid-period the old one is marked inactive — the normal lifecycle, and the
+  // very case this function's doc comment above describes as legitimately additive.
+  // Filtering it out silently DROPPED that half of the unit's consumption; the unit
+  // still had the replacement meter, so no MISSING_READING diagnostic fired and the run
+  // was not blocked. Its weight was simply understated and every other participating
+  // unit made up the difference — conserving to the cent, so no sum-based test could
+  // see it. Consumption is already scoped to the period by reading_date, so an
+  // out-of-period meter contributes nothing anyway.
+  const meters = await listMeters(supabase, workspaceId, { propertyId, kind })
   const meterInputs: MeterConsumptionInput[] = []
   for (const meter of meters) {
     if (!meter.unit_id) continue
@@ -726,10 +736,23 @@ export async function persistAllocationRun(
       category_gross_amount: centsToAmount(position.grossAmountCents),
       owner_deduction_pct: pctFromPermille(position.ownerSharePermille),
       allocatable_amount: centsToAmount(position.allocatableAmountCents),
-      unit_basis_value:
-        position.basis === 'CONSUMPTION' ? milliUnitsToUnits(share.consumptionMilliUnits) : dm2ToM2(share.areaDm2),
-      total_basis_value:
-        position.basis === 'CONSUMPTION'
+      // A HEAT-SPLIT row bills the COMBINED consumption leg + area leg, so persisting
+      // the consumption leg's basis alone made the generated share_pct (unit_basis /
+      // total_basis * 100) disagree with the amount actually billed — a statement line
+      // reading "your share: 80%" next to an amount that is 60% of the allocatable
+      // total (RLS-review HIGH). 0031's whole point is that this chain is
+      // nachvollziehbar, so for a split row we persist the EFFECTIVE share: the unit's
+      // own cents over the position's allocatable cents, which reconciles with `amount`
+      // by construction. The per-leg detail is still returned by allocateBetriebskosten
+      // for the UI; it is simply not what share_pct claims to be.
+      unit_basis_value: position.heatSplit
+        ? centsToAmount(share.shareCents)
+        : position.basis === 'CONSUMPTION'
+          ? milliUnitsToUnits(share.consumptionMilliUnits)
+          : dm2ToM2(share.areaDm2),
+      total_basis_value: position.heatSplit
+        ? centsToAmount(position.allocatableAmountCents)
+        : position.basis === 'CONSUMPTION'
           ? milliUnitsToUnits(position.denominatorConsumptionMilliUnits)
           : dm2ToM2(position.denominatorAreaDm2),
       amount: centsToAmount(share.shareCents),

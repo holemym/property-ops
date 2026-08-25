@@ -4,6 +4,8 @@ import {
   allocateBetriebskosten,
   AUSTRIA_HEIZKG_MIN_PERMILLE,
   AUSTRIA_HEIZKG_MAX_PERMILLE,
+  HEIZKG_STATUTORY_MIN_PERMILLE,
+  HEIZKG_STATUTORY_MAX_PERMILLE,
   type AllocationInput,
   type CostPositionInput,
   type HeatSplitConfig,
@@ -624,6 +626,90 @@ describe('allocateBetriebskosten - HeizKG heat split', () => {
     expect(p.heatSplit!.areaShares.reduce((s, x) => s + x.shareCents, 0)).toBe(p.heatSplit!.areaLegCents)
     expect(p.shares.reduce((s, x) => s + x.shareCents, 0)).toBe(p.allocatableAmountCents)
     expect(r.units.reduce((s, u) => s + u.totalCents, 0)).toBe(r.allocatableTotalCents)
+  })
+
+  // --- the statutory envelope (RLS-review CRITICAL) -----------------------------
+  // The bound check used to compare the operator's chosen split against the operator's
+  // OWN chosen min/max — circular, so a nonsense bound authorised itself and produced a
+  // lawful-looking heat statement billed entirely on area. These pin the law itself.
+  it('REJECTS a self-authorising bound that would bill heat 100% on area', () => {
+    expect(() =>
+      allocateBetriebskosten(
+        input({
+          positions: [
+            pos({
+              id: 'heat',
+              category: 'HEATING',
+              heatSplit: heatSplit({ minPermille: 0, maxPermille: 1000, consumptionSplitPermille: 0 }),
+            }),
+          ],
+        }),
+      ),
+    ).toThrow(/statutory envelope/)
+  })
+
+  it('REJECTS a widened bound even when the split itself looks lawful', () => {
+    // min/max outside the envelope is rejected on its own terms — otherwise a later
+    // edit to the split alone could slip through an already-widened rule.
+    expect(() =>
+      allocateBetriebskosten(
+        input({
+          positions: [
+            pos({
+              id: 'heat',
+              category: 'HEATING',
+              heatSplit: heatSplit({ minPermille: 100, maxPermille: 900, consumptionSplitPermille: 600 }),
+            }),
+          ],
+        }),
+      ),
+    ).toThrow(/statutory envelope/)
+  })
+
+  it('accepts the exact statutory edges and rejects one per-mille outside them', () => {
+    for (const at of [HEIZKG_STATUTORY_MIN_PERMILLE, HEIZKG_STATUTORY_MAX_PERMILLE]) {
+      const r = allocateBetriebskosten(
+        input({
+          positions: [
+            pos({
+              id: 'heat',
+              category: 'HEATING',
+              heatSplit: heatSplit({
+                minPermille: HEIZKG_STATUTORY_MIN_PERMILLE,
+                maxPermille: HEIZKG_STATUTORY_MAX_PERMILLE,
+                consumptionSplitPermille: at,
+              }),
+            }),
+          ],
+        }),
+      )
+      expect(r.ok, `split ${at} should be lawful`).toBe(true)
+    }
+    for (const outside of [HEIZKG_STATUTORY_MIN_PERMILLE - 1, HEIZKG_STATUTORY_MAX_PERMILLE + 1]) {
+      expect(() =>
+        allocateBetriebskosten(
+          input({
+            positions: [
+              pos({
+                id: 'heat',
+                category: 'HEATING',
+                heatSplit: heatSplit({
+                  minPermille: HEIZKG_STATUTORY_MIN_PERMILLE,
+                  maxPermille: HEIZKG_STATUTORY_MAX_PERMILLE,
+                  consumptionSplitPermille: outside,
+                }),
+              }),
+            ],
+          }),
+        ),
+      ).toThrow(/statutory envelope/)
+    }
+  })
+
+  it('keeps the Austrian default inside the statutory envelope', () => {
+    // A regression guard on the constants themselves.
+    expect(AUSTRIA_HEIZKG_MIN_PERMILLE).toBeGreaterThanOrEqual(HEIZKG_STATUTORY_MIN_PERMILLE)
+    expect(AUSTRIA_HEIZKG_MAX_PERMILLE).toBeLessThanOrEqual(HEIZKG_STATUTORY_MAX_PERMILLE)
   })
 
   it('a combined share is the exact sum of its two legs, per unit', () => {

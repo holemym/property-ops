@@ -32,6 +32,18 @@ export type IsoDate = string // 'YYYY-MM-DD'
 export const AUSTRIA_HEIZKG_MIN_PERMILLE = 550
 export const AUSTRIA_HEIZKG_MAX_PERMILLE = 750
 
+// The ABSOLUTE statutory envelope, independent of any caller-supplied bound: the union
+// of Austria's HeizKG 55-75% and Germany's HeizkostenV 50-70%. A jurisdiction may
+// NARROW its range within this; nothing may widen it. Without this, the bound check
+// below was circular -- it compared the operator's chosen split against the operator's
+// OWN chosen min/max, so minPermille:0 / maxPermille:1000 / consumptionSplitPermille:0
+// passed cleanly and produced a heating statement billed 100% on area and 0% on
+// measured consumption: precisely the unlawful pure-area heat statement this module
+// claims to make impossible (RLS-review CRITICAL). Mirrored by the DB constraints
+// settlement_allocation_rules_heat_split_bounds_sane / _consumption_pct_statutory (0032).
+export const HEIZKG_STATUTORY_MIN_PERMILLE = 500
+export const HEIZKG_STATUTORY_MAX_PERMILLE = 750
+
 /** One category's HEATING/HOT_WATER-only positions carry HEAT-category set of
  * unit-level measured consumption (U-B, migration 0032). `consumptionUnits:
  * null` = missing/invalid reading — BLOCKS the whole run (see
@@ -594,6 +606,22 @@ export function allocateBetriebskosten(input: AllocationInput): AllocationResult
           `allocateBetriebskosten: position '${p.id}' heatSplit.minPermille (${minPermille}) exceeds ` +
             `heatSplit.maxPermille (${maxPermille}).`,
         )
+      }
+      // Statutory envelope FIRST — checked against the law, not against the caller's
+      // own numbers, so a nonsense bound cannot authorise itself (see the constants).
+      for (const [label, value] of [
+        ['minPermille', minPermille],
+        ['maxPermille', maxPermille],
+        ['consumptionSplitPermille', hs.consumptionSplitPermille],
+      ] as const) {
+        if (value < HEIZKG_STATUTORY_MIN_PERMILLE || value > HEIZKG_STATUTORY_MAX_PERMILLE) {
+          throw new Error(
+            `allocateBetriebskosten: position '${p.id}' heatSplit.${label} (${value}) is outside the ` +
+              `statutory envelope [${HEIZKG_STATUTORY_MIN_PERMILLE}, ${HEIZKG_STATUTORY_MAX_PERMILLE}] ` +
+              `(HeizKG 55-75% Austria / HeizkostenV 50-70% Germany). A heat position may never be ` +
+              `billed outside a lawful consumption share.`,
+          )
+        }
       }
       assertPermille(`position '${p.id}' heatSplit.consumptionSplitPermille`, hs.consumptionSplitPermille)
       if (hs.consumptionSplitPermille < minPermille || hs.consumptionSplitPermille > maxPermille) {

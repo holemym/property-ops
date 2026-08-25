@@ -146,6 +146,7 @@ create index if not exists meters_workspace_property_idx
 create index if not exists meters_workspace_unit_idx
   on public.meters (workspace_id, unit_id) where unit_id is not null;
 
+drop trigger if exists meters_set_updated_at on public.meters;
 create trigger meters_set_updated_at
   before update on public.meters
   for each row execute function public.set_updated_at();
@@ -185,8 +186,56 @@ create trigger meters_unit_property_guard
   before insert or update on public.meters
   for each row execute function public.meters_unit_property_guard();
 
+-- RLS-review finding (0032): the guard above validates the unit/property pair at
+-- ATTACH time, but it only fires on writes to `meters` -- nothing re-validates it
+-- afterwards. `units_update_manager` (0009) carries no column restriction (RLS
+-- cannot restrict columns, and there is no column-level GRANT), and the app talks
+-- to PostgREST with the anon key, so `UpdateUnitInput` omitting propertyId is a
+-- TypeScript-only convention, not an enforced one: any workspace manager can PATCH
+-- /rest/v1/units and move a unit to another property. That leaves every meter on
+-- that unit carrying a now-stale `property_id`, silently feeding the OLD property's
+-- HeizKG settlement with the NEW property's measured consumption -- a misattributed
+-- legal billing document, and precisely the failure the guard above claims to
+-- prevent. The realistic trigger is not malice but a legitimate correction of a
+-- data-entry error.
+--
+-- BLOCK rather than cascade, deliberately: silently rewriting meters.property_id
+-- would move a meter into a different property's settlement with nobody noticing,
+-- which is worse for a document someone is legally accountable for. Detach or
+-- delete the meters first, then move the unit -- an explicit, auditable act.
+create or replace function public.units_property_move_guard()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_meter_count integer;
+begin
+  if new.property_id is not distinct from old.property_id then
+    return new;
+  end if;
+  select count(*) into v_meter_count
+    from public.meters
+   where unit_id = old.id and workspace_id = old.workspace_id;
+  if v_meter_count > 0 then
+    raise exception
+      'cannot move unit % to another property while % meter(s) are attached to it; detach or delete them first',
+      old.id, v_meter_count
+      using errcode = 'foreign_key_violation';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists units_property_move_guard on public.units;
+create trigger units_property_move_guard
+  before update on public.units
+  for each row execute function public.units_property_move_guard();
+
 alter table public.meters enable row level security;
 
+drop policy if exists "meters_select_finance" on public.meters;
 create policy "meters_select_finance"
   on public.meters for select
   using (
@@ -197,15 +246,18 @@ create policy "meters_select_finance"
     or public.current_role() = 'SUPER_ADMIN'
   );
 
+drop policy if exists "meters_insert_finance" on public.meters;
 create policy "meters_insert_finance"
   on public.meters for insert
   with check (workspace_id = public.current_workspace_id() and public.can_manage_finance());
 
+drop policy if exists "meters_update_finance" on public.meters;
 create policy "meters_update_finance"
   on public.meters for update
   using (workspace_id = public.current_workspace_id() and public.can_manage_finance())
   with check (workspace_id = public.current_workspace_id() and public.can_manage_finance());
 
+drop policy if exists "meters_delete_finance" on public.meters;
 create policy "meters_delete_finance"
   on public.meters for delete
   using (workspace_id = public.current_workspace_id() and public.can_manage_finance());
@@ -241,12 +293,14 @@ create table if not exists public.meter_readings (
     references public.meters (id, workspace_id) on delete cascade
 );
 
+drop trigger if exists meter_readings_set_updated_at on public.meter_readings;
 create trigger meter_readings_set_updated_at
   before update on public.meter_readings
   for each row execute function public.set_updated_at();
 
 alter table public.meter_readings enable row level security;
 
+drop policy if exists "meter_readings_select_finance" on public.meter_readings;
 create policy "meter_readings_select_finance"
   on public.meter_readings for select
   using (
@@ -257,15 +311,18 @@ create policy "meter_readings_select_finance"
     or public.current_role() = 'SUPER_ADMIN'
   );
 
+drop policy if exists "meter_readings_insert_finance" on public.meter_readings;
 create policy "meter_readings_insert_finance"
   on public.meter_readings for insert
   with check (workspace_id = public.current_workspace_id() and public.can_manage_finance());
 
+drop policy if exists "meter_readings_update_finance" on public.meter_readings;
 create policy "meter_readings_update_finance"
   on public.meter_readings for update
   using (workspace_id = public.current_workspace_id() and public.can_manage_finance())
   with check (workspace_id = public.current_workspace_id() and public.can_manage_finance());
 
+drop policy if exists "meter_readings_delete_finance" on public.meter_readings;
 create policy "meter_readings_delete_finance"
   on public.meter_readings for delete
   using (workspace_id = public.current_workspace_id() and public.can_manage_finance());
@@ -290,10 +347,19 @@ do $do$ begin
   alter table public.settlement_allocation_rules
     add constraint settlement_allocation_rules_heat_split_bounds_sane
     check (
+      -- RLS-review CRITICAL: these bounds used to be free-form 0..100, and the
+      -- in-bounds check below only tested the configured share against the
+      -- operator's OWN configured bound -- circular. min=0/max=100/split=0 passed
+      -- every constraint and produced a heating statement billed 100% on area and
+      -- 0% on measured consumption: exactly the unlawful pure-area heat statement
+      -- HeizKG section 4 forbids and this migration claims to prevent. The bounds are
+      -- now clamped to the STATUTORY ENVELOPE [50, 75] -- the union of Austria's
+      -- HeizKG 55-75 and Germany's HeizkostenV 50-70 -- so a jurisdiction may NARROW
+      -- the range but nobody can widen it into an unlawful configuration.
       heat_split_min_pct is null or heat_split_max_pct is null
       or (
-        heat_split_min_pct >= 0 and heat_split_min_pct <= 100
-        and heat_split_max_pct >= 0 and heat_split_max_pct <= 100
+        heat_split_min_pct >= 50 and heat_split_min_pct <= 75
+        and heat_split_max_pct >= 50 and heat_split_max_pct <= 75
         and heat_split_min_pct <= heat_split_max_pct
       )
     );
@@ -307,6 +373,18 @@ do $do$ begin
       consumption_split_pct is null
       or heat_split_min_pct is null or heat_split_max_pct is null
       or (consumption_split_pct >= heat_split_min_pct and consumption_split_pct <= heat_split_max_pct)
+    );
+exception when duplicate_object then null; end $do$;
+
+-- ...and, independently of ANY operator-supplied bound, the share itself must sit
+-- inside the statutory envelope. Belt-and-braces with the clamped bounds above: this
+-- one still holds if a future migration ever loosens or drops them.
+do $do$ begin
+  alter table public.settlement_allocation_rules
+    add constraint settlement_allocation_rules_consumption_pct_statutory
+    check (
+      consumption_split_pct is null
+      or (consumption_split_pct >= 50 and consumption_split_pct <= 75)
     );
 exception when duplicate_object then null; end $do$;
 
