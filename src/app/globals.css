@@ -174,3 +174,39 @@
 .leaflet-tile-pane {
   filter: grayscale(0.85) contrast(0.9);
 }
+/* ---------------------------------------------------------------------------
+   Skeleton sheen — the "gray wireframe" loading treatment.
+
+   A single slow highlight sweeps left-to-right across the placeholder instead of
+   every block flashing in unison (`animate-pulse`), which reads as one surface
+   loading rather than a page full of blinking boxes. Driven by background-position
+   so it composites on the GPU and never triggers layout.
+
+   The global prefers-reduced-motion guard above already flattens the animation, but
+   that would freeze the gradient mid-sweep and leave an arbitrary bright band — so
+   the highlight is removed outright there, leaving a flat, still muted block.
+   --------------------------------------------------------------------------- */
+@keyframes skeleton-sheen {
+  from { background-position: 150% 0; }
+  to   { background-position: -150% 0; }
+}
+
+.skeleton {
+  background-color: var(--muted);
+  background-image: linear-gradient(
+    90deg,
+    transparent 20%,
+    color-mix(in oklch, var(--foreground) 7%, transparent) 50%,
+    transparent 80%
+  );
+  background-size: 250% 100%;
+  background-repeat: no-repeat;
+  animation: skeleton-sheen 1.8s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    background-image: none;
+    animation: none;
+  }
+}
