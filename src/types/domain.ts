@@ -281,3 +281,52 @@ export type AuthEventType =
 // src/lib/data/announcements.ts, following the tenants (0025) / notifications
 // (0026) / auth-events (0028) precedent for recently-added entities.
 export type AnnouncementStatus = 'DRAFT' | 'PUBLISHED'
+
+// Betriebskosten U-A (migration 0031, product-deepening plan §4). MRG section 21
+// exhaustively lists which operating costs may be passed through to tenants —
+// this enum encodes that catalog. DELIBERATELY NO 'OTHER' MEMBER (unlike every
+// other category enum in this file): an escape hatch would defeat the entire
+// compliance point, since "anything I can't classify" is exactly how a
+// non-passable cost (a repair, a bank fee, a lawyer's invoice) would sneak onto
+// a statement. HEATING/HOT_WATER are also deliberately absent — those are
+// HeizKG, not MRG section 21, and need a measured-consumption basis (U-B) that
+// this slice does not implement; admitting them here with only an area basis
+// available would let an operator produce a facially-valid but unlawful heat
+// split. See src/lib/betriebskosten/catalog.ts for the reviewable per-category
+// legal-basis/consent/cap metadata (kept in code, not the DB, same split as
+// every other enum's semantics in this schema).
+export type OperatingCostCategory =
+  | 'WATER_SEWER'
+  | 'DRAIN_CLEANING'
+  | 'WASTE_DISPOSAL'
+  | 'PEST_CONTROL'
+  | 'CHIMNEY_SWEEP'
+  | 'COMMON_ELECTRICITY'
+  | 'INSURANCE_FIRE'
+  | 'INSURANCE_LIABILITY'
+  | 'INSURANCE_WATER_DAMAGE'
+  | 'INSURANCE_OTHER'
+  | 'PUBLIC_CHARGES'
+  | 'MANAGEMENT_FEE'
+  | 'CARETAKER'
+  | 'CLEANING'
+  | 'SNOW_REMOVAL'
+  | 'GARDEN_MAINTENANCE'
+  | 'ELEVATOR'
+  | 'COMMON_FACILITY_OTHER'
+
+// The MRG section 17 default distribution key (USABLE_AREA = Nutzflaeche-
+// proportional) plus PER_UNIT (equal split — legitimate for some section 24
+// Gemeinschaftsanlagen by agreement). CONSUMPTION / HEATED_AREA (HeizKG) are a
+// U-B seam, added later via `alter type ... add value` — never in the same
+// migration/transaction as code that references them (Postgres forbids using a
+// freshly-added enum value in the transaction that added it).
+export type AllocationBasis = 'USABLE_AREA' | 'PER_UNIT'
+
+// A settlement period's lifecycle (migration 0031). DRAFT = being assembled;
+// ALLOCATED = an allocation run has been persisted (preview, still editable);
+// FINALIZED = locked — the settlement_child_lock_guard trigger rejects any
+// insert/update/delete on the period's cost positions/rules/allocations from
+// this point on, for every role; VOID = superseded, also locked (never deleted,
+// same convention as invoices — 0019).
+export type SettlementStatus = 'DRAFT' | 'ALLOCATED' | 'FINALIZED' | 'VOID'

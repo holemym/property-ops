@@ -360,6 +360,28 @@ create table if not exists public.units (
 create index if not exists units_workspace_id_idx on public.units (workspace_id);
 create index if not exists units_property_id_idx on public.units (property_id);
 
+-- usable_area_m2 (0031, Betriebskosten U-A) — Nutzflaeche, the MRG section 17
+-- allocation key. A NEW column, NOT a reuse of size_m2 above (see 0031's
+-- header: size_m2 is untyped/freely-entered, Nutzflaeche is legally defined).
+-- NULL = not yet surveyed, never "excluded from the key". `alter table ... add
+-- column if not exists` (not inline in the create table above) because that
+-- create table is itself `if not exists` and would otherwise never apply this
+-- column to an already-existing units table — same idiom as billing_period
+-- (0027) / geocoding columns (0024) below.
+alter table public.units add column if not exists usable_area_m2 numeric;
+
+do $do$ begin
+  alter table public.units
+    add constraint units_usable_area_positive
+    check (usable_area_m2 is null or usable_area_m2 > 0);
+exception when duplicate_object or duplicate_table then null; end $do$;
+
+-- Feeds the U-A pre-run validation "which units of this property still lack a
+-- Nutzflaeche" (0031).
+create index if not exists units_missing_usable_area_idx
+  on public.units (workspace_id, property_id)
+  where usable_area_m2 is null;
+
 drop trigger if exists units_set_updated_at on public.units;
 create trigger units_set_updated_at
   before update on public.units
@@ -1048,6 +1070,15 @@ create table if not exists public.documents (
     references public.tickets (id, workspace_id) on delete cascade
 );
 
+-- documents_id_workspace_unique (0031, Betriebskosten U-A) — additive prerequisite
+-- so settlement_cost_positions.document_id can composite-FK back to documents.
+-- documents is the only one of properties/units/vendors/tickets/tenancies/
+-- invoices/tenants/documents that didn't already carry unique(id, workspace_id).
+do $do$ begin
+  alter table public.documents
+    add constraint documents_id_workspace_unique unique (id, workspace_id);
+exception when duplicate_object or duplicate_table then null; end $do$;
+
 create index if not exists documents_workspace_id_idx on public.documents (workspace_id);
 
 drop trigger if exists documents_set_updated_at on public.documents;
@@ -1417,6 +1448,15 @@ begin
   delete from public.tenancies where workspace_id = demo_ws;
   delete from public.tenants where workspace_id = demo_ws;
   delete from public.tickets where workspace_id = demo_ws;
+  -- Betriebskosten U-A (0031) — children before parents: unit_allocations
+  -- references BOTH settlement_periods and units; allocation_rules and
+  -- cost_positions reference settlement_periods; settlement_periods references
+  -- properties. No demo seed rows are added for these (operator-only, nothing
+  -- to demo yet) — only the wipe needs to happen, same as notifications (0026).
+  delete from public.settlement_unit_allocations where workspace_id = demo_ws;
+  delete from public.settlement_allocation_rules where workspace_id = demo_ws;
+  delete from public.settlement_cost_positions where workspace_id = demo_ws;
+  delete from public.settlement_periods where workspace_id = demo_ws;
   delete from public.units where workspace_id = demo_ws;
   delete from public.vendors where workspace_id = demo_ws;
   delete from public.properties where workspace_id = demo_ws;
@@ -1996,14 +2036,392 @@ create policy "announcements_update_manager"
 -- full smoke-test list (23 scenarios across sections A-D).
 
 -- =============================================================================
+-- BETRIEBSKOSTEN U-A (0031) — Austrian annual operating-cost settlement core,
+-- OPERATOR-ONLY (finance-scoped RLS, no tenant-facing policy — that is U-C's
+-- job). Four new tables (settlement_periods, settlement_cost_positions,
+-- settlement_allocation_rules, settlement_unit_allocations) + units.usable_area_m2
+-- (Nutzflaeche, MRG section 17 key) + the section 21 chargeable-cost catalog
+-- enum (deliberately no 'OTHER' member — see migration 0031 for the full legal
+-- spine and every risk/rationale note; this section is a byte-for-byte fold).
+-- =============================================================================
+
+do $do$ begin
+  create type public.operating_cost_category as enum (
+    'WATER_SEWER','DRAIN_CLEANING','WASTE_DISPOSAL','PEST_CONTROL','CHIMNEY_SWEEP',
+    'COMMON_ELECTRICITY','INSURANCE_FIRE','INSURANCE_LIABILITY',
+    'INSURANCE_WATER_DAMAGE','INSURANCE_OTHER','PUBLIC_CHARGES','MANAGEMENT_FEE',
+    'CARETAKER','CLEANING','SNOW_REMOVAL','GARDEN_MAINTENANCE','ELEVATOR',
+    'COMMON_FACILITY_OTHER'
+  );
+exception when duplicate_object then null; end $do$;
+
+do $do$ begin
+  create type public.allocation_basis as enum ('USABLE_AREA', 'PER_UNIT');
+exception when duplicate_object then null; end $do$;
+
+do $do$ begin
+  create type public.settlement_status as enum ('DRAFT', 'ALLOCATED', 'FINALIZED', 'VOID');
+exception when duplicate_object then null; end $do$;
+
+create table if not exists public.settlement_periods (
+  id uuid primary key default gen_random_uuid(),
+  workspace_id uuid not null references public.workspaces (id) on delete cascade,
+  property_id uuid not null,
+  label text not null,
+  period_start date not null,
+  period_end   date not null,
+  currency text not null default 'EUR',
+  status public.settlement_status not null default 'DRAFT',
+  disclosure_deadline date,
+  finalized_at timestamptz,
+  finalized_by_user_id uuid references public.profiles (id),
+  notes text,
+  created_by_user_id uuid not null references public.profiles (id),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint settlement_periods_id_workspace_unique unique (id, workspace_id),
+  constraint settlement_periods_property_range_unique
+    unique (workspace_id, property_id, period_start, period_end),
+  constraint settlement_periods_range_valid
+    check (period_end > period_start and period_end - period_start <= 366),
+  constraint settlement_periods_property_fk
+    foreign key (property_id, workspace_id)
+    references public.properties (id, workspace_id) on delete cascade
+);
+
+create index if not exists settlement_periods_workspace_property_idx
+  on public.settlement_periods (workspace_id, property_id, period_start desc);
+create index if not exists settlement_periods_workspace_status_idx
+  on public.settlement_periods (workspace_id, status);
+
+drop trigger if exists settlement_periods_set_updated_at on public.settlement_periods;
+create trigger settlement_periods_set_updated_at
+  before update on public.settlement_periods
+  for each row execute function public.set_updated_at();
+
+create table if not exists public.settlement_cost_positions (
+  id uuid primary key default gen_random_uuid(),
+  workspace_id uuid not null references public.workspaces (id) on delete cascade,
+  settlement_period_id uuid not null,
+  category public.operating_cost_category not null,
+  amount numeric not null,
+  paid_on date not null,
+  service_period_start date,
+  service_period_end   date,
+  supplier_name text,
+  description text,
+  note text,
+  document_id uuid,
+  created_by_user_id uuid not null references public.profiles (id),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint settlement_cost_positions_amount_nonneg check (amount >= 0),
+  constraint settlement_cost_positions_service_range
+    check (service_period_end is null or service_period_start is null
+           or service_period_end >= service_period_start),
+  constraint settlement_cost_positions_period_fk
+    foreign key (settlement_period_id, workspace_id)
+    references public.settlement_periods (id, workspace_id) on delete cascade,
+  constraint settlement_cost_positions_document_fk
+    foreign key (document_id, workspace_id)
+    references public.documents (id, workspace_id) on delete set null
+);
+
+create index if not exists settlement_cost_positions_period_category_idx
+  on public.settlement_cost_positions (workspace_id, settlement_period_id, category);
+
+drop trigger if exists settlement_cost_positions_set_updated_at on public.settlement_cost_positions;
+create trigger settlement_cost_positions_set_updated_at
+  before update on public.settlement_cost_positions
+  for each row execute function public.set_updated_at();
+
+create table if not exists public.settlement_allocation_rules (
+  id uuid primary key default gen_random_uuid(),
+  workspace_id uuid not null references public.workspaces (id) on delete cascade,
+  settlement_period_id uuid not null,
+  category public.operating_cost_category,
+  basis public.allocation_basis not null default 'USABLE_AREA',
+  owner_deduction_pct numeric not null default 0,
+  consumption_split_pct numeric,
+  base_split_basis public.allocation_basis,
+  note text,
+  created_by_user_id uuid not null references public.profiles (id),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint settlement_allocation_rules_owner_pct_range
+    check (owner_deduction_pct >= 0 and owner_deduction_pct <= 100),
+  constraint settlement_allocation_rules_consumption_pct_range
+    check (consumption_split_pct is null
+           or (consumption_split_pct >= 0 and consumption_split_pct <= 100)),
+  constraint settlement_allocation_rules_period_fk
+    foreign key (settlement_period_id, workspace_id)
+    references public.settlement_periods (id, workspace_id) on delete cascade
+);
+
+create unique index if not exists settlement_allocation_rules_default_unique
+  on public.settlement_allocation_rules (workspace_id, settlement_period_id)
+  where category is null;
+create unique index if not exists settlement_allocation_rules_category_unique
+  on public.settlement_allocation_rules (workspace_id, settlement_period_id, category)
+  where category is not null;
+
+drop trigger if exists settlement_allocation_rules_set_updated_at on public.settlement_allocation_rules;
+create trigger settlement_allocation_rules_set_updated_at
+  before update on public.settlement_allocation_rules
+  for each row execute function public.set_updated_at();
+
+create table if not exists public.settlement_unit_allocations (
+  id uuid primary key default gen_random_uuid(),
+  workspace_id uuid not null references public.workspaces (id) on delete cascade,
+  settlement_period_id uuid not null,
+  unit_id uuid not null,
+  category public.operating_cost_category not null,
+  basis public.allocation_basis not null,
+  category_gross_amount numeric not null,
+  owner_deduction_pct numeric not null default 0,
+  allocatable_amount numeric not null,
+  unit_basis_value numeric not null,
+  total_basis_value numeric not null,
+  share_pct numeric generated always as (
+    case when total_basis_value = 0 then 0
+         else unit_basis_value / total_basis_value * 100 end
+  ) stored,
+  amount numeric not null,
+  computed_at timestamptz not null default now(),
+  computed_by_user_id uuid not null references public.profiles (id),
+  constraint settlement_unit_allocations_id_workspace_unique unique (id, workspace_id),
+  constraint settlement_unit_allocations_grain_unique
+    unique (workspace_id, settlement_period_id, unit_id, category),
+  constraint settlement_unit_allocations_total_basis_positive
+    check (total_basis_value > 0),
+  constraint settlement_unit_allocations_unit_basis_nonneg
+    check (unit_basis_value >= 0),
+  constraint settlement_unit_allocations_owner_pct_range
+    check (owner_deduction_pct >= 0 and owner_deduction_pct <= 100),
+  constraint settlement_unit_allocations_period_fk
+    foreign key (settlement_period_id, workspace_id)
+    references public.settlement_periods (id, workspace_id) on delete cascade,
+  constraint settlement_unit_allocations_unit_fk
+    foreign key (unit_id, workspace_id)
+    references public.units (id, workspace_id) on delete cascade
+);
+
+create index if not exists settlement_unit_allocations_workspace_unit_idx
+  on public.settlement_unit_allocations (workspace_id, unit_id);
+
+-- --- Finalization lock — trigger guards (section 7 of migration 0031) --------
+create or replace function public.settlement_period_is_locked(p_period_id uuid, p_workspace_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1 from public.settlement_periods
+    where id = p_period_id and workspace_id = p_workspace_id
+      and status in ('FINALIZED', 'VOID')
+  )
+$$;
+
+-- RLS-review finding (0031, cross-workspace lens): this helper is SECURITY DEFINER
+-- and is NOT referenced from any USING/WITH CHECK clause -- its only caller is the
+-- settlement_child_lock_guard() trigger below. Without an explicit revoke it keeps
+-- Postgres's default PUBLIC EXECUTE grant, so PostgREST auto-exposes it as
+-- rpc/settlement_period_is_locked, callable by anon/authenticated. Because it is
+-- SECURITY DEFINER it bypasses RLS, so any caller supplying a (period_id,
+-- workspace_id) pair from ANOTHER workspace could learn whether that period is
+-- FINALIZED/VOID -- a cross-workspace authorization leak. Same revoke+grant pair as
+-- log_ticket_event (0012), check_rate_limit (0022) and reset_demo_workspace (0023).
+-- The trigger's internal call is unaffected: function-to-function calls are checked
+-- against the definer/owner's privileges, not PUBLIC's. (The two trigger-returning
+-- guards below need no revoke -- Postgres refuses to execute a `returns trigger`
+-- function outside trigger context and PostgREST does not expose them as RPC, which
+-- is why set_updated_at() and friends carry none either.)
+revoke execute on function public.settlement_period_is_locked(uuid, uuid) from public;
+grant execute on function public.settlement_period_is_locked(uuid, uuid) to service_role;
+
+create or replace function public.settlement_child_lock_guard()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_period uuid;
+  v_ws uuid;
+begin
+  v_period := coalesce(new.settlement_period_id, old.settlement_period_id);
+  v_ws     := coalesce(new.workspace_id, old.workspace_id);
+  if public.settlement_period_is_locked(v_period, v_ws) then
+    raise exception 'settlement period is finalized: % on % is not permitted', tg_op, tg_table_name
+      using errcode = 'restrict_violation';
+  end if;
+  return coalesce(new, old);
+end;
+$$;
+
+drop trigger if exists settlement_cost_positions_lock_guard on public.settlement_cost_positions;
+create trigger settlement_cost_positions_lock_guard
+  before insert or update or delete on public.settlement_cost_positions
+  for each row execute function public.settlement_child_lock_guard();
+
+drop trigger if exists settlement_allocation_rules_lock_guard on public.settlement_allocation_rules;
+create trigger settlement_allocation_rules_lock_guard
+  before insert or update or delete on public.settlement_allocation_rules
+  for each row execute function public.settlement_child_lock_guard();
+
+drop trigger if exists settlement_unit_allocations_lock_guard on public.settlement_unit_allocations;
+create trigger settlement_unit_allocations_lock_guard
+  before insert or update or delete on public.settlement_unit_allocations
+  for each row execute function public.settlement_child_lock_guard();
+
+create or replace function public.settlement_cost_position_period_guard()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_start date;
+  v_end date;
+begin
+  select period_start, period_end into v_start, v_end
+    from public.settlement_periods
+   where id = new.settlement_period_id and workspace_id = new.workspace_id;
+  if v_start is not null and (new.paid_on < v_start or new.paid_on > v_end) then
+    raise exception 'paid_on % is outside the settlement period % .. % (Abflussprinzip: a cost belongs to the year it was PAID)',
+      new.paid_on, v_start, v_end using errcode = 'check_violation';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists settlement_cost_positions_period_guard on public.settlement_cost_positions;
+create trigger settlement_cost_positions_period_guard
+  before insert or update on public.settlement_cost_positions
+  for each row execute function public.settlement_cost_position_period_guard();
+
+-- --- RLS: finance-scoped (0019 invoices shape), NO tenant policy in this slice --
+alter table public.settlement_periods enable row level security;
+
+drop policy if exists "settlement_periods_select_finance" on public.settlement_periods;
+create policy "settlement_periods_select_finance"
+  on public.settlement_periods for select
+  using (
+    (workspace_id = public.current_workspace_id()
+       and public.current_role() in ('SUPER_ADMIN', 'OWNER', 'OPERATOR', 'ACCOUNTANT'))
+    or public.current_role() = 'SUPER_ADMIN'
+  );
+
+drop policy if exists "settlement_periods_insert_finance" on public.settlement_periods;
+create policy "settlement_periods_insert_finance"
+  on public.settlement_periods for insert
+  with check (workspace_id = public.current_workspace_id() and public.can_manage_finance());
+
+drop policy if exists "settlement_periods_update_finance" on public.settlement_periods;
+create policy "settlement_periods_update_finance"
+  on public.settlement_periods for update
+  using (workspace_id = public.current_workspace_id() and public.can_manage_finance())
+  with check (workspace_id = public.current_workspace_id() and public.can_manage_finance());
+
+alter table public.settlement_cost_positions enable row level security;
+
+drop policy if exists "settlement_cost_positions_select_finance" on public.settlement_cost_positions;
+create policy "settlement_cost_positions_select_finance"
+  on public.settlement_cost_positions for select
+  using (
+    (workspace_id = public.current_workspace_id()
+       and public.current_role() in ('SUPER_ADMIN', 'OWNER', 'OPERATOR', 'ACCOUNTANT'))
+    or public.current_role() = 'SUPER_ADMIN'
+  );
+
+drop policy if exists "settlement_cost_positions_insert_finance" on public.settlement_cost_positions;
+create policy "settlement_cost_positions_insert_finance"
+  on public.settlement_cost_positions for insert
+  with check (workspace_id = public.current_workspace_id() and public.can_manage_finance());
+
+drop policy if exists "settlement_cost_positions_update_finance" on public.settlement_cost_positions;
+create policy "settlement_cost_positions_update_finance"
+  on public.settlement_cost_positions for update
+  using (workspace_id = public.current_workspace_id() and public.can_manage_finance())
+  with check (workspace_id = public.current_workspace_id() and public.can_manage_finance());
+
+drop policy if exists "settlement_cost_positions_delete_finance" on public.settlement_cost_positions;
+create policy "settlement_cost_positions_delete_finance"
+  on public.settlement_cost_positions for delete
+  using (workspace_id = public.current_workspace_id() and public.can_manage_finance());
+
+alter table public.settlement_allocation_rules enable row level security;
+
+drop policy if exists "settlement_allocation_rules_select_finance" on public.settlement_allocation_rules;
+create policy "settlement_allocation_rules_select_finance"
+  on public.settlement_allocation_rules for select
+  using (
+    (workspace_id = public.current_workspace_id()
+       and public.current_role() in ('SUPER_ADMIN', 'OWNER', 'OPERATOR', 'ACCOUNTANT'))
+    or public.current_role() = 'SUPER_ADMIN'
+  );
+
+drop policy if exists "settlement_allocation_rules_insert_finance" on public.settlement_allocation_rules;
+create policy "settlement_allocation_rules_insert_finance"
+  on public.settlement_allocation_rules for insert
+  with check (workspace_id = public.current_workspace_id() and public.can_manage_finance());
+
+drop policy if exists "settlement_allocation_rules_update_finance" on public.settlement_allocation_rules;
+create policy "settlement_allocation_rules_update_finance"
+  on public.settlement_allocation_rules for update
+  using (workspace_id = public.current_workspace_id() and public.can_manage_finance())
+  with check (workspace_id = public.current_workspace_id() and public.can_manage_finance());
+
+drop policy if exists "settlement_allocation_rules_delete_finance" on public.settlement_allocation_rules;
+create policy "settlement_allocation_rules_delete_finance"
+  on public.settlement_allocation_rules for delete
+  using (workspace_id = public.current_workspace_id() and public.can_manage_finance());
+
+alter table public.settlement_unit_allocations enable row level security;
+
+drop policy if exists "settlement_unit_allocations_select_finance" on public.settlement_unit_allocations;
+create policy "settlement_unit_allocations_select_finance"
+  on public.settlement_unit_allocations for select
+  using (
+    (workspace_id = public.current_workspace_id()
+       and public.current_role() in ('SUPER_ADMIN', 'OWNER', 'OPERATOR', 'ACCOUNTANT'))
+    or public.current_role() = 'SUPER_ADMIN'
+  );
+
+drop policy if exists "settlement_unit_allocations_insert_finance" on public.settlement_unit_allocations;
+create policy "settlement_unit_allocations_insert_finance"
+  on public.settlement_unit_allocations for insert
+  with check (workspace_id = public.current_workspace_id() and public.can_manage_finance());
+
+drop policy if exists "settlement_unit_allocations_update_finance" on public.settlement_unit_allocations;
+create policy "settlement_unit_allocations_update_finance"
+  on public.settlement_unit_allocations for update
+  using (workspace_id = public.current_workspace_id() and public.can_manage_finance())
+  with check (workspace_id = public.current_workspace_id() and public.can_manage_finance());
+
+drop policy if exists "settlement_unit_allocations_delete_finance" on public.settlement_unit_allocations;
+create policy "settlement_unit_allocations_delete_finance"
+  on public.settlement_unit_allocations for delete
+  using (workspace_id = public.current_workspace_id() and public.can_manage_finance());
+
+-- No tenant policy anywhere above — U-C's job (see migration 0031 for the
+-- specified seam: an additive policy routed through a dedicated SECURITY
+-- DEFINER helper, never an inline EXISTS against tenancies/units). See
+-- migration 0031 for the full 12-scenario smoke-test list.
+
+-- =============================================================================
 -- DEFERRED DEMO SEED — must run LAST (see the note in the DEMO MODE section).
 -- reset_demo_workspace() wipes+reseeds the demo workspace, deleting from
--- public.tenants (0025), public.notifications (0026), and public.announcements
--- (0030); all are created in sections above, so this seed call only succeeds here
--- at the end. Idempotent (wipe+reseed), so re-running the whole bundle is safe.
+-- public.tenants (0025), public.notifications (0026), public.announcements
+-- (0030), and the four Betriebskosten U-A settlement_* tables (0031, wipe-only,
+-- no seed rows); all are created in sections above, so this seed call only
+-- succeeds here at the end. Idempotent (wipe+reseed), so re-running the whole
+-- bundle is safe.
 -- =============================================================================
 select public.reset_demo_workspace();
 
 -- =============================================================================
--- DONE. Verify: select count(*) from pg_tables where schemaname='public';  -- expect 21
+-- DONE. Verify: select count(*) from pg_tables where schemaname='public';  -- expect 25
 -- =============================================================================

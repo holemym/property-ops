@@ -39,9 +39,10 @@ export function createFakeSupabaseClient(seed: Record<string, Row[]> = {}) {
     if (!tables[table]) tables[table] = []
     const filters: Array<[string, any]> = []
     const notEqFilters: Array<[string, any]> = []
-    let op: 'select' | 'insert' | 'update' = 'select'
+    let op: 'select' | 'insert' | 'update' | 'delete' = 'select'
     let payload: Row | null = null
     let single = false
+    let maybeSingle = false
     let orderBy: string | null = null
     let ascending = true
     let orFilter: string | null = null
@@ -78,13 +79,28 @@ export function createFakeSupabaseClient(seed: Record<string, Row[]> = {}) {
       // pagination needed). Applied AFTER sort, like Postgrest's own LIMIT.
       limit(n: number) { limitTo = n; return api },
       single() { single = true; return api },
-      insert(row: Row) { op = 'insert'; payload = row; return api },
+      // `.maybeSingle()` — added minimally for the Betriebskosten U-A data layer
+      // (settlements.ts's setAllocationRule select-then-upsert): same "take the
+      // first match" shape as `.single()`, but resolves `{ data: null, error:
+      // null }` (no error) when zero rows match, instead of `.single()`'s
+      // synthetic not-found error.
+      maybeSingle() { maybeSingle = true; return api },
+      insert(row: Row | Row[]) { op = 'insert'; payload = row as Row; return api },
       update(row: Row) { op = 'update'; payload = row; return api },
+      // `.delete()` — added minimally for the Betriebskosten U-A data layer
+      // (settlements.ts's persistAllocationRun re-run: delete-then-reinsert).
+      delete() { op = 'delete'; return api },
       then(resolve: (v: { data: any; error: any; count?: number }) => void) {
         if (op === 'insert') {
-          const newRow = { id: `fake-${idCounter++}`, created_at: new Date().toISOString(), updated_at: new Date().toISOString(), ...payload }
-          tables[table].push(newRow)
-          resolve({ data: single ? newRow : [newRow], error: null })
+          const rows = Array.isArray(payload) ? payload : [payload as Row]
+          const newRows = rows.map((row) => ({
+            id: `fake-${idCounter++}`,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            ...row,
+          }))
+          tables[table].push(...newRows)
+          resolve({ data: single ? newRows[0] : newRows, error: null })
           return
         }
         if (op === 'update') {
@@ -92,6 +108,12 @@ export function createFakeSupabaseClient(seed: Record<string, Row[]> = {}) {
           targets.forEach((r) => Object.assign(r, payload, { updated_at: new Date().toISOString() }))
           if (single && targets.length === 0) { resolve({ data: null, error: new Error('not found') }); return }
           resolve({ data: single ? targets[0] : targets, error: null })
+          return
+        }
+        if (op === 'delete') {
+          const targets = tables[table].filter((r) => matches(r, filters))
+          tables[table] = tables[table].filter((r) => !matches(r, filters))
+          resolve({ data: targets, error: null })
           return
         }
         let found = tables[table].filter(
@@ -115,6 +137,7 @@ export function createFakeSupabaseClient(seed: Record<string, Row[]> = {}) {
           found = found.slice(0, limitTo)
         }
         if (single && found.length === 0) { resolve({ data: null, error: new Error('not found') }); return }
+        if (maybeSingle) { resolve({ data: found[0] ?? null, error: null }); return }
         resolve({ data: single ? found[0] : found, error: null, count: wantCount ? matchedCount : undefined })
       },
     }

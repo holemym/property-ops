@@ -9,6 +9,10 @@ export type Unit = {
   floor: string | null
   staircase: string | null
   size_m2: number | null
+  // Nutzflaeche (migration 0031, Betriebskosten U-A) — the MRG section 17
+  // allocation key. NOT a fallback for size_m2 (see 0031's header): NULL means
+  // "not yet surveyed", never "excluded from the key".
+  usable_area_m2: number | null
   room_count: number | null
   occupancy_type: OccupancyType
   status: UnitStatus
@@ -56,6 +60,7 @@ export type CreateUnitInput = {
   floor?: string | null
   staircase?: string | null
   sizeM2?: number | null
+  usableAreaM2?: number | null
   roomCount?: number | null
   occupancyType: OccupancyType
   status?: UnitStatus
@@ -78,6 +83,7 @@ export async function createUnit(
       floor: input.floor ?? null,
       staircase: input.staircase ?? null,
       size_m2: input.sizeM2 ?? null,
+      usable_area_m2: input.usableAreaM2 ?? null,
       room_count: input.roomCount ?? null,
       occupancy_type: input.occupancyType,
       status: input.status ?? 'VACANT',
@@ -111,6 +117,7 @@ export async function updateUnit(
   if (input.floor !== undefined) payload.floor = input.floor
   if (input.staircase !== undefined) payload.staircase = input.staircase
   if (input.sizeM2 !== undefined) payload.size_m2 = input.sizeM2
+  if (input.usableAreaM2 !== undefined) payload.usable_area_m2 = input.usableAreaM2
   if (input.roomCount !== undefined) payload.room_count = input.roomCount
   if (input.occupancyType !== undefined) payload.occupancy_type = input.occupancyType
   if (input.status !== undefined) payload.status = input.status
