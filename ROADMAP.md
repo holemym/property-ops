@@ -18,9 +18,20 @@ pure §17 area allocation (integer cents, largest-remainder, fail-closed on unkn
 Three adversarial reviews caught 4 real defects, all fixed pre-push — including two money
 bugs that **conserved to the cent and so passed every sum-based test** (a duplicated
 `participatingUnitIds` entry double-weighted a unit; an empty list vanished a position's
-cost). **NEXT: U-B** (meters + readings + consumption basis + the HeizKG 55–75% measured
-heat split), then **U-C** (advance payments + annual Nachzahlung/Guthaben + portal
-statement), then the operator UI (config, reading entry, allocation-run wizard).
+cost).
+
+**U-B Betriebskosten committed locally, NOT PUSHED** (migration **0032**, 598 tests —
+see Track U above for the full entry). Meters + readings + measured-consumption basis +
+the HeizKG 55–75% heat split (configurable per rule, defaults to Austria; Germany's
+HeizkostenV 50–70% reachable by override). `HEATING`/`HOT_WATER` unlocked in the category
+catalog, structurally forced through the split (a DB CHECK constraint AND a redundant THROW
+inside the pure engine — the engine catches the one case the DB constraint cannot: a heat
+category with no override rule at all). **`[rls]`-tagged — needs the 3-lens adversarial
+review before this deploys**, so it was deliberately left unpushed; do that review, then
+push, then run migration 0032 (queued below) before the U-B operator UI can go live.
+**NEXT: U-C** (advance payments + annual Nachzahlung/Guthaben + portal statement, needs a
+`[plan]` pass first — not started), and/or the U-A+U-B operator UI (config, reading entry,
+allocation-run wizard) whenever that's prioritized ahead of U-C.
 Design: `docs/superpowers/plans/2026-07-19-product-deepening.md` §4.
 
 **⚠ PENDING USER SQL:** migrations **0029 + 0030** (tenant portal) may still be unapplied —
@@ -1015,6 +1026,61 @@ in the USER-action list below, same as every other migration since 0022.
       depends on the still-queued "Run migration 0030" USER action below before
       any of this shows real data live.)*
 
+## Track U — Betriebskosten (Utility billing engine)
+Spec: `docs/superpowers/plans/2026-07-19-product-deepening.md` §4. The user
+signed off on **Austrian/DACH-first, full U-A+U-B+U-C** — that sign-off gate is
+LIFTED (see HANDOVER above). Operator-only in every slice so far; no
+tenant-facing RLS until U-C. Sequencing: U-A (annual area-based core) → U-B
+(meters + measured consumption + the HeizKG heat split) → U-C (advance
+payments + annual Nachzahlung/Guthaben + tenant-portal statement, NOT started).
+
+- [x] **U-A** `[builder]` `[rls]` — Migration 0031: `units.usable_area_m2` +
+      `settlement_periods`/`_cost_positions`/`_allocation_rules`/
+      `_unit_allocations` + `operating_cost_category`/`allocation_basis`/
+      `settlement_status` enums + the pure §17 MRG area allocator
+      (`src/lib/betriebskosten/allocate.ts`). RLS-reviewed CLEAN across three
+      lenses after four fixes. *(committed `fc5fd99`, 551 tests. Still queued in
+      the USER-action list below — "Run migration 0031".)*
+- [x] **U-B** `[builder]` `[rls]` — Migration 0032: `meters` + `meter_readings`
+      tables (`meter_kind`/`meter_reading_source` enums), unlocks
+      `HEATING`/`HOT_WATER` in `operating_cost_category` and adds `CONSUMPTION`
+      to `allocation_basis`, activates `settlement_allocation_rules`' U-B seam
+      columns (`consumption_split_pct`/`base_split_basis`) and adds
+      `heat_split_min_pct`/`heat_split_max_pct` (default 55/75, the Austrian
+      HeizKG range — overridable per rule, e.g. to Germany's HeizkostenV 50/70).
+      **Depends: U-A (0031).**
+      New pure logic: `src/lib/betriebskosten/consumption.ts` (meter reading ->
+      consumption, fail-closed on a missing baseline/no-reading-in-period/
+      negative delta); `allocate.ts` extended with a `CONSUMPTION` basis and the
+      HeizKG two-leg heat split (`HeatSplitConfig`, `AUSTRIA_HEIZKG_MIN_PERMILLE`
+      /`MAX_PERMILLE` = 550/750), both reusing `apportionByWeight` so shares
+      still provably sum to the allocatable total, both fail-closed on missing/
+      negative/invalid consumption (never silently 0). **Structural prevention**
+      (a HEATING/HOT_WATER position can never resolve to a plain area basis) is
+      enforced TWICE: a DB CHECK on `settlement_allocation_rules` for any
+      EXPLICIT category-override rule, and a THROW inside `allocateBetriebskosten`
+      itself when a HEATING/HOT_WATER position reaches it with no `heatSplit` —
+      the second catches the case the DB constraint structurally cannot (a
+      HEATING category with NO override rule at all, silently falling back to
+      the property's plain-area period default). Data layer: `src/lib/data/
+      meters.ts` (CRUD for meters + readings, mirroring `settlements.ts`'s
+      style) and `persistAllocationRun` (in `settlements.ts`) extended to
+      resolve a `CONSUMPTION` rule into real meter data via
+      `computeMeterConsumption` before calling the pure allocator. No UI in this
+      slice. *(committed locally only, NOT pushed per this task's explicit
+      `[rls]` instruction — the orchestrator's 3-lens adversarial review runs
+      before this deploys. 598 tests (vs. 551 baseline): `tests/unit/
+      betriebskosten-consumption.test.ts` (new, ~24 cases) +
+      `tests/unit/betriebskosten-allocate.test.ts` extended (~23 new cases:
+      CONSUMPTION basis, the heat split's conservation/bound/fail-closed
+      behaviour, and the catalog tests updated now that HEATING/HOT_WATER are
+      legitimately admitted). Still queued in the USER-action list below — "Run
+      migration 0032".)*
+- [ ] **U-C** `[plan]` — advance payments (Vorauszahlung) + annual
+      advance-vs-actual reconciliation (Nachzahlung/Guthaben) + tenant-portal
+      statement. **Depends: U-B (0032).** NOT started — needs a design pass
+      (brainstorm -> spec) before code, per the `[plan]` tag.
+
 - [ ] Verify migration **0021** applied (`select column_name from
       information_schema.columns where table_name='invoices' and
       column_name='recipient_email';` — one row = done).
@@ -1053,6 +1119,30 @@ in the USER-action list below, same as every other migration since 0022.
       app calls this yet** — `src/lib/data/settlements.ts` is not wired to any route
       or action, so leaving it unapplied changes no user-visible behaviour; it
       becomes load-bearing when the U-A operator UI lands.
+- [ ] **NEW — Run migration 0032** (Betriebskosten U-B: `meters` + `meter_readings`
+      tables + `meter_kind`/`meter_reading_source` enums, `HEATING`/`HOT_WATER`
+      added to `operating_cost_category`, `CONSUMPTION` added to `allocation_basis`,
+      `settlement_allocation_rules.heat_split_min_pct`/`heat_split_max_pct` +
+      three new CHECK constraints structurally forcing a HEATING/HOT_WATER rule
+      through the HeizKG consumption split, and a loosened
+      `settlement_unit_allocations_total_basis_positive` constraint) — **flagged
+      `[rls]`, needs the 3-lens adversarial review before this is applied live** (new
+      tables + writes to policies/RLS surface + new CHECK constraints on an existing
+      RLS-bearing table). Folded into `schema_bundle.sql` (**`expect 27`** tables once
+      applied). **IMPORTANT — this migration contains an explicit `commit;` partway
+      through** (required so the `HEATING`/`HOT_WATER`/`CONSUMPTION` enum values,
+      added at the top, can be referenced by CHECK constraints later in the SAME
+      paste — Postgres forbids using a freshly-added enum value inside the
+      transaction that added it; see the migration file's PART 1 note). This means a
+      partial failure after the commit point is NOT rolled back automatically —
+      every statement after the commit is individually idempotent, so simply
+      re-paste the whole bundle (or re-run `0032_betriebskosten_meters.sql` alone)
+      to retry safely. Manager/accountant-only: no tenant-reachable surface in this
+      slice. **Nothing in the app calls this yet** — `src/lib/data/meters.ts` and the
+      extended `persistAllocationRun` in `src/lib/data/settlements.ts` are not wired
+      to any route or action, so leaving it unapplied changes no user-visible
+      behaviour; it becomes load-bearing when the U-B operator UI (reading entry +
+      allocation-run wizard) lands.
 - [ ] Run migration **0022** (rate limiting) in the Supabase SQL editor. Until then
       the limiter fails open (app works, no throttling).
 - [ ] Run migration **0023** (demo mode) — after/with D2–D5 landing.

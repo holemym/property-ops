@@ -288,11 +288,15 @@ export type AnnouncementStatus = 'DRAFT' | 'PUBLISHED'
 // other category enum in this file): an escape hatch would defeat the entire
 // compliance point, since "anything I can't classify" is exactly how a
 // non-passable cost (a repair, a bank fee, a lawyer's invoice) would sneak onto
-// a statement. HEATING/HOT_WATER are also deliberately absent — those are
-// HeizKG, not MRG section 21, and need a measured-consumption basis (U-B) that
-// this slice does not implement; admitting them here with only an area basis
-// available would let an operator produce a facially-valid but unlawful heat
-// split. See src/lib/betriebskosten/catalog.ts for the reviewable per-category
+// a statement. HEATING/HOT_WATER are HeizKG, not MRG section 21 — U-A withheld
+// them because only an area basis existed then, and admitting them would have
+// let an operator produce a facially-valid but unlawful heat split. U-B
+// (migration 0032) adds the measured-consumption basis they need AND a DB
+// CHECK constraint (settlement_allocation_rules_heat_category_requires_
+// consumption_basis) that makes 'HEATING'/'HOT_WATER' structurally impossible
+// to resolve to a plain area basis — they can only ever go through the HeizKG
+// split (basis 'CONSUMPTION' + a complete heat-split config). See
+// src/lib/betriebskosten/catalog.ts for the reviewable per-category
 // legal-basis/consent/cap metadata (kept in code, not the DB, same split as
 // every other enum's semantics in this schema).
 export type OperatingCostCategory =
@@ -314,14 +318,29 @@ export type OperatingCostCategory =
   | 'GARDEN_MAINTENANCE'
   | 'ELEVATOR'
   | 'COMMON_FACILITY_OTHER'
+  | 'HEATING'
+  | 'HOT_WATER'
 
 // The MRG section 17 default distribution key (USABLE_AREA = Nutzflaeche-
 // proportional) plus PER_UNIT (equal split — legitimate for some section 24
-// Gemeinschaftsanlagen by agreement). CONSUMPTION / HEATED_AREA (HeizKG) are a
-// U-B seam, added later via `alter type ... add value` — never in the same
-// migration/transaction as code that references them (Postgres forbids using a
-// freshly-added enum value in the transaction that added it).
-export type AllocationBasis = 'USABLE_AREA' | 'PER_UNIT'
+// Gemeinschaftsanlagen by agreement; declared in the DB enum since U-A but
+// still NOT implemented by the pure engine — src/lib/betriebskosten/allocate.ts
+// throws a named error rather than silently mis-computing it, a deliberate
+// U-A deferral, see src/lib/data/settlements.ts's persistAllocationRun).
+// CONSUMPTION (migration 0032, U-B) apportions by measured meter consumption —
+// used both for a plain sub-metered category (e.g. WATER_SEWER) and as the
+// mandatory basis for the HeizKG heat/hot-water split.
+export type AllocationBasis = 'USABLE_AREA' | 'PER_UNIT' | 'CONSUMPTION'
+
+// Meters + readings (migration 0032, Betriebskosten U-B). A meter is attached
+// to a unit (sub-metered) OR to the property only (unit_id null — a common/
+// master meter, e.g. the central heat meter feeding a HeizKG split).
+export type MeterKind = 'HEAT' | 'HOT_WATER' | 'COLD_WATER' | 'ELECTRICITY' | 'GAS'
+// MANUAL = operator-entered reading; IMPORT = bulk/file import (reserved —
+// nothing in U-B implements an importer yet, matching the row-level
+// documented-but-unimplemented pattern used elsewhere in this schema, e.g.
+// AllocationBasis's PER_UNIT above).
+export type MeterReadingSource = 'MANUAL' | 'IMPORT'
 
 // A settlement period's lifecycle (migration 0031). DRAFT = being assembled;
 // ALLOCATED = an allocation run has been persisted (preview, still editable);

@@ -1,11 +1,14 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { OperatingCostCategory, AllocationBasis, SettlementStatus } from '@/types/domain'
+import type { OperatingCostCategory, AllocationBasis, SettlementStatus, MeterKind } from '@/types/domain'
 import { listUnits } from '@/lib/data/units'
+import { listMeters, listMeterReadings } from '@/lib/data/meters'
+import { computeMeterConsumption, type MeterConsumptionInput } from '@/lib/betriebskosten/consumption'
 import {
   allocateBetriebskosten,
   type AllocationResult,
   type AllocationUnitInput,
   type CostPositionInput,
+  type UnitConsumptionInput,
 } from '@/lib/betriebskosten/allocate'
 
 // Betriebskosten U-A data layer (migration 0031): settlement periods, their
@@ -301,8 +304,14 @@ export type SettlementAllocationRule = {
   category: OperatingCostCategory | null // null = the period default rule
   basis: AllocationBasis
   owner_deduction_pct: number
-  consumption_split_pct: number | null // U-B seam, unused in U-A
-  base_split_basis: AllocationBasis | null // U-B seam, unused in U-A
+  // U-B (migration 0032): required together, and ONLY when basis =
+  // 'CONSUMPTION' (settlement_allocation_rules_consumption_basis_requires_
+  // fields) — see persistAllocationRun below for how they become a
+  // HeatSplitConfig for a HEATING/HOT_WATER category.
+  consumption_split_pct: number | null
+  base_split_basis: AllocationBasis | null // only 'USABLE_AREA' is ever valid (DB CHECK)
+  heat_split_min_pct: number | null // defaults to 55 (Austria HeizKG) at the DB layer
+  heat_split_max_pct: number | null // defaults to 75 (Austria HeizKG) at the DB layer
   note: string | null
   created_by_user_id: string
   created_at: string
@@ -330,6 +339,16 @@ export type SetAllocationRuleInput = {
   category?: OperatingCostCategory | null // omitted/null = the period default rule
   basis: AllocationBasis
   ownerDeductionPct: number
+  // U-B (migration 0032). REQUIRED together when basis === 'CONSUMPTION' (the
+  // DB CHECK constraint rejects an incomplete set) — omit all three for a
+  // plain USABLE_AREA/PER_UNIT rule.
+  consumptionSplitPct?: number | null
+  baseSplitBasis?: AllocationBasis | null
+  // Defaults to the Austrian HeizKG 55/75 range at the DB layer when omitted
+  // AND basis === 'CONSUMPTION' (column defaults) — pass explicitly to
+  // configure a different jurisdiction (e.g. Germany's HeizkostenV 50/70).
+  heatSplitMinPct?: number | null
+  heatSplitMaxPct?: number | null
   note?: string | null
 }
 
@@ -355,6 +374,22 @@ export async function setAllocationRule(
   const { data: existing, error: selectError } = await existingQuery.maybeSingle()
   if (selectError) throw selectError
 
+  // consumption_split_pct/base_split_basis/heat_split_min_pct/heat_split_max_pct
+  // are included ONLY when the caller explicitly passes them (undefined =
+  // "leave it to the DB" — the two heat_split_*_pct columns default to the
+  // Austrian HeizKG 55/75 range, migration 0032). Sending an explicit `null`
+  // instead of omitting the key would defeat that DB default (Postgres only
+  // applies a column DEFAULT when the key is absent from the insert, never
+  // when it is present with value null), so this mirrors the undefined-skip
+  // convention this module already uses for UPDATE payloads (e.g.
+  // updateSettlementPeriod above), extended to INSERT here for exactly that
+  // reason.
+  const heatFields: Record<string, unknown> = {}
+  if (input.consumptionSplitPct !== undefined) heatFields.consumption_split_pct = input.consumptionSplitPct
+  if (input.baseSplitBasis !== undefined) heatFields.base_split_basis = input.baseSplitBasis
+  if (input.heatSplitMinPct !== undefined) heatFields.heat_split_min_pct = input.heatSplitMinPct
+  if (input.heatSplitMaxPct !== undefined) heatFields.heat_split_max_pct = input.heatSplitMaxPct
+
   if (existing) {
     const { data, error } = await supabase
       .from('settlement_allocation_rules')
@@ -362,6 +397,7 @@ export async function setAllocationRule(
         basis: input.basis,
         owner_deduction_pct: input.ownerDeductionPct,
         note: input.note ?? null,
+        ...heatFields,
       })
       .eq('id', (existing as SettlementAllocationRule).id)
       .select()
@@ -378,6 +414,7 @@ export async function setAllocationRule(
       category,
       basis: input.basis,
       owner_deduction_pct: input.ownerDeductionPct,
+      ...heatFields,
       note: input.note ?? null,
       created_by_user_id: input.createdByUserId,
     })
@@ -435,6 +472,13 @@ function dm2ToM2(dm2: number): number {
   return dm2 / 100
 }
 
+// U-B (migration 0032): consumption weights are scaled x1000 inside the pure
+// engine (src/lib/betriebskosten/allocate.ts's "milli-units" convention,
+// mirroring dm2ToM2 above) — undo that here for persistence, same idea.
+function milliUnitsToUnits(milliUnits: number): number {
+  return milliUnits / 1000
+}
+
 function pctToPermille(pct: number): number {
   return Math.round(pct * 10)
 }
@@ -448,6 +492,65 @@ export type PersistAllocationRunResult = {
   allocations: SettlementUnitAllocation[]
 }
 
+// U-B (migration 0032): which meter kind feeds a CONSUMPTION-basis category's
+// measured consumption. Deliberately narrow — only the categories this slice
+// actually wires up appear here. ELECTRICITY/GAS meter kinds exist in the
+// schema for future categories/a RUBS extension (see migration 0032's header)
+// but no category maps to them yet.
+const CATEGORY_METER_KIND: Partial<Record<OperatingCostCategory, MeterKind>> = {
+  WATER_SEWER: 'COLD_WATER',
+  HEATING: 'HEAT',
+  HOT_WATER: 'HOT_WATER',
+}
+
+/**
+ * Fetch every active meter of `kind` on the property (unit-attached only —
+ * a property/common meter has no per-unit share to report here), compute
+ * each meter's consumption for the period (src/lib/betriebskosten/
+ * consumption.ts), and sum per unit. STICKY-null: a unit can legitimately
+ * carry more than one meter of the same kind (e.g. an old meter's final
+ * reading plus a replacement's first readings, both genuinely additive) —
+ * but once ANY one of a unit's meters is unresolved (missing baseline, no
+ * reading in period, negative delta, ...), that unit's total becomes null
+ * for the rest of this position, never partially summed from only the
+ * meters that happened to succeed (the same fail-closed reasoning as
+ * consumption.ts's own per-meter blocking).
+ */
+async function buildUnitConsumption(
+  supabase: SupabaseClient,
+  workspaceId: string,
+  propertyId: string,
+  kind: MeterKind,
+  periodStart: string,
+  periodEnd: string,
+): Promise<UnitConsumptionInput[]> {
+  const meters = await listMeters(supabase, workspaceId, { propertyId, kind, isActive: true })
+  const meterInputs: MeterConsumptionInput[] = []
+  for (const meter of meters) {
+    if (!meter.unit_id) continue
+    const readings = await listMeterReadings(supabase, workspaceId, meter.id)
+    meterInputs.push({
+      meterId: meter.id,
+      unitId: meter.unit_id,
+      multiplier: meter.multiplier,
+      readings: readings.map((r) => ({ readingDate: r.reading_date, value: r.value })),
+    })
+  }
+  const consumption = computeMeterConsumption(meterInputs, periodStart, periodEnd)
+
+  const byUnit = new Map<string, number | null>()
+  for (const r of consumption.results) {
+    if (!r.unitId) continue
+    const prev = byUnit.has(r.unitId) ? (byUnit.get(r.unitId) as number | null) : 0
+    if (prev === null || !r.ok || r.consumptionUnits === null) {
+      byUnit.set(r.unitId, null)
+    } else {
+      byUnit.set(r.unitId, prev + r.consumptionUnits)
+    }
+  }
+  return [...byUnit.entries()].map(([unitId, consumptionUnits]) => ({ unitId, consumptionUnits }))
+}
+
 /**
  * Run + persist ONE settlement period's allocation: load the period's property
  * units and cost positions, resolve each category's basis/owner-deduction from
@@ -458,15 +561,22 @@ export type PersistAllocationRunResult = {
  * with the fresh result (re-running an allocation intentionally destroys the
  * prior preview; FINALIZED is the only durable checkpoint, per the design).
  *
- * THROWS (a caller/data bug, not a data-quality issue) when a resolved rule's
- * basis is not 'USABLE_AREA': this slice's pure allocator only implements the
- * MRG section 17 area-proportional key. PER_UNIT is a valid value in the
- * `allocation_basis` DB enum (reserved for a category like ELEVATOR that some
- * operators may configure), but wiring it into the engine is explicitly
- * deferred — see the module header of src/lib/betriebskosten/allocate.ts and
- * this task's final report. Choosing PER_UNIT for a rule today is stored fine;
- * running the allocation with it throws a clear, named error rather than
- * silently mis-computing.
+ * THROWS (a caller/data bug, not a data-quality issue):
+ *   - a resolved rule's basis is 'PER_UNIT': this slice's pure allocator
+ *     still does not implement it (a deliberate U-A deferral — see the
+ *     module header of src/lib/betriebskosten/allocate.ts).
+ *   - a resolved rule's basis is 'CONSUMPTION' for a category with no
+ *     CATEGORY_METER_KIND mapping, or a HEATING/HOT_WATER category whose
+ *     rule is missing its heat-split fields or sets an unimplemented
+ *     base_split_basis.
+ *   - a HEATING/HOT_WATER category has NO applicable CONSUMPTION rule at all
+ *     (e.g. only a USABLE_AREA period default and no category override) —
+ *     this reaches allocateBetriebskosten with category HEATING/HOT_WATER
+ *     and no `heatSplit`, which is a SECOND, independent, defence-in-depth
+ *     THROW inside the pure engine itself (see its
+ *     HEAT_CATEGORY_REQUIRES_HEAT_SPLIT contract check) — the DB CHECK
+ *     constraint (migration 0032) cannot catch this particular case because
+ *     it only constrains an EXPLICIT rule row, not the absence of one.
  */
 export async function persistAllocationRun(
   supabase: SupabaseClient,
@@ -494,23 +604,83 @@ export async function persistAllocationRun(
     )
   }
 
-  const positions: CostPositionInput[] = [...grossCentsByCategory.entries()].map(([category, grossAmountCents]) => {
-    const override = overrideByCategory.get(category)
-    const basis: AllocationBasis = override?.basis ?? defaultRule?.basis ?? 'USABLE_AREA'
-    const ownerDeductionPct = override?.owner_deduction_pct ?? defaultRule?.owner_deduction_pct ?? 0
-    if (basis !== 'USABLE_AREA') {
+  const positions: CostPositionInput[] = []
+  for (const [category, grossAmountCents] of grossCentsByCategory.entries()) {
+    // Whole-rule fallback (override, else the period default) is equivalent
+    // to per-field fallback here because basis/owner_deduction_pct are BOTH
+    // `not null default ...` at the DB layer — an override row, if present,
+    // always carries concrete values for both, so there is nothing for a
+    // per-field fallback to add over picking the row itself.
+    const rule = overrideByCategory.get(category) ?? defaultRule
+    const basis: AllocationBasis = rule?.basis ?? 'USABLE_AREA'
+    const ownerSharePermille = pctToPermille(rule?.owner_deduction_pct ?? 0)
+
+    if (basis === 'PER_UNIT') {
       throw new Error(
-        `persistAllocationRun: category '${category}' resolves to basis '${basis}', which the U-A ` +
-          `allocation engine does not yet implement (only USABLE_AREA is supported in this slice).`,
+        `persistAllocationRun: category '${category}' resolves to basis 'PER_UNIT', which the ` +
+          `allocation engine does not yet implement (a deliberate, documented deferral — see ` +
+          `src/lib/betriebskosten/allocate.ts's module header).`,
       )
     }
-    return {
-      id: category,
-      category,
-      grossAmountCents,
-      ownerSharePermille: pctToPermille(ownerDeductionPct),
+
+    if (basis === 'USABLE_AREA') {
+      positions.push({ id: category, category, grossAmountCents, ownerSharePermille })
+      continue
     }
-  })
+
+    // basis === 'CONSUMPTION'
+    const meterKind = CATEGORY_METER_KIND[category]
+    if (!meterKind) {
+      throw new Error(
+        `persistAllocationRun: category '${category}' resolves to basis 'CONSUMPTION' but has no ` +
+          `configured meter kind — see CATEGORY_METER_KIND in this module.`,
+      )
+    }
+
+    if (category === 'HEATING' || category === 'HOT_WATER') {
+      // rule is guaranteed non-null here: basis 'CONSUMPTION' can only come
+      // from a rule row, and settlement_allocation_rules_heat_category_
+      // requires_consumption_basis (0032) means a HEATING/HOT_WATER row can
+      // only ever be 'CONSUMPTION' — but that constraint does not (cannot)
+      // force a category-specific row to EXIST, so this null-check is the
+      // one case a per-field lookup genuinely differs from `rule`.
+      if (rule?.consumption_split_pct == null || rule.base_split_basis == null) {
+        throw new Error(
+          `persistAllocationRun: category '${category}' requires a complete heat-split rule ` +
+            `(consumption_split_pct + base_split_basis) — see migration 0032's ` +
+            `settlement_allocation_rules_consumption_basis_requires_fields constraint.`,
+        )
+      }
+      if (rule.base_split_basis !== 'USABLE_AREA') {
+        throw new Error(
+          `persistAllocationRun: category '${category}' heat-split rule's base_split_basis ` +
+            `'${rule.base_split_basis}' is not implemented — only 'USABLE_AREA' is supported.`,
+        )
+      }
+      const consumption = await buildUnitConsumption(
+        supabase, workspaceId, period.property_id, meterKind, period.period_start, period.period_end,
+      )
+      positions.push({
+        id: category,
+        category,
+        grossAmountCents,
+        ownerSharePermille,
+        heatSplit: {
+          consumptionSplitPermille: pctToPermille(rule.consumption_split_pct),
+          minPermille: rule.heat_split_min_pct != null ? pctToPermille(rule.heat_split_min_pct) : undefined,
+          maxPermille: rule.heat_split_max_pct != null ? pctToPermille(rule.heat_split_max_pct) : undefined,
+          consumption,
+          baseBasis: 'USABLE_AREA',
+        },
+      })
+      continue
+    }
+
+    const consumption = await buildUnitConsumption(
+      supabase, workspaceId, period.property_id, meterKind, period.period_start, period.period_end,
+    )
+    positions.push({ id: category, category, grossAmountCents, ownerSharePermille, basis: 'CONSUMPTION', consumption })
+  }
 
   const allocationUnits: AllocationUnitInput[] = units.map((u) => ({
     unitId: u.id,
@@ -536,6 +706,16 @@ export async function persistAllocationRun(
     .eq('settlement_period_id', settlementPeriodId)
   if (deleteError) throw deleteError
 
+  // unit_basis_value/total_basis_value report the SAME dimension as
+  // `position.basis`: area (dm2 -> m2) for 'USABLE_AREA', measured
+  // consumption (milli-units -> units) for 'CONSUMPTION' — INCLUDING a heat
+  // split, which reports 'CONSUMPTION' (see PositionBreakdown.basis's own
+  // doc). The full two-leg breakdown (consumptionLegCents/areaLegCents +
+  // both legs' own per-unit shares) lives in `result.positions[].heatSplit`,
+  // available to the caller immediately, but is NOT persisted at this row's
+  // grain in this slice (settlement_unit_allocations is (period, unit,
+  // category) — one row, one basis value; a future U-C statement can widen
+  // this if the two-leg breakdown needs to survive a page reload).
   const rows = result.positions.flatMap((position) =>
     position.shares.map((share) => ({
       workspace_id: workspaceId,
@@ -546,8 +726,12 @@ export async function persistAllocationRun(
       category_gross_amount: centsToAmount(position.grossAmountCents),
       owner_deduction_pct: pctFromPermille(position.ownerSharePermille),
       allocatable_amount: centsToAmount(position.allocatableAmountCents),
-      unit_basis_value: dm2ToM2(share.areaDm2),
-      total_basis_value: dm2ToM2(position.denominatorAreaDm2),
+      unit_basis_value:
+        position.basis === 'CONSUMPTION' ? milliUnitsToUnits(share.consumptionMilliUnits) : dm2ToM2(share.areaDm2),
+      total_basis_value:
+        position.basis === 'CONSUMPTION'
+          ? milliUnitsToUnits(position.denominatorConsumptionMilliUnits)
+          : dm2ToM2(position.denominatorAreaDm2),
       amount: centsToAmount(share.shareCents),
       computed_by_user_id: computedByUserId,
     })),

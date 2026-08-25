@@ -24,6 +24,56 @@ import type { OperatingCostCategory } from '@/types/domain'
 
 export type IsoDate = string // 'YYYY-MM-DD'
 
+// HeizKG (Austria) section 4: 55-75% of heat cost billed on measured
+// consumption. Germany's HeizkostenV section 7 uses the adjacent 50-70% — a
+// HeatSplitConfig may override minPermille/maxPermille per rule (migration
+// 0032's settlement_allocation_rules.heat_split_min_pct/max_pct), but these
+// are the module's (and the DB column defaults') Austrian default.
+export const AUSTRIA_HEIZKG_MIN_PERMILLE = 550
+export const AUSTRIA_HEIZKG_MAX_PERMILLE = 750
+
+/** One category's HEATING/HOT_WATER-only positions carry HEAT-category set of
+ * unit-level measured consumption (U-B, migration 0032). `consumptionUnits:
+ * null` = missing/invalid reading — BLOCKS the whole run (see
+ * UNIT_MISSING_CONSUMPTION_READING), never silently treated as zero, exactly
+ * mirroring AllocationUnitInput.usableAreaM2's null contract. */
+export type UnitConsumptionInput = {
+  unitId: string
+  consumptionUnits: number | null
+}
+
+/**
+ * The HeizKG/HeizkostenV split for one HEATING/HOT_WATER position (U-B).
+ * REQUIRED when a position's category is 'HEATING'/'HOT_WATER', FORBIDDEN
+ * otherwise (see allocateBetriebskosten's contract-error THROWs). Splits the
+ * position's allocatable amount into a consumption-weighted leg
+ * (consumptionSplitPermille) and an area-weighted leg for the exact
+ * complement — the two legs sum to allocatableAmountCents by construction,
+ * and each leg independently conserves via apportionByWeight, so their
+ * per-unit sums do too.
+ */
+export type HeatSplitConfig = {
+  /** Share of the allocatable amount billed by measured consumption,
+   * PER-MILLE (0..1000) — must satisfy minPermille <= consumptionSplitPermille
+   * <= maxPermille. A contract error (THROWS) when out of range: this is a
+   * configuration mistake a DB CHECK constraint should already have caught
+   * upstream (settlement_allocation_rules_consumption_pct_in_bounds, 0032),
+   * not a data-quality issue. */
+  consumptionSplitPermille: number
+  /** Defaults to AUSTRIA_HEIZKG_MIN_PERMILLE when omitted. */
+  minPermille?: number
+  /** Defaults to AUSTRIA_HEIZKG_MAX_PERMILLE when omitted. */
+  maxPermille?: number
+  /** Per-unit measured consumption for the CONSUMPTION leg. Same
+   * null-blocks contract as UnitConsumptionInput. */
+  consumption: UnitConsumptionInput[]
+  /** Basis for the remainder (area) leg. Only 'USABLE_AREA' is implemented —
+   * mirrors the base engine's own PER_UNIT deferral (see this module's
+   * header and src/lib/data/settlements.ts's persistAllocationRun). Defaults
+   * to 'USABLE_AREA' when omitted; any other value THROWS. */
+  baseBasis?: 'USABLE_AREA'
+}
+
 export type CostPositionInput = {
   /** The breakdown key — one entry per settlement_cost_positions CATEGORY
    * rollup (the caller sums individual bills into one position per category
@@ -41,6 +91,19 @@ export type CostPositionInput = {
    * denominator for THIS position (e.g. a lift cost over the units that have
    * lift access). undefined = all units of the property. */
   participatingUnitIds?: string[]
+  /** U-B (migration 0032). Defaults to 'USABLE_AREA' when omitted — every
+   * U-A caller is unaffected. 'CONSUMPTION' apportions purely by measured
+   * consumption (`consumption`, required) — e.g. cold-water sub-metering.
+   * HEATING/HOT_WATER categories must NOT set this at all; they set
+   * `heatSplit` instead (see HEAT_CATEGORY_REQUIRES_HEAT_SPLIT /
+   * NON_HEAT_CATEGORY_WITH_HEAT_SPLIT below). */
+  basis?: 'USABLE_AREA' | 'CONSUMPTION'
+  /** Required (and only meaningful) when basis === 'CONSUMPTION'. One entry
+   * per participating unit. */
+  consumption?: UnitConsumptionInput[]
+  /** REQUIRED for category 'HEATING'/'HOT_WATER', FORBIDDEN otherwise. See
+   * HeatSplitConfig. */
+  heatSplit?: HeatSplitConfig
 }
 
 export type AllocationUnitInput = {
@@ -69,16 +132,37 @@ export type AllocationInput = {
 
 export type UnitShare = {
   unitId: string
+  /** This unit's OWN Nutzflaeche in dm2 — present whenever the overall run
+   * is not blocked, REGARDLESS of which basis this particular position
+   * used (every unit's area is validated globally; U-B's CONSUMPTION-basis
+   * positions still carry it here as display/audit context, not as their
+   * weight). */
   areaDm2: number
+  /** This unit's measured-consumption weight for THIS leg, in integer
+   * milli-units (see the module header's scaling convention) — 0 for a
+   * USABLE_AREA position/leg, and for the AREA leg specifically of a heat
+   * split (its own consumptionShares entries carry the real value; the
+   * COMBINED `PositionBreakdown.shares` entry carries the leg's actual
+   * weight, not a sum of two incompatible dimensions). */
+  consumptionMilliUnits: number
   shareCents: number
-  /** Audit trail: did the largest-remainder rule add a cent here. */
-  roundingBonusCent: 0 | 1
+  /** Audit trail: did the largest-remainder rule add a cent here. 0|1 for
+   * every position with ONE apportionment leg (every U-A position, and a
+   * U-B plain CONSUMPTION-basis position). A HEATING/HOT_WATER heat-split
+   * position's COMBINED share (PositionBreakdown.shares) sums TWO
+   * independent legs, so it can legitimately be 0, 1, or 2 — see
+   * PositionBreakdown.heatSplit for the per-leg breakdown, where each leg's
+   * own shares stay 0|1. */
+  roundingBonusCent: 0 | 1 | 2
 }
 
 export type PositionBreakdown = {
   positionId: string
   category: OperatingCostCategory
-  basis: 'USABLE_AREA'
+  /** 'CONSUMPTION' covers BOTH a plain measured-consumption position AND a
+   * HEATING/HOT_WATER heat-split position — `heatSplit` below is present
+   * only for the latter. */
+  basis: 'USABLE_AREA' | 'CONSUMPTION'
   grossAmountCents: number
   ownerSharePermille: number
   /** Withheld from tenants. */
@@ -87,11 +171,36 @@ export type PositionBreakdown = {
    * `ownerAmountCents + allocatableAmountCents === grossAmountCents` always
    * holds, by construction. */
   allocatableAmountCents: number
-  /** This position's denominator (differs from totalAreaDm2 when
-   * participatingUnitIds scopes it down). */
+  /** This position's AREA denominator — for a plain USABLE_AREA position,
+   * its only denominator; for a HEAT SPLIT position, the area LEG's
+   * denominator only (differs from totalAreaDm2 when participatingUnitIds
+   * scopes it down). 0 for a plain CONSUMPTION (non-heat) position, which
+   * has no area leg at all. */
   denominatorAreaDm2: number
+  /** This position's CONSUMPTION denominator — the sum of participating
+   * units' consumptionMilliUnits (see the module header's scaling
+   * convention). 0 for a plain USABLE_AREA position. For a heat-split
+   * position, this is the CONSUMPTION LEG's denominator specifically. */
+  denominatorConsumptionMilliUnits: number
+  /** Present ONLY for a HEATING/HOT_WATER heat-split position — the HeizKG
+   * two-leg breakdown. consumptionLegCents + areaLegCents ===
+   * allocatableAmountCents exactly, and each leg's own shares conserve to
+   * that leg's cents exactly (apportionByWeight's invariant, applied
+   * twice). `shares` below is the CONSERVED SUM of both legs per unit —
+   * the transparent per-leg detail lives here for audit/statement
+   * rendering. */
+  heatSplit?: {
+    consumptionSplitPermille: number
+    minPermille: number
+    maxPermille: number
+    consumptionLegCents: number
+    areaLegCents: number
+    consumptionShares: UnitShare[]
+    areaShares: UnitShare[]
+  }
   /** [] when the overall run is blocked (`ok: false`) or when every unit
-   * either has zero allocatable amount is skipped. */
+   * either has zero allocatable amount is skipped. Otherwise the COMBINED
+   * per-unit result (both legs summed, for a heat-split position). */
   shares: UnitShare[]
 }
 
@@ -125,6 +234,24 @@ export type AllocationDiagnostic =
   | { code: 'EMPTY_PARTICIPATING_UNITS'; blocking: true; positionId: string }
   | { code: 'POSITION_FULLY_OWNER_BORNE'; blocking: false; positionId: string }
   | { code: 'POSITION_ZERO_AMOUNT'; blocking: false; positionId: string }
+  // --- U-B (migration 0032): CONSUMPTION basis + HeizKG heat split --------
+  // A participating unit has no entry (or a null consumptionUnits) in the
+  // position's `consumption` (or `heatSplit.consumption`) array. Mirrors
+  // UNIT_MISSING_USABLE_AREA's reasoning exactly: silently excluding it would
+  // redistribute that unit's true consumption cost onto every OTHER
+  // participant, who would overpay — the precise legal harm HeizKG exists to
+  // prevent for the heat leg, and the general RUBS harm for a plain
+  // sub-metered position.
+  | { code: 'UNIT_MISSING_CONSUMPTION_READING'; blocking: true; positionId: string; unitId: string }
+  | { code: 'UNIT_NEGATIVE_CONSUMPTION_READING'; blocking: true; positionId: string; unitId: string; value: number }
+  | { code: 'UNIT_INVALID_CONSUMPTION_READING'; blocking: true; positionId: string; unitId: string; value: number }
+  | { code: 'DUPLICATE_CONSUMPTION_ENTRY'; blocking: true; positionId: string; unitId: string }
+  // Every participant's consumption is 0 (or the array yielded no positive
+  // weight at all) while there is positive money to distribute on this leg —
+  // apportionByWeight's zero-weight guard would return [] for that leg,
+  // silently dropping its cents from every unit's total (sum(units) would no
+  // longer equal allocatableTotalCents). Mirrors NO_ALLOCATABLE_AREA.
+  | { code: 'NO_ALLOCATABLE_CONSUMPTION'; blocking: true; positionId: string }
 
 export type AllocationResult = {
   periodStart: IsoDate
@@ -337,6 +464,7 @@ export function allocateBetriebskosten(input: AllocationInput): AllocationResult
   }
 
   // --- positions: duplicates + participating-unit validity + zero/owner-borne
+  //     + U-B (migration 0032): CONSUMPTION basis / HeizKG heat-split validity
   const positionIndex = new Map<string, CostPositionInput>()
   const seenPositionIds = new Set<string>()
   for (const p of input.positions) {
@@ -347,6 +475,61 @@ export function allocateBetriebskosten(input: AllocationInput): AllocationResult
     seenPositionIds.add(p.id)
     positionIndex.set(p.id, p)
   }
+
+  // Validates one position's `consumption` / `heatSplit.consumption` array
+  // against its participant set: pushes a blocking diagnostic for anything
+  // untrustworthy (missing, duplicate, negative, non-finite) and returns ONLY
+  // the entries that passed. Shared by plain CONSUMPTION positions and the
+  // heat split's consumption leg (never both — see the contract THROWs below).
+  function validateConsumption(
+    positionId: string,
+    participantIds: string[],
+    consumption: UnitConsumptionInput[] | undefined,
+  ): Map<string, number> {
+    const rawByUnit = new Map<string, number | null>()
+    const seenEntries = new Set<string>()
+    for (const c of consumption ?? []) {
+      if (seenEntries.has(c.unitId)) {
+        diagnostics.push({ code: 'DUPLICATE_CONSUMPTION_ENTRY', blocking: true, positionId, unitId: c.unitId })
+        continue
+      }
+      seenEntries.add(c.unitId)
+      rawByUnit.set(c.unitId, c.consumptionUnits)
+    }
+    const validated = new Map<string, number>()
+    for (const uid of participantIds) {
+      if (!unitIndex.has(uid)) continue // already flagged as UNKNOWN_PARTICIPATING_UNIT
+      const raw = rawByUnit.has(uid) ? (rawByUnit.get(uid) as number | null) : undefined
+      if (raw === undefined || raw === null) {
+        // Missing/invalid/no-readings-in-period all surface as "no number for
+        // this unit" by the time consumption.ts hands data to this module —
+        // NEVER silently 0, which would redistribute this unit's true
+        // consumption cost onto every other participant.
+        diagnostics.push({ code: 'UNIT_MISSING_CONSUMPTION_READING', blocking: true, positionId, unitId: uid })
+        continue
+      }
+      if (!Number.isFinite(raw)) {
+        diagnostics.push({ code: 'UNIT_INVALID_CONSUMPTION_READING', blocking: true, positionId, unitId: uid, value: raw })
+        continue
+      }
+      if (raw < 0) {
+        // A meter rollover or physical replacement — consumption.ts is meant
+        // to catch this at the source, but this module never trusts a caller
+        // to have done so; defence in depth.
+        diagnostics.push({ code: 'UNIT_NEGATIVE_CONSUMPTION_READING', blocking: true, positionId, unitId: uid, value: raw })
+        continue
+      }
+      validated.set(uid, raw)
+    }
+    return validated
+  }
+
+  // Per-position validated consumption weights (integer milli-units — same
+  // "scale once, apply identically to numerator and denominator" idiom as
+  // areaDm2, see the module header), built here so the share-computation loop
+  // below never re-validates (and never re-emits diagnostics for) the same data.
+  const consumptionMilliUnitsByPosition = new Map<string, Map<string, number>>() // plain CONSUMPTION-basis positions
+  const heatConsumptionMilliUnitsByPosition = new Map<string, Map<string, number>>() // heat-split consumption leg
 
   for (const p of positionIndex.values()) {
     if (p.grossAmountCents === 0) {
@@ -374,6 +557,85 @@ export function allocateBetriebskosten(input: AllocationInput): AllocationResult
           diagnostics.push({ code: 'DUPLICATE_PARTICIPATING_UNIT', blocking: true, positionId: p.id, unitId: uid })
         }
         seenParticipants.add(uid)
+      }
+    }
+
+    // --- U-B contract checks (caller/config bugs — already guarded by a DB
+    // CHECK constraint upstream, migration 0032 — THROW, never degrade) -----
+    const isHeatCategory = p.category === 'HEATING' || p.category === 'HOT_WATER'
+    if (isHeatCategory && !p.heatSplit) {
+      throw new Error(
+        `allocateBetriebskosten: position '${p.id}' has category '${p.category}', which MUST set ` +
+          `heatSplit — HeizKG/HeizkostenV requires every heat/hot-water position to go through the ` +
+          `measured-consumption split (settlement_allocation_rules_heat_category_requires_` +
+          `consumption_basis, migration 0032).`,
+      )
+    }
+    if (!isHeatCategory && p.heatSplit) {
+      throw new Error(
+        `allocateBetriebskosten: position '${p.id}' has category '${p.category}' but sets heatSplit — ` +
+          `the HeizKG/HeizkostenV split is only valid for category 'HEATING'/'HOT_WATER'.`,
+      )
+    }
+
+    const participantIds = p.participatingUnitIds ?? [...unitIndex.keys()]
+    const ownerSharePermilleForCheck = p.ownerSharePermille ?? defaultOwnerSharePermille
+    const ownerAmountCentsForCheck = roundPermille(p.grossAmountCents, ownerSharePermilleForCheck)
+    const allocatableAmountCentsForCheck = p.grossAmountCents - ownerAmountCentsForCheck
+
+    if (p.heatSplit) {
+      const hs = p.heatSplit
+      const minPermille = hs.minPermille ?? AUSTRIA_HEIZKG_MIN_PERMILLE
+      const maxPermille = hs.maxPermille ?? AUSTRIA_HEIZKG_MAX_PERMILLE
+      assertPermille(`position '${p.id}' heatSplit.minPermille`, minPermille)
+      assertPermille(`position '${p.id}' heatSplit.maxPermille`, maxPermille)
+      if (minPermille > maxPermille) {
+        throw new Error(
+          `allocateBetriebskosten: position '${p.id}' heatSplit.minPermille (${minPermille}) exceeds ` +
+            `heatSplit.maxPermille (${maxPermille}).`,
+        )
+      }
+      assertPermille(`position '${p.id}' heatSplit.consumptionSplitPermille`, hs.consumptionSplitPermille)
+      if (hs.consumptionSplitPermille < minPermille || hs.consumptionSplitPermille > maxPermille) {
+        // The 55-75% (Austria) / 50-70% (Germany) bound, ENFORCED HERE in the
+        // TypeScript contract — a DB CHECK constraint
+        // (settlement_allocation_rules_consumption_pct_in_bounds, 0032)
+        // enforces the same rule a second time, upstream of this call.
+        throw new Error(
+          `allocateBetriebskosten: position '${p.id}' heatSplit.consumptionSplitPermille ` +
+            `(${hs.consumptionSplitPermille}) is outside its own bound [${minPermille}, ${maxPermille}] ` +
+            `per-mille (HeizKG default 550-750; HeizkostenV 500-700 — override via heatSplit.minPermille` +
+            `/maxPermille for a non-Austrian jurisdiction).`,
+        )
+      }
+      if (hs.baseBasis !== undefined && hs.baseBasis !== 'USABLE_AREA') {
+        throw new Error(
+          `allocateBetriebskosten: position '${p.id}' heatSplit.baseBasis '${hs.baseBasis}' is not ` +
+            `implemented — only 'USABLE_AREA' is supported for the remainder leg in this slice.`,
+        )
+      }
+
+      const validated = validateConsumption(p.id, participantIds, hs.consumption)
+      const milliByUnit = new Map([...validated].map(([uid, v]) => [uid, Math.round(v * 1000)]))
+      heatConsumptionMilliUnitsByPosition.set(p.id, milliByUnit)
+
+      const consumptionLegCentsForCheck = roundPermille(allocatableAmountCentsForCheck, hs.consumptionSplitPermille)
+      const totalWeight = sum([...milliByUnit.values()])
+      if (totalWeight <= 0 && consumptionLegCentsForCheck > 0) {
+        // Every participant validated at consumption 0 (or the leg has no
+        // participants at all) while there is real money to bill on this
+        // leg — apportionByWeight's zero-weight guard would return [] and
+        // that money would silently vanish from the reconciliation.
+        diagnostics.push({ code: 'NO_ALLOCATABLE_CONSUMPTION', blocking: true, positionId: p.id })
+      }
+    } else if (p.basis === 'CONSUMPTION') {
+      const validated = validateConsumption(p.id, participantIds, p.consumption)
+      const milliByUnit = new Map([...validated].map(([uid, v]) => [uid, Math.round(v * 1000)]))
+      consumptionMilliUnitsByPosition.set(p.id, milliByUnit)
+
+      const totalWeight = sum([...milliByUnit.values()])
+      if (totalWeight <= 0 && allocatableAmountCentsForCheck > 0) {
+        diagnostics.push({ code: 'NO_ALLOCATABLE_CONSUMPTION', blocking: true, positionId: p.id })
       }
     }
   }
@@ -404,20 +666,11 @@ export function allocateBetriebskosten(input: AllocationInput): AllocationResult
     }
 
     const participantIds = p.participatingUnitIds ?? [...unitIndex.keys()]
-    const weights = participantIds
+    const areaWeights = participantIds
       .filter((id) => areaDm2ByUnit.has(id))
       .map((id) => ({ key: id, weight: areaDm2ByUnit.get(id) as number }))
-    const denominatorAreaDm2 = sum(weights.map((w) => w.weight))
 
-    let shares: UnitShare[] = []
-    if (ok) {
-      const apportioned = apportionByWeight(allocatableAmountCents, weights)
-      shares = apportioned.map((a) => ({
-        unitId: a.key,
-        areaDm2: areaDm2ByUnit.get(a.key) as number,
-        shareCents: a.cents,
-        roundingBonusCent: a.bonus,
-      }))
+    const recordTotals = (shares: UnitShare[]): void => {
       for (const s of shares) {
         let entry = totalsByUnit.get(s.unitId)
         if (!entry) {
@@ -429,17 +682,165 @@ export function allocateBetriebskosten(input: AllocationInput): AllocationResult
       }
     }
 
-    positions.push({
-      positionId: p.id,
-      category: p.category,
-      basis: 'USABLE_AREA',
-      grossAmountCents: p.grossAmountCents,
-      ownerSharePermille,
-      ownerAmountCents,
-      allocatableAmountCents,
-      denominatorAreaDm2,
-      shares,
-    })
+    if (p.heatSplit) {
+      // --- HeizKG/HeizkostenV heat split: two independent apportionments,
+      // each conserving to its OWN leg's cents exactly, summed per unit. ----
+      const hs = p.heatSplit
+      const minPermille = hs.minPermille ?? AUSTRIA_HEIZKG_MIN_PERMILLE
+      const maxPermille = hs.maxPermille ?? AUSTRIA_HEIZKG_MAX_PERMILLE
+      const consumptionLegCents = roundPermille(allocatableAmountCents, hs.consumptionSplitPermille)
+      // EXACT complement — never rounded a second time — so
+      // consumptionLegCents + areaLegCents === allocatableAmountCents always,
+      // mirroring the owner/allocatable split's own exact-complement pattern.
+      const areaLegCents = allocatableAmountCents - consumptionLegCents
+
+      const consumptionWeightsMap = heatConsumptionMilliUnitsByPosition.get(p.id) ?? new Map()
+      const consumptionWeights = participantIds
+        .filter((id) => consumptionWeightsMap.has(id))
+        .map((id) => ({ key: id, weight: consumptionWeightsMap.get(id) as number }))
+      const denominatorConsumptionMilliUnits = sum(consumptionWeights.map((w) => w.weight))
+      const denominatorAreaDm2 = sum(areaWeights.map((w) => w.weight))
+
+      let consumptionShares: UnitShare[] = []
+      let areaShares: UnitShare[] = []
+      let shares: UnitShare[] = []
+      if (ok) {
+        const consumptionApportioned = apportionByWeight(consumptionLegCents, consumptionWeights)
+        consumptionShares = consumptionApportioned.map((a) => ({
+          unitId: a.key,
+          areaDm2: areaDm2ByUnit.get(a.key) as number,
+          consumptionMilliUnits: consumptionWeightsMap.get(a.key) as number,
+          shareCents: a.cents,
+          roundingBonusCent: a.bonus,
+        }))
+        const areaApportioned = apportionByWeight(areaLegCents, areaWeights)
+        areaShares = areaApportioned.map((a) => ({
+          unitId: a.key,
+          areaDm2: areaDm2ByUnit.get(a.key) as number,
+          consumptionMilliUnits: 0,
+          shareCents: a.cents,
+          roundingBonusCent: a.bonus,
+        }))
+
+        // The combined leg carries the CONSUMPTION weight (the position's
+        // reported `basis` is 'CONSUMPTION' for a heat split — see
+        // src/lib/data/settlements.ts's persistAllocationRun for how this
+        // becomes unit_basis_value/total_basis_value), never a sum of two
+        // incompatible dimensions.
+        const combined = new Map<string, { cents: number; bonus: number; consumptionMilliUnits: number }>()
+        for (const s of consumptionShares) {
+          combined.set(s.unitId, { cents: s.shareCents, bonus: s.roundingBonusCent, consumptionMilliUnits: s.consumptionMilliUnits })
+        }
+        for (const s of areaShares) {
+          const prev = combined.get(s.unitId) ?? { cents: 0, bonus: 0, consumptionMilliUnits: 0 }
+          combined.set(s.unitId, {
+            cents: prev.cents + s.shareCents,
+            bonus: prev.bonus + s.roundingBonusCent,
+            consumptionMilliUnits: prev.consumptionMilliUnits,
+          })
+        }
+        // Iterate participantIds (not Map insertion order) so the combined
+        // array stays deterministic and mirrors apportionByWeight's own
+        // "preserves input order" contract.
+        shares = participantIds
+          .filter((id) => combined.has(id))
+          .map((id) => {
+            const c = combined.get(id) as { cents: number; bonus: number; consumptionMilliUnits: number }
+            return {
+              unitId: id,
+              areaDm2: areaDm2ByUnit.get(id) as number,
+              consumptionMilliUnits: c.consumptionMilliUnits,
+              shareCents: c.cents,
+              roundingBonusCent: c.bonus as 0 | 1 | 2,
+            }
+          })
+        recordTotals(shares)
+      }
+
+      positions.push({
+        positionId: p.id,
+        category: p.category,
+        basis: 'CONSUMPTION',
+        grossAmountCents: p.grossAmountCents,
+        ownerSharePermille,
+        ownerAmountCents,
+        allocatableAmountCents,
+        denominatorAreaDm2,
+        denominatorConsumptionMilliUnits,
+        heatSplit: {
+          consumptionSplitPermille: hs.consumptionSplitPermille,
+          minPermille,
+          maxPermille,
+          consumptionLegCents,
+          areaLegCents,
+          consumptionShares,
+          areaShares,
+        },
+        shares,
+      })
+    } else if (p.basis === 'CONSUMPTION') {
+      // --- plain measured-consumption basis (e.g. cold-water sub-metering) -
+      const consumptionWeightsMap = consumptionMilliUnitsByPosition.get(p.id) ?? new Map()
+      const consumptionWeights = participantIds
+        .filter((id) => consumptionWeightsMap.has(id))
+        .map((id) => ({ key: id, weight: consumptionWeightsMap.get(id) as number }))
+      const denominatorConsumptionMilliUnits = sum(consumptionWeights.map((w) => w.weight))
+
+      let shares: UnitShare[] = []
+      if (ok) {
+        const apportioned = apportionByWeight(allocatableAmountCents, consumptionWeights)
+        shares = apportioned.map((a) => ({
+          unitId: a.key,
+          areaDm2: areaDm2ByUnit.get(a.key) as number,
+          consumptionMilliUnits: consumptionWeightsMap.get(a.key) as number,
+          shareCents: a.cents,
+          roundingBonusCent: a.bonus,
+        }))
+        recordTotals(shares)
+      }
+
+      positions.push({
+        positionId: p.id,
+        category: p.category,
+        basis: 'CONSUMPTION',
+        grossAmountCents: p.grossAmountCents,
+        ownerSharePermille,
+        ownerAmountCents,
+        allocatableAmountCents,
+        denominatorAreaDm2: 0,
+        denominatorConsumptionMilliUnits,
+        shares,
+      })
+    } else {
+      // --- default: USABLE_AREA (unchanged U-A behaviour) -------------------
+      const denominatorAreaDm2 = sum(areaWeights.map((w) => w.weight))
+
+      let shares: UnitShare[] = []
+      if (ok) {
+        const apportioned = apportionByWeight(allocatableAmountCents, areaWeights)
+        shares = apportioned.map((a) => ({
+          unitId: a.key,
+          areaDm2: areaDm2ByUnit.get(a.key) as number,
+          consumptionMilliUnits: 0,
+          shareCents: a.cents,
+          roundingBonusCent: a.bonus,
+        }))
+        recordTotals(shares)
+      }
+
+      positions.push({
+        positionId: p.id,
+        category: p.category,
+        basis: 'USABLE_AREA',
+        grossAmountCents: p.grossAmountCents,
+        ownerSharePermille,
+        ownerAmountCents,
+        allocatableAmountCents,
+        denominatorAreaDm2,
+        denominatorConsumptionMilliUnits: 0,
+        shares,
+      })
+    }
   }
 
   // --- per-unit aggregate (vacant/owner-occupied units get a row too — the

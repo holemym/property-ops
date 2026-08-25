@@ -1369,14 +1369,15 @@ grant execute on function public.check_rate_limit(text, integer, integer) to ser
 
 -- =============================================================================
 -- DEMO MODE (0023, tenants wipe added in 0025, notifications wipe added in
--- 0026) — is_demo workspace flag, synthetic seed identity, the
--- reset_demo_workspace() wipe+reseed function (service_role-only), and
--- demo-workspace exclusion on the storage INSERT policies. See migration
--- 0023's header for the full rationale. Order matters: workspace before
--- profile attach (FK). The function body below is the FINAL state (0023 +
--- 0025's `delete from public.tenants` line + 0026's `delete from
--- public.notifications` line), not the 0023 original — see 0025/0026's
--- headers for why each addition needs wiping too.
+-- 0026, meters/meter_readings wipe added in 0032) — is_demo workspace flag,
+-- synthetic seed identity, the reset_demo_workspace() wipe+reseed function
+-- (service_role-only), and demo-workspace exclusion on the storage INSERT
+-- policies. See migration 0023's header for the full rationale. Order
+-- matters: workspace before profile attach (FK). The function body below is
+-- the FINAL state (0023 + 0025's `delete from public.tenants` line + 0026's
+-- `delete from public.notifications` line + 0032's meters/meter_readings
+-- lines), not the 0023 original — see 0025/0026/0032's headers for why each
+-- addition needs wiping too.
 -- =============================================================================
 alter table public.workspaces add column if not exists is_demo boolean not null default false;
 alter table public.workspaces add column if not exists demo_reset_at timestamptz;
@@ -1457,6 +1458,12 @@ begin
   delete from public.settlement_allocation_rules where workspace_id = demo_ws;
   delete from public.settlement_cost_positions where workspace_id = demo_ws;
   delete from public.settlement_periods where workspace_id = demo_ws;
+  -- Betriebskosten U-B (0032) — children before parents: meter_readings
+  -- references meters, meters references properties/units. No demo seed rows
+  -- are added for these (operator-only, nothing to demo yet) — only the wipe
+  -- needs to happen, same as U-A (0031) above.
+  delete from public.meter_readings where workspace_id = demo_ws;
+  delete from public.meters where workspace_id = demo_ws;
   delete from public.units where workspace_id = demo_ws;
   delete from public.vendors where workspace_id = demo_ws;
   delete from public.properties where workspace_id = demo_ws;
@@ -2412,16 +2419,263 @@ create policy "settlement_unit_allocations_delete_finance"
 -- migration 0031 for the full 12-scenario smoke-test list.
 
 -- =============================================================================
+-- Migration 0032: Betriebskosten U-B — meters, meter readings, measured
+--                  consumption basis, and the HeizKG heat/hot-water split.
+--                  See supabase/migrations/0032_betriebskosten_meters.sql for
+--                  the full rationale (enum-value commit boundary, legal
+--                  spine, structural-prevention design). OPERATOR-ONLY, same
+--                  RLS shape as 0031 — NO tenant-facing policy in this file.
+-- =============================================================================
+
+-- PART 1: enum value additions. MUST commit before anything below uses them
+-- (Postgres forbids using a freshly-added enum value inside the same
+-- transaction that added it — see the migration file's PART 1 note; this
+-- matters here specifically because the WHOLE bundle is one paste = one
+-- implicit transaction unless a commit interrupts it).
+alter type public.operating_cost_category add value if not exists 'HEATING';
+alter type public.operating_cost_category add value if not exists 'HOT_WATER';
+alter type public.allocation_basis add value if not exists 'CONSUMPTION';
+
+commit;
+
+do $do$ begin
+  create type public.meter_kind as enum ('HEAT', 'HOT_WATER', 'COLD_WATER', 'ELECTRICITY', 'GAS');
+exception when duplicate_object then null; end $do$;
+
+do $do$ begin
+  create type public.meter_reading_source as enum ('MANUAL', 'IMPORT');
+exception when duplicate_object then null; end $do$;
+
+-- PART 3: meters
+create table if not exists public.meters (
+  id uuid primary key default gen_random_uuid(),
+  workspace_id uuid not null references public.workspaces (id) on delete cascade,
+  property_id uuid not null,
+  unit_id uuid, -- null = a property/common-area meter
+  kind public.meter_kind not null,
+  serial_number text,
+  unit_of_measure text not null,
+  multiplier numeric not null default 1,
+  is_active boolean not null default true,
+  installed_at date,
+  removed_at date,
+  note text,
+  created_by_user_id uuid not null references public.profiles (id),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+
+  constraint meters_id_workspace_unique unique (id, workspace_id),
+  constraint meters_multiplier_positive check (multiplier > 0 and multiplier is not null),
+  constraint meters_removed_after_installed
+    check (removed_at is null or installed_at is null or removed_at >= installed_at),
+
+  constraint meters_property_fk
+    foreign key (property_id, workspace_id)
+    references public.properties (id, workspace_id) on delete cascade,
+  constraint meters_unit_fk
+    foreign key (unit_id, workspace_id)
+    references public.units (id, workspace_id) on delete cascade
+);
+
+create index if not exists meters_workspace_property_idx
+  on public.meters (workspace_id, property_id);
+create index if not exists meters_workspace_unit_idx
+  on public.meters (workspace_id, unit_id) where unit_id is not null;
+
+drop trigger if exists meters_set_updated_at on public.meters;
+create trigger meters_set_updated_at
+  before update on public.meters
+  for each row execute function public.set_updated_at();
+
+create or replace function public.meters_unit_property_guard()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_unit_property uuid;
+begin
+  if new.unit_id is null then
+    return new;
+  end if;
+  select property_id into v_unit_property
+    from public.units
+   where id = new.unit_id and workspace_id = new.workspace_id;
+  if v_unit_property is null or v_unit_property <> new.property_id then
+    raise exception 'meter unit_id % does not belong to property %', new.unit_id, new.property_id
+      using errcode = 'foreign_key_violation';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists meters_unit_property_guard on public.meters;
+create trigger meters_unit_property_guard
+  before insert or update on public.meters
+  for each row execute function public.meters_unit_property_guard();
+
+alter table public.meters enable row level security;
+
+drop policy if exists "meters_select_finance" on public.meters;
+create policy "meters_select_finance"
+  on public.meters for select
+  using (
+    (workspace_id = public.current_workspace_id()
+       and public.current_role() in ('SUPER_ADMIN', 'OWNER', 'OPERATOR', 'ACCOUNTANT'))
+    or public.current_role() = 'SUPER_ADMIN'
+  );
+
+drop policy if exists "meters_insert_finance" on public.meters;
+create policy "meters_insert_finance"
+  on public.meters for insert
+  with check (workspace_id = public.current_workspace_id() and public.can_manage_finance());
+
+drop policy if exists "meters_update_finance" on public.meters;
+create policy "meters_update_finance"
+  on public.meters for update
+  using (workspace_id = public.current_workspace_id() and public.can_manage_finance())
+  with check (workspace_id = public.current_workspace_id() and public.can_manage_finance());
+
+drop policy if exists "meters_delete_finance" on public.meters;
+create policy "meters_delete_finance"
+  on public.meters for delete
+  using (workspace_id = public.current_workspace_id() and public.can_manage_finance());
+
+-- PART 4: meter_readings
+create table if not exists public.meter_readings (
+  id uuid primary key default gen_random_uuid(),
+  workspace_id uuid not null references public.workspaces (id) on delete cascade,
+  meter_id uuid not null,
+  reading_date date not null,
+  value numeric not null,
+  source public.meter_reading_source not null default 'MANUAL',
+  note text,
+  created_by_user_id uuid not null references public.profiles (id),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+
+  constraint meter_readings_id_workspace_unique unique (id, workspace_id),
+  constraint meter_readings_value_nonneg check (value >= 0),
+  constraint meter_readings_meter_date_unique unique (workspace_id, meter_id, reading_date),
+
+  constraint meter_readings_meter_fk
+    foreign key (meter_id, workspace_id)
+    references public.meters (id, workspace_id) on delete cascade
+);
+
+drop trigger if exists meter_readings_set_updated_at on public.meter_readings;
+create trigger meter_readings_set_updated_at
+  before update on public.meter_readings
+  for each row execute function public.set_updated_at();
+
+alter table public.meter_readings enable row level security;
+
+drop policy if exists "meter_readings_select_finance" on public.meter_readings;
+create policy "meter_readings_select_finance"
+  on public.meter_readings for select
+  using (
+    (workspace_id = public.current_workspace_id()
+       and public.current_role() in ('SUPER_ADMIN', 'OWNER', 'OPERATOR', 'ACCOUNTANT'))
+    or public.current_role() = 'SUPER_ADMIN'
+  );
+
+drop policy if exists "meter_readings_insert_finance" on public.meter_readings;
+create policy "meter_readings_insert_finance"
+  on public.meter_readings for insert
+  with check (workspace_id = public.current_workspace_id() and public.can_manage_finance());
+
+drop policy if exists "meter_readings_update_finance" on public.meter_readings;
+create policy "meter_readings_update_finance"
+  on public.meter_readings for update
+  using (workspace_id = public.current_workspace_id() and public.can_manage_finance())
+  with check (workspace_id = public.current_workspace_id() and public.can_manage_finance());
+
+drop policy if exists "meter_readings_delete_finance" on public.meter_readings;
+create policy "meter_readings_delete_finance"
+  on public.meter_readings for delete
+  using (workspace_id = public.current_workspace_id() and public.can_manage_finance());
+
+-- PART 5: settlement_allocation_rules — activate the U-B seam columns
+alter table public.settlement_allocation_rules
+  add column if not exists heat_split_min_pct numeric default 55,
+  add column if not exists heat_split_max_pct numeric default 75;
+
+do $do$ begin
+  alter table public.settlement_allocation_rules
+    add constraint settlement_allocation_rules_heat_split_bounds_sane
+    check (
+      heat_split_min_pct is null or heat_split_max_pct is null
+      or (
+        heat_split_min_pct >= 0 and heat_split_min_pct <= 100
+        and heat_split_max_pct >= 0 and heat_split_max_pct <= 100
+        and heat_split_min_pct <= heat_split_max_pct
+      )
+    );
+exception when duplicate_object then null; end $do$;
+
+do $do$ begin
+  alter table public.settlement_allocation_rules
+    add constraint settlement_allocation_rules_consumption_pct_in_bounds
+    check (
+      consumption_split_pct is null
+      or heat_split_min_pct is null or heat_split_max_pct is null
+      or (consumption_split_pct >= heat_split_min_pct and consumption_split_pct <= heat_split_max_pct)
+    );
+exception when duplicate_object then null; end $do$;
+
+do $do$ begin
+  alter table public.settlement_allocation_rules
+    add constraint settlement_allocation_rules_heat_category_requires_consumption_basis
+    check (category not in ('HEATING', 'HOT_WATER') or basis = 'CONSUMPTION');
+exception when duplicate_object then null; end $do$;
+
+do $do$ begin
+  alter table public.settlement_allocation_rules
+    add constraint settlement_allocation_rules_consumption_basis_requires_fields
+    check (
+      basis <> 'CONSUMPTION'
+      or (
+        consumption_split_pct is not null
+        and base_split_basis is not null
+        and heat_split_min_pct is not null
+        and heat_split_max_pct is not null
+      )
+    );
+exception when duplicate_object then null; end $do$;
+
+do $do$ begin
+  alter table public.settlement_allocation_rules
+    add constraint settlement_allocation_rules_base_split_basis_supported
+    check (base_split_basis is null or base_split_basis = 'USABLE_AREA');
+exception when duplicate_object then null; end $do$;
+
+-- PART 6: settlement_unit_allocations — loosen total_basis_value > 0 to allow
+-- a transparent EUR 0 row for a zero-gross CONSUMPTION position.
+alter table public.settlement_unit_allocations
+  drop constraint if exists settlement_unit_allocations_total_basis_positive;
+
+do $do$ begin
+  alter table public.settlement_unit_allocations
+    add constraint settlement_unit_allocations_total_basis_positive
+    check (total_basis_value > 0 or allocatable_amount = 0);
+exception when duplicate_object then null; end $do$;
+
+-- No tenant policy anywhere above — U-C's job, same seam 0031 specifies. See
+-- supabase/migrations/0032_betriebskosten_meters.sql for the full 14-scenario
+-- smoke-test list.
+
+-- =============================================================================
 -- DEFERRED DEMO SEED — must run LAST (see the note in the DEMO MODE section).
 -- reset_demo_workspace() wipes+reseeds the demo workspace, deleting from
 -- public.tenants (0025), public.notifications (0026), public.announcements
--- (0030), and the four Betriebskosten U-A settlement_* tables (0031, wipe-only,
--- no seed rows); all are created in sections above, so this seed call only
--- succeeds here at the end. Idempotent (wipe+reseed), so re-running the whole
--- bundle is safe.
+-- (0030), the four Betriebskosten U-A settlement_* tables (0031), and
+-- meters/meter_readings (0032) — all wipe-only, no seed rows for any of them.
+-- All are created in sections above, so this seed call only succeeds here at
+-- the end. Idempotent (wipe+reseed), so re-running the whole bundle is safe.
 -- =============================================================================
 select public.reset_demo_workspace();
 
 -- =============================================================================
--- DONE. Verify: select count(*) from pg_tables where schemaname='public';  -- expect 25
+-- DONE. Verify: select count(*) from pg_tables where schemaname='public';  -- expect 27
 -- =============================================================================

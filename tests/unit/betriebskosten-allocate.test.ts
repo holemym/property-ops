@@ -2,8 +2,11 @@ import { describe, it, expect } from 'vitest'
 import {
   apportionByWeight,
   allocateBetriebskosten,
+  AUSTRIA_HEIZKG_MIN_PERMILLE,
+  AUSTRIA_HEIZKG_MAX_PERMILLE,
   type AllocationInput,
   type CostPositionInput,
+  type HeatSplitConfig,
 } from '@/lib/betriebskosten/allocate'
 import { BETRIEBSKOSTEN_CATALOG } from '@/lib/betriebskosten/catalog'
 
@@ -382,9 +385,531 @@ describe('allocateBetriebskosten - area allocation', () => {
   })
 })
 
+// --- U-B (migration 0032): CONSUMPTION basis + HeizKG heat split ------------
+// Same emphasis as the area suite above: INVARIANTS (a consumption position's
+// shares sum to its allocatable total; a heat split's two legs sum to the
+// SAME total) and FAIL-CLOSED behaviour (a missing/negative/invalid reading
+// blocks the whole run rather than quietly billing on a partial denominator —
+// see the module header's "never silently treated as zero" reasoning).
+
+const heatSplit = (over: Partial<HeatSplitConfig> = {}): HeatSplitConfig => ({
+  consumptionSplitPermille: 600, // 60% — inside the default Austrian 55-75% bound
+  consumption: [
+    { unitId: 'u1', consumptionUnits: 30 },
+    { unitId: 'u2', consumptionUnits: 70 },
+  ],
+  ...over,
+})
+
+describe('allocateBetriebskosten - plain CONSUMPTION basis', () => {
+  it('splits by measured consumption and reconciles to the cent', () => {
+    const r = allocateBetriebskosten(
+      input({
+        positions: [
+          pos({
+            basis: 'CONSUMPTION',
+            consumption: [
+              { unitId: 'u1', consumptionUnits: 40 },
+              { unitId: 'u2', consumptionUnits: 60 },
+            ],
+          }),
+        ],
+      }),
+    )
+    expect(r.ok).toBe(true)
+    expect(r.units.map((u) => u.totalCents)).toEqual([40_000, 60_000])
+    expect(r.units.reduce((s, u) => s + u.totalCents, 0)).toBe(r.allocatableTotalCents)
+    expect(r.positions[0].basis).toBe('CONSUMPTION')
+    expect(r.positions[0].denominatorAreaDm2).toBe(0)
+    expect(r.positions[0].denominatorConsumptionMilliUnits).toBe(100_000) // (40+60) x 1000
+  })
+
+  it('handles fractional consumption via the milli-unit key', () => {
+    const r = allocateBetriebskosten(
+      input({
+        positions: [
+          pos({
+            basis: 'CONSUMPTION',
+            consumption: [
+              { unitId: 'u1', consumptionUnits: 12.345 },
+              { unitId: 'u2', consumptionUnits: 7.655 },
+            ],
+          }),
+        ],
+      }),
+    )
+    expect(r.ok).toBe(true)
+    expect(r.units.reduce((s, u) => s + u.totalCents, 0)).toBe(r.allocatableTotalCents)
+  })
+
+  it('a zero-consumption unit legitimately gets a zero share, no diagnostic', () => {
+    const r = allocateBetriebskosten(
+      input({
+        positions: [
+          pos({
+            basis: 'CONSUMPTION',
+            consumption: [
+              { unitId: 'u1', consumptionUnits: 0 },
+              { unitId: 'u2', consumptionUnits: 100 },
+            ],
+          }),
+        ],
+      }),
+    )
+    expect(r.ok).toBe(true)
+    expect(r.units.map((u) => u.totalCents)).toEqual([0, 100_000])
+  })
+
+  // --- fail-closed data quality -------------------------------------------
+  it('BLOCKS on a missing consumption entry for a participating unit', () => {
+    const r = allocateBetriebskosten(
+      input({
+        positions: [pos({ basis: 'CONSUMPTION', consumption: [{ unitId: 'u1', consumptionUnits: 40 }] })],
+      }),
+    )
+    expect(r.ok).toBe(false)
+    expect(r.diagnostics).toContainEqual({
+      code: 'UNIT_MISSING_CONSUMPTION_READING',
+      blocking: true,
+      positionId: 'p1',
+      unitId: 'u2',
+    })
+    expect(r.units).toEqual([])
+  })
+
+  it('BLOCKS on an explicit null consumption reading (never silently 0)', () => {
+    const r = allocateBetriebskosten(
+      input({
+        positions: [
+          pos({
+            basis: 'CONSUMPTION',
+            consumption: [
+              { unitId: 'u1', consumptionUnits: 40 },
+              { unitId: 'u2', consumptionUnits: null },
+            ],
+          }),
+        ],
+      }),
+    )
+    expect(r.ok).toBe(false)
+    expect(r.diagnostics).toContainEqual({
+      code: 'UNIT_MISSING_CONSUMPTION_READING',
+      blocking: true,
+      positionId: 'p1',
+      unitId: 'u2',
+    })
+  })
+
+  it('BLOCKS on a negative consumption reading (meter rollover or replacement)', () => {
+    const r = allocateBetriebskosten(
+      input({
+        positions: [
+          pos({
+            basis: 'CONSUMPTION',
+            consumption: [
+              { unitId: 'u1', consumptionUnits: 40 },
+              { unitId: 'u2', consumptionUnits: -5 },
+            ],
+          }),
+        ],
+      }),
+    )
+    expect(r.ok).toBe(false)
+    expect(r.diagnostics).toContainEqual({
+      code: 'UNIT_NEGATIVE_CONSUMPTION_READING',
+      blocking: true,
+      positionId: 'p1',
+      unitId: 'u2',
+      value: -5,
+    })
+  })
+
+  it('BLOCKS on a non-finite consumption reading', () => {
+    for (const bad of [Number.NaN, Number.POSITIVE_INFINITY]) {
+      const r = allocateBetriebskosten(
+        input({
+          positions: [
+            pos({
+              basis: 'CONSUMPTION',
+              consumption: [
+                { unitId: 'u1', consumptionUnits: 40 },
+                { unitId: 'u2', consumptionUnits: bad },
+              ],
+            }),
+          ],
+        }),
+      )
+      expect(r.ok).toBe(false)
+      expect(r.diagnostics.some((d) => d.code === 'UNIT_INVALID_CONSUMPTION_READING')).toBe(true)
+    }
+  })
+
+  it('BLOCKS on a duplicate consumption entry for the same unit', () => {
+    const r = allocateBetriebskosten(
+      input({
+        positions: [
+          pos({
+            basis: 'CONSUMPTION',
+            consumption: [
+              { unitId: 'u1', consumptionUnits: 40 },
+              { unitId: 'u1', consumptionUnits: 41 },
+              { unitId: 'u2', consumptionUnits: 60 },
+            ],
+          }),
+        ],
+      }),
+    )
+    expect(r.ok).toBe(false)
+    expect(r.diagnostics).toContainEqual({
+      code: 'DUPLICATE_CONSUMPTION_ENTRY',
+      blocking: true,
+      positionId: 'p1',
+      unitId: 'u1',
+    })
+  })
+
+  it('BLOCKS a zero total consumption denominator when there is real money to distribute', () => {
+    // Never silently vanish this leg's cost — apportionByWeight's own
+    // zero-weight guard would return [], quietly breaking
+    // sum(units) === allocatableTotal.
+    const r = allocateBetriebskosten(
+      input({
+        positions: [
+          pos({
+            basis: 'CONSUMPTION',
+            consumption: [
+              { unitId: 'u1', consumptionUnits: 0 },
+              { unitId: 'u2', consumptionUnits: 0 },
+            ],
+          }),
+        ],
+      }),
+    )
+    expect(r.ok).toBe(false)
+    expect(r.diagnostics).toContainEqual({ code: 'NO_ALLOCATABLE_CONSUMPTION', blocking: true, positionId: 'p1' })
+  })
+
+  it('does NOT block a zero total consumption denominator when the position is EUR 0', () => {
+    const r = allocateBetriebskosten(
+      input({
+        positions: [
+          pos({
+            grossAmountCents: 0,
+            basis: 'CONSUMPTION',
+            consumption: [
+              { unitId: 'u1', consumptionUnits: 0 },
+              { unitId: 'u2', consumptionUnits: 0 },
+            ],
+          }),
+        ],
+      }),
+    )
+    expect(r.ok).toBe(true)
+    expect(r.diagnostics.some((d) => d.code === 'NO_ALLOCATABLE_CONSUMPTION')).toBe(false)
+  })
+})
+
+describe('allocateBetriebskosten - HeizKG heat split', () => {
+  it('conserves to the cent: consumption leg + area leg === allocatable, per unit and in total', () => {
+    const r = allocateBetriebskosten(
+      input({
+        positions: [pos({ id: 'heat', category: 'HEATING', grossAmountCents: 100_003, heatSplit: heatSplit() })],
+      }),
+    )
+    expect(r.ok).toBe(true)
+    const p = r.positions[0]
+    expect(p.heatSplit).toBeTruthy()
+    expect(p.heatSplit!.consumptionLegCents + p.heatSplit!.areaLegCents).toBe(p.allocatableAmountCents)
+    expect(p.heatSplit!.consumptionShares.reduce((s, x) => s + x.shareCents, 0)).toBe(p.heatSplit!.consumptionLegCents)
+    expect(p.heatSplit!.areaShares.reduce((s, x) => s + x.shareCents, 0)).toBe(p.heatSplit!.areaLegCents)
+    expect(p.shares.reduce((s, x) => s + x.shareCents, 0)).toBe(p.allocatableAmountCents)
+    expect(r.units.reduce((s, u) => s + u.totalCents, 0)).toBe(r.allocatableTotalCents)
+  })
+
+  it('a combined share is the exact sum of its two legs, per unit', () => {
+    const r = allocateBetriebskosten(
+      input({
+        positions: [pos({ id: 'heat', category: 'HOT_WATER', grossAmountCents: 77_777, heatSplit: heatSplit() })],
+      }),
+    )
+    const p = r.positions[0]
+    for (const combined of p.shares) {
+      const c = p.heatSplit!.consumptionShares.find((x) => x.unitId === combined.unitId)?.shareCents ?? 0
+      const a = p.heatSplit!.areaShares.find((x) => x.unitId === combined.unitId)?.shareCents ?? 0
+      expect(combined.shareCents).toBe(c + a)
+    }
+  })
+
+  it('defaults the bound to the Austrian HeizKG 55-75% range when omitted', () => {
+    const r = allocateBetriebskosten(
+      input({ positions: [pos({ id: 'heat', category: 'HEATING', heatSplit: heatSplit() })] }),
+    )
+    expect(r.positions[0].heatSplit!.minPermille).toBe(AUSTRIA_HEIZKG_MIN_PERMILLE)
+    expect(r.positions[0].heatSplit!.maxPermille).toBe(AUSTRIA_HEIZKG_MAX_PERMILLE)
+    expect(AUSTRIA_HEIZKG_MIN_PERMILLE).toBe(550)
+    expect(AUSTRIA_HEIZKG_MAX_PERMILLE).toBe(750)
+  })
+
+  it('accepts a configured non-Austrian bound (Germany HeizkostenV 50-70%)', () => {
+    const r = allocateBetriebskosten(
+      input({
+        positions: [
+          pos({
+            id: 'heat',
+            category: 'HEATING',
+            heatSplit: heatSplit({ consumptionSplitPermille: 600, minPermille: 500, maxPermille: 700 }),
+          }),
+        ],
+      }),
+    )
+    expect(r.ok).toBe(true)
+    expect(r.positions[0].heatSplit!.minPermille).toBe(500)
+    expect(r.positions[0].heatSplit!.maxPermille).toBe(700)
+  })
+
+  // --- the 55-75% (or configured) bound is a CONTRACT, not a data-quality issue
+  it('THROWS when consumptionSplitPermille is outside its own bound', () => {
+    // Below the Austrian default (55%).
+    expect(() =>
+      allocateBetriebskosten(
+        input({
+          positions: [pos({ id: 'heat', category: 'HEATING', heatSplit: heatSplit({ consumptionSplitPermille: 400 }) })],
+        }),
+      ),
+    ).toThrow()
+    // Above the Austrian default (75%).
+    expect(() =>
+      allocateBetriebskosten(
+        input({
+          positions: [pos({ id: 'heat', category: 'HEATING', heatSplit: heatSplit({ consumptionSplitPermille: 900 }) })],
+        }),
+      ),
+    ).toThrow()
+    // Exactly at the boundary is ACCEPTED (inclusive range).
+    for (const boundary of [AUSTRIA_HEIZKG_MIN_PERMILLE, AUSTRIA_HEIZKG_MAX_PERMILLE]) {
+      const r = allocateBetriebskosten(
+        input({
+          positions: [pos({ id: 'heat', category: 'HEATING', heatSplit: heatSplit({ consumptionSplitPermille: boundary }) })],
+        }),
+      )
+      expect(r.ok).toBe(true)
+    }
+    // Inside Germany's 50-70% but a configured Austrian-default run would
+    // reject 600 if it were, say, 400 — the point is the bound applies to
+    // whichever range this call configured, not a hard-coded literal.
+    expect(() =>
+      allocateBetriebskosten(
+        input({
+          positions: [
+            pos({
+              id: 'heat',
+              category: 'HEATING',
+              heatSplit: heatSplit({ consumptionSplitPermille: 480, minPermille: 500, maxPermille: 700 }),
+            }),
+          ],
+        }),
+      ),
+    ).toThrow()
+  })
+
+  it('THROWS when minPermille exceeds maxPermille', () => {
+    expect(() =>
+      allocateBetriebskosten(
+        input({
+          positions: [
+            pos({
+              id: 'heat',
+              category: 'HEATING',
+              heatSplit: heatSplit({ consumptionSplitPermille: 600, minPermille: 700, maxPermille: 500 }),
+            }),
+          ],
+        }),
+      ),
+    ).toThrow()
+  })
+
+  it('THROWS on a non-integer or out-of-[0,1000] consumptionSplitPermille', () => {
+    expect(() =>
+      allocateBetriebskosten(
+        input({
+          positions: [pos({ id: 'heat', category: 'HEATING', heatSplit: heatSplit({ consumptionSplitPermille: 62.5 }) })],
+        }),
+      ),
+    ).toThrow()
+    expect(() =>
+      allocateBetriebskosten(
+        input({
+          positions: [pos({ id: 'heat', category: 'HEATING', heatSplit: heatSplit({ consumptionSplitPermille: 1500 }) })],
+        }),
+      ),
+    ).toThrow()
+  })
+
+  it('THROWS when baseBasis is anything other than USABLE_AREA', () => {
+    expect(() =>
+      allocateBetriebskosten(
+        input({
+          positions: [
+            pos({
+              id: 'heat',
+              category: 'HEATING',
+              // Cast past the TS literal — the runtime guard is what a DB row
+              // (which is NOT type-checked) actually relies on.
+              heatSplit: heatSplit({ baseBasis: 'PER_UNIT' as unknown as 'USABLE_AREA' }),
+            }),
+          ],
+        }),
+      ),
+    ).toThrow()
+  })
+
+  // --- structural prevention: HEATING/HOT_WATER can NEVER skip the split ---
+  it('THROWS when category is HEATING/HOT_WATER and heatSplit is missing', () => {
+    expect(() => allocateBetriebskosten(input({ positions: [pos({ id: 'heat', category: 'HEATING' })] }))).toThrow()
+    expect(() => allocateBetriebskosten(input({ positions: [pos({ id: 'hw', category: 'HOT_WATER' })] }))).toThrow()
+    // Also true when the position tries to sneak in on a plain area/consumption basis.
+    expect(() =>
+      allocateBetriebskosten(input({ positions: [pos({ id: 'heat', category: 'HEATING', basis: 'USABLE_AREA' })] })),
+    ).toThrow()
+  })
+
+  it('THROWS when heatSplit is set on a non-heat category', () => {
+    expect(() =>
+      allocateBetriebskosten(
+        input({ positions: [pos({ id: 'p1', category: 'WATER_SEWER', heatSplit: heatSplit() })] }),
+      ),
+    ).toThrow()
+  })
+
+  // --- fail-closed data quality on the consumption leg ---------------------
+  it('BLOCKS the whole run on a missing/negative reading in the consumption leg', () => {
+    const rMissing = allocateBetriebskosten(
+      input({
+        positions: [
+          pos({
+            id: 'heat',
+            category: 'HEATING',
+            heatSplit: heatSplit({ consumption: [{ unitId: 'u1', consumptionUnits: 30 }] }),
+          }),
+        ],
+      }),
+    )
+    expect(rMissing.ok).toBe(false)
+    expect(rMissing.diagnostics).toContainEqual({
+      code: 'UNIT_MISSING_CONSUMPTION_READING',
+      blocking: true,
+      positionId: 'heat',
+      unitId: 'u2',
+    })
+
+    const rNegative = allocateBetriebskosten(
+      input({
+        positions: [
+          pos({
+            id: 'heat',
+            category: 'HEATING',
+            heatSplit: heatSplit({
+              consumption: [
+                { unitId: 'u1', consumptionUnits: 30 },
+                { unitId: 'u2', consumptionUnits: -1 },
+              ],
+            }),
+          }),
+        ],
+      }),
+    )
+    expect(rNegative.ok).toBe(false)
+    expect(rNegative.diagnostics.some((d) => d.code === 'UNIT_NEGATIVE_CONSUMPTION_READING')).toBe(true)
+  })
+
+  it('BLOCKS a zero-weight consumption leg when there is real money on that leg', () => {
+    const r = allocateBetriebskosten(
+      input({
+        positions: [
+          pos({
+            id: 'heat',
+            category: 'HEATING',
+            heatSplit: heatSplit({
+              consumption: [
+                { unitId: 'u1', consumptionUnits: 0 },
+                { unitId: 'u2', consumptionUnits: 0 },
+              ],
+            }),
+          }),
+        ],
+      }),
+    )
+    expect(r.ok).toBe(false)
+    expect(r.diagnostics).toContainEqual({ code: 'NO_ALLOCATABLE_CONSUMPTION', blocking: true, positionId: 'heat' })
+  })
+
+  it('still blocks the whole run on a missing/invalid AREA key (the area leg needs it too)', () => {
+    const r = allocateBetriebskosten(
+      input({
+        units: [
+          { unitId: 'u1', label: 'A', usableAreaM2: 50 },
+          { unitId: 'u2', label: 'B', usableAreaM2: null },
+        ],
+        positions: [pos({ id: 'heat', category: 'HEATING', heatSplit: heatSplit() })],
+      }),
+    )
+    expect(r.ok).toBe(false)
+    expect(r.diagnostics.some((d) => d.code === 'UNIT_MISSING_USABLE_AREA')).toBe(true)
+  })
+
+  it('withholds the owner share BEFORE splitting into legs', () => {
+    const r = allocateBetriebskosten(
+      input({
+        positions: [
+          pos({
+            id: 'heat',
+            category: 'HEATING',
+            grossAmountCents: 100_000,
+            ownerSharePermille: 200, // 20% owner-borne, 80% allocatable
+            heatSplit: heatSplit({ consumptionSplitPermille: 600 }),
+          }),
+        ],
+      }),
+    )
+    const p = r.positions[0]
+    expect(p.ownerAmountCents).toBe(20_000)
+    expect(p.allocatableAmountCents).toBe(80_000)
+    expect(p.heatSplit!.consumptionLegCents).toBe(48_000) // 60% of 80,000
+    expect(p.heatSplit!.areaLegCents).toBe(32_000)
+  })
+
+  it('is deterministic - identical input yields identical output', () => {
+    const i = input({
+      positions: [pos({ id: 'heat', category: 'HEATING', grossAmountCents: 55_557, heatSplit: heatSplit() })],
+    })
+    expect(allocateBetriebskosten(i)).toEqual(allocateBetriebskosten(i))
+  })
+
+  it('mixes USABLE_AREA, CONSUMPTION, and a heat split in one run and still conserves in total', () => {
+    const r = allocateBetriebskosten(
+      input({
+        positions: [
+          pos({ id: 'area', category: 'WATER_SEWER', grossAmountCents: 20_000 }),
+          pos({
+            id: 'cold', category: 'WATER_SEWER', grossAmountCents: 9_999, basis: 'CONSUMPTION',
+            consumption: [
+              { unitId: 'u1', consumptionUnits: 1 },
+              { unitId: 'u2', consumptionUnits: 2 },
+            ],
+          }),
+          pos({ id: 'heat', category: 'HEATING', grossAmountCents: 33_331, heatSplit: heatSplit() }),
+        ],
+      }),
+    )
+    expect(r.ok).toBe(true)
+    expect(r.units.reduce((s, u) => s + u.totalCents, 0)).toBe(r.allocatableTotalCents)
+    expect(r.allocatableTotalCents).toBe(20_000 + 9_999 + 33_331)
+  })
+})
+
 describe('operating-cost catalog', () => {
   it('has reviewable metadata for every category in the enum', () => {
-    const LEGAL_BASES = ['MRG_21_1', 'MRG_21_2', 'MRG_22', 'MRG_23', 'MRG_24']
+    const LEGAL_BASES = ['MRG_21_1', 'MRG_21_2', 'MRG_22', 'MRG_23', 'MRG_24', 'HEIZKG']
     const entries = Object.entries(BETRIEBSKOSTEN_CATALOG)
     expect(entries.length).toBeGreaterThan(0)
 
@@ -410,13 +935,19 @@ describe('operating-cost catalog', () => {
     expect(all.some((m) => m.scopedToUsers)).toBe(true)
   })
 
-  it('admits no escape-hatch or heating category', () => {
-    // An 'OTHER' bucket would defeat the compliance point (it is exactly how a
-    // non-passable cost gets onto a statement), and heating belongs to the HeizKG with
-    // a measured-consumption basis this slice does not implement.
-    const keys = Object.keys(BETRIEBSKOSTEN_CATALOG)
-    expect(keys).not.toContain('OTHER')
-    expect(keys).not.toContain('HEATING')
-    expect(keys).not.toContain('HOT_WATER')
+  it('still admits no OTHER escape-hatch', () => {
+    // An 'OTHER' bucket would defeat the compliance point — it is exactly how a
+    // non-passable cost would get onto a statement.
+    expect(Object.keys(BETRIEBSKOSTEN_CATALOG)).not.toContain('OTHER')
+  })
+
+  it('admits HEATING/HOT_WATER (U-B) ONLY under HeizKG with a CONSUMPTION default basis', () => {
+    // U-A withheld these two deliberately (only an area basis existed then);
+    // U-B unlocks them, but ONLY in the shape the law allows — never area-only.
+    for (const key of ['HEATING', 'HOT_WATER'] as const) {
+      const meta = BETRIEBSKOSTEN_CATALOG[key]
+      expect(meta.legalBasis, key).toBe('HEIZKG')
+      expect(meta.defaultBasis, key).toBe('CONSUMPTION')
+    }
   })
 })

@@ -18,8 +18,12 @@ export type CategoryMeta = {
   de: string
   /** English label (en-IE) — display only. */
   en: string
-  /** The statutory basis this cost is chargeable under. */
-  legalBasis: 'MRG_21_1' | 'MRG_21_2' | 'MRG_22' | 'MRG_23' | 'MRG_24'
+  /** The statutory basis this cost is chargeable under. HEIZKG (migration
+   * 0032, U-B) is the ONE basis whose category is structurally forced onto
+   * the measured-consumption split — see settlement_allocation_rules_
+   * heat_category_requires_consumption_basis (0032) and
+   * src/lib/betriebskosten/allocate.ts's heat-split contract. */
+  legalBasis: 'MRG_21_1' | 'MRG_21_2' | 'MRG_22' | 'MRG_23' | 'MRG_24' | 'HEIZKG'
   /** The section-17 basis this category defaults to when no period/category
    * override rule exists (settlement_allocation_rules). */
   defaultBasis: AllocationBasis
@@ -209,5 +213,29 @@ export const BETRIEBSKOSTEN_CATALOG: Record<OperatingCostCategory, CategoryMeta>
     requiresTenantConsent: false,
     statutoryCap: null,
     scopedToUsers: true,
+  },
+  // HeizKG (migration 0032, U-B) — NOT MRG section 21. defaultBasis is
+  // 'CONSUMPTION' because it is the ONLY basis these two categories can ever
+  // resolve to (enforced by a DB CHECK constraint AND, redundantly, by
+  // src/lib/betriebskosten/allocate.ts) — an operator can never produce a
+  // pure-area heat statement, which is the entire compliance point of
+  // deferring these two categories out of U-A in the first place.
+  HEATING: {
+    de: 'Heizung',
+    en: 'Heating',
+    legalBasis: 'HEIZKG',
+    defaultBasis: 'CONSUMPTION',
+    requiresTenantConsent: false,
+    statutoryCap: null,
+    scopedToUsers: false,
+  },
+  HOT_WATER: {
+    de: 'Warmwasser',
+    en: 'Hot water',
+    legalBasis: 'HEIZKG',
+    defaultBasis: 'CONSUMPTION',
+    requiresTenantConsent: false,
+    statutoryCap: null,
+    scopedToUsers: false,
   },
 }
