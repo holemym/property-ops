@@ -7,7 +7,31 @@ of truth for what to build next.** Strategy lives in
 
 ---
 
-## ▶ HANDOVER — current state (as of 2026-07-19, post P3 + S2-1 + S2-2 + isDemo cleanup)
+## ▶ HANDOVER — current state (as of 2026-07-30, post rentee portal + loading polish)
+
+**⚠ UNFINISHED WORK PARKED IN `git stash@{0}` — U-A Betriebskosten (READ THIS FIRST).**
+The user HAS signed off on the utility engine (chose **Austrian/DACH-first** + **full
+engine U-A+U-B+U-C**), so the old "no code until sign-off" gate is LIFTED. A builder got
+partway through U-A then died on a session limit, leaving migration `0031_betriebskosten_
+settlements.sql`, `src/lib/betriebskosten/{allocate,catalog}.ts`, `src/lib/data/settlements.ts`
+and edits to `units.ts`/`domain.ts`/`schema_bundle.sql`/`fake-supabase.ts`. It is
+**INCOMPLETE and UNREVIEWED** — do not push it as-is:
+  • **no tests at all** (test count never moved off 523),
+  • `allocate.ts` uses **BigInt literals the tsconfig target rejects** (tsc error),
+  • `units.usable_area_m2` was added **required**, breaking existing test fixtures,
+  • all three adversarial RLS reviewers died before reviewing it.
+Recover with `git stash pop`, finish it (tests + fix the two type errors), then run the
+3-lens review (cross-workspace FK · privilege scope · **allocation-math-as-money-safety**)
+BEFORE committing. Then U-B (meters + HeizKG 55–75% heat split) and U-C (advance payments
++ annual Nachzahlung/Guthaben + portal statement). Design: `docs/superpowers/plans/
+2026-07-19-product-deepening.md` §4.
+
+**⚠ PENDING USER SQL:** migrations **0029 + 0030** (tenant portal) may still be unapplied —
+verify with the per-object query, NOT a bare table count:
+`select (select count(*) from pg_tables where schemaname='public') as tables,
+ (select count(*) from information_schema.columns where table_name='tenants' and column_name='auth_user_id') as has_0029,
+ (select count(*) from pg_tables where schemaname='public' and tablename='announcements') as has_0030;`
+Expect `21 / 1 / 1`. The portal degrades safely until then.
 
 **Where things are:** LIVE at property-ops-sandy.vercel.app, **481 tests green**, tree
 clean, all pushed to `graphite-polish` (pushes auto-deploy prod). The multi-agent
