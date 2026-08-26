@@ -49,54 +49,24 @@ push, then run migration 0032 (queued below) before the U-B operator UI can go l
 allocation-run wizard) whenever that's prioritized ahead of U-C.
 Design: `docs/superpowers/plans/2026-07-19-product-deepening.md` §4.
 
-**⚠ PENDING USER SQL:** migrations **0029 + 0030** (tenant portal) may still be unapplied —
-verify with the per-object query, NOT a bare table count:
+**✅ MIGRATIONS 0001–0032 ARE ALL APPLIED TO PRODUCTION** (confirmed 2026-08-26:
+`27 / 1 / 1 / 1 / 1`). For the first time the database is fully caught up with the
+codebase — the tenant portal, notifications, search, rate limiting, the audit log and
+both Betriebskosten slices are LIVE, not shipped-but-dark. Verify with the per-object
+query, never a bare table count (0029 adds a COLUMN, so the count alone cannot see it):
 `select (select count(*) from pg_tables where schemaname='public') as tables,
  (select count(*) from information_schema.columns where table_name='tenants' and column_name='auth_user_id') as has_0029,
- (select count(*) from pg_tables where schemaname='public' and tablename='announcements') as has_0030;`
-Expect `21 / 1 / 1`. The portal degrades safely until then.
+ (select count(*) from pg_tables where schemaname='public' and tablename='announcements') as has_0030,
+ (select count(*) from pg_tables where schemaname='public' and tablename='settlement_periods') as has_0031,
+ (select count(*) from pg_tables where schemaname='public' and tablename='meters') as has_0032;`
 
-**Where things are:** LIVE at property-ops-sandy.vercel.app, **481 tests green**, tree
-clean, all pushed to `graphite-polish` (pushes auto-deploy prod). The multi-agent
-pipeline runs the board autonomously: agents `prop-builder` / `prop-rls-reviewer` /
-`prop-verifier` (all sonnet) in `clauderoom/.claude/agents/`. Orchestrate on **sonnet**;
-use **fable/opus only** for `[plan]` tasks (P4-0) and deep audits of security-sensitive
-diffs.
-
-**Build-complete:** S1 security (all) · Demo mode D1–D7 · Map M1–M2 · Perf PERF-1a
-(getClaims) + PERF-2 (speed-insights) · **Tenant directory P1-1/2/3** · **Notifications
-P2-1/2** · **Recurring rent P3-1/2** · **MFA S2-1a (enroll) + S2-1b (enforce, LIVE but
-dormant)** · **Auth audit log S2-2** · housekeeping H1/H2/H3/H5 + isDemo dead-prop cascade
-removal. Migrations RLS-reviewed this run: 0027 recurring-rent (CLEAN), 0028 auth_events
-(one HIGH app-layer forgery gap found + fixed before commit — see S2-2 note).
-
-**Next dispatch order:** `H4` (CommandPalette go-map audit) → `H6` (Settings nav link —
-NOTE: S2-1a already added the Settings group + Users link, so H6 is now just the
-`go-users` palette entry; fold into H4) → `S2-3` (CSP enforce — USER-gated on clean
-browsing) → `S2-4` (npm audit). `[verify]` tasks (D6, M3, P1-4, P2-3, **P3-3**, PERF-1c,
-and **S2-1c** which needs a disposable test account) are **USER-gated** — blocked on the
-console queue (and, for S2-1c, a throwaway MFA test account — NEVER the real owner).
-
-**🔴 THE BOTTLENECK (nothing new is actually LIVE until the USER does these):** migrations
-**0022–0028 are committed but NOT applied to production Supabase** (0027 landed with P3-1,
-0028 auth_events with S2-2, both 2026-07-19; all are folded into `schema_bundle.sql`, so
-ONE paste applies them all — the fold's table-count assertion is now `expect 20`).
-Prod logs currently show these degrading *safely* — "failed to fetch unread notification
-count", "tenants query failed", "rate limit RPC error" — because the guards we built catch
-them, but notifications / people-search / rate-limiting don't actually *work* yet. Fastest
-path: paste `supabase/schema_bundle.sql` once in the Supabase SQL editor (idempotent, all
-migrations). Then: enable Anonymous sign-ins (demo), set `DEMO_MODE`/`DEMO_WORKSPACE_ID`/
-optional `SIGNUP_MODE=invite` env, migrate JWT keys→asymmetric (PERF-1b). Full list at the
-bottom USER-action queue.
-
-**⚠️ OPEN LIVE ITEM — friend testing (melikparsadanovd@gmail.com):** the friend wants to
-test with seeded data. Vercel Deployment Protection is now **OFF** (done). But he
-self-registered, so the invite 500'd on "email already registered". Fixed in `c019f72`
-(`inviteUser` now attaches an already-registered person instead of throwing) — **verify
-`c019f72` finished deploying, then re-click Invite for him at /settings/users** (attaches
-his existing account to Holemym Apts as Operator; no new email — he signs in with his
-existing creds). SQL fallback if needed is in the session. Also note: `/settings/users`
-has **no sidebar nav link** (reachable only by URL) — a real UX gap worth a task.
+**⚠ NEVER build a paste file by slicing `schema_bundle.sql` by line range.** The bundle
+is organised BY TABLE, not by migration, so a migration's own prerequisites (e.g. 0031's
+`documents_id_workspace_unique` and `units.usable_area_m2`) sit in the DOCUMENTS/UNITS
+sections and fall outside the slice — this shipped a broken file to the user once
+(`42830 no unique constraint ... documents`). Build paste files by concatenating the
+MIGRATION FILES, which are self-contained. All migrations 0029–0032 are now fully
+idempotent, so any re-run is a no-op.
 
 ---
 
@@ -1099,14 +1069,14 @@ payments + annual Nachzahlung/Guthaben + tenant-portal statement, NOT started).
 - [ ] Verify migration **0021** applied (`select column_name from
       information_schema.columns where table_name='invoices' and
       column_name='recipient_email';` — one row = done).
-- [ ] **NEW — Run migration 0029** (Phase 1A tenant portal link: `tenants.auth_user_id`
+- [x] **NEW — Run migration 0029** *(APPLIED 2026-08-26)* (Phase 1A tenant portal link: `tenants.auth_user_id`
       + `tenants_select_own` RLS) — folded into `schema_bundle.sql`. Migrations 0022–0028
       were already applied 2026-07-19 (bundle paste, `pg_tables`=20); **0029 is the one new
       pending migration.** Re-paste `supabase/schema_bundle.sql` (idempotent — re-applies
       cleanly) or run just the "TENANT PORTAL LINK (0029)" block. Until applied, People →
       "Invite to portal" degrades to a friendly error (the `auth_user_id` write hits a
       missing column) rather than crashing — onboarding is inert but safe.
-- [ ] **NEW — Run migration 0030** (Phase 1B tenant portal read-surfaces: additive
+- [x] **NEW — Run migration 0030** *(APPLIED 2026-08-26)* (Phase 1B tenant portal read-surfaces: additive
       tenant-read RLS on `tenancies`/`documents`/`invoices`/`invoice_line_items` +
       the new `announcements` table + its own RLS) — folded into `schema_bundle.sql`
       (`expect 21` tables once applied). Flagged for prop-rls-reviewer before this
@@ -1122,7 +1092,7 @@ payments + annual Nachzahlung/Guthaben + tenant-portal statement, NOT started).
       backend) would see empty results, not an error — RLS simply hasn't started
       returning their rows yet.
 
-- [ ] **NEW — Run migration 0031** (Betriebskosten U-A: `units.usable_area_m2` +
+- [x] **NEW — Run migration 0031** *(APPLIED 2026-08-26)* (Betriebskosten U-A: `units.usable_area_m2` +
       `settlement_periods` / `_cost_positions` / `_allocation_rules` /
       `_unit_allocations` + the `operating_cost_category` / `allocation_basis` /
       `settlement_status` enums) — folded into `schema_bundle.sql` (**`expect 25`**
@@ -1134,7 +1104,7 @@ payments + annual Nachzahlung/Guthaben + tenant-portal statement, NOT started).
       app calls this yet** — `src/lib/data/settlements.ts` is not wired to any route
       or action, so leaving it unapplied changes no user-visible behaviour; it
       becomes load-bearing when the U-A operator UI lands.
-- [ ] **NEW — Run migration 0032** (Betriebskosten U-B: `meters` + `meter_readings`
+- [x] **NEW — Run migration 0032** *(APPLIED 2026-08-26)* (Betriebskosten U-B: `meters` + `meter_readings`
       tables + `meter_kind`/`meter_reading_source` enums, `HEATING`/`HOT_WATER`
       added to `operating_cost_category`, `CONSUMPTION` added to `allocation_basis`,
       `settlement_allocation_rules.heat_split_min_pct`/`heat_split_max_pct` +
