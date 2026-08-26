@@ -89,6 +89,7 @@ create unique index if not exists tenants_auth_user_unique
 -- SELECT: a tenant reads ONLY their own directory row. See the RLS section
 -- above for why this conjoins workspace_id = current_workspace_id() beyond the
 -- task's literal `auth_user_id = auth.uid()` text.
+drop policy if exists "tenants_select_own" on public.tenants;
 create policy "tenants_select_own"
   on public.tenants for select
   using (

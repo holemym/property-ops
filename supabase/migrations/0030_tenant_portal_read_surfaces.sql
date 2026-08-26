@@ -103,6 +103,7 @@ $$;
 -- unchanged) — the link is entirely manager-controlled. A resident with several
 -- linked tenancies (current + past + multi-unit) sees ALL of their own, and ZERO of
 -- any other tenant's.
+drop policy if exists "tenancies_select_own_tenant" on public.tenancies;
 create policy "tenancies_select_own_tenant"
   on public.tenancies for select
   using (
@@ -171,6 +172,7 @@ $$;
 -- tenant's). The join `tn.tenant_id = t.id` restricts every match to the CALLER'S
 -- OWN tenancies, so a tenancy/unit match can never resolve through another
 -- tenant's lease.
+drop policy if exists "documents_select_own_tenant" on public.documents;
 create policy "documents_select_own_tenant"
   on public.documents for select
   using (
@@ -236,6 +238,7 @@ as $$
 $$;
 
 -- SELECT — invoices. ADDITIVE; invoices_select_finance (0019) untouched.
+drop policy if exists "invoices_select_own_tenant" on public.invoices;
 create policy "invoices_select_own_tenant"
   on public.invoices for select
   using (public.invoice_visible_to_current_tenant(id));
@@ -243,6 +246,7 @@ create policy "invoices_select_own_tenant"
 -- SELECT — invoice_line_items. ADDITIVE; invoice_line_items_select_finance (0019)
 -- untouched. Scoped through the SAME helper (by invoice_id) so a line can never be
 -- visible when its parent invoice is not — no separate/looser line-item rule.
+drop policy if exists "invoice_line_items_select_own_tenant" on public.invoice_line_items;
 create policy "invoice_line_items_select_own_tenant"
   on public.invoice_line_items for select
   using (public.invoice_visible_to_current_tenant(invoice_id));
@@ -258,7 +262,9 @@ create policy "invoice_line_items_select_own_tenant"
 -- property-targeted (composite FK to properties(id, workspace_id), the same
 -- optional-attribution pattern documents' property_id uses, 0018:129-131, anchored
 -- on properties_id_workspace_unique, 0009:61).
-create type public.announcement_status as enum ('DRAFT', 'PUBLISHED');
+do $do$ begin
+  create type public.announcement_status as enum ('DRAFT', 'PUBLISHED');
+exception when duplicate_object then null; end $do$;
 
 create table if not exists public.announcements (
   id uuid primary key default gen_random_uuid(),
@@ -281,6 +287,7 @@ create table if not exists public.announcements (
 create index if not exists announcements_workspace_status_idx
   on public.announcements (workspace_id, status, published_at desc);
 
+drop trigger if exists announcements_set_updated_at on public.announcements;
 create trigger announcements_set_updated_at
   before update on public.announcements
   for each row execute function public.set_updated_at();
@@ -322,12 +329,14 @@ $$;
 -- Tenant/guest read: PUBLISHED + own-scope only. The core tight-scoping policy —
 -- a tenant NEVER sees a DRAFT (status pinned in the policy itself, not just the
 -- helper) regardless of workspace/property match.
+drop policy if exists "announcements_select_published_for_tenant" on public.announcements;
 create policy "announcements_select_published_for_tenant"
   on public.announcements for select
   using (status = 'PUBLISHED' and public.tenant_can_read_announcement(workspace_id, property_id));
 
 -- Manager/accountant + SUPER_ADMIN oversight read (drafts included, to manage) —
 -- mirrors tenancies_select_manager_or_accountant (0016:97-103).
+drop policy if exists "announcements_select_manager_or_accountant" on public.announcements;
 create policy "announcements_select_manager_or_accountant"
   on public.announcements for select
   using (
@@ -338,10 +347,12 @@ create policy "announcements_select_manager_or_accountant"
 
 -- Writes: managers only, own workspace — byte-for-byte the tenancies_insert/
 -- update_manager shape (0016:110-122).
+drop policy if exists "announcements_insert_manager" on public.announcements;
 create policy "announcements_insert_manager"
   on public.announcements for insert
   with check (workspace_id = public.current_workspace_id() and public.is_workspace_manager());
 
+drop policy if exists "announcements_update_manager" on public.announcements;
 create policy "announcements_update_manager"
   on public.announcements for update
   using (workspace_id = public.current_workspace_id() and public.is_workspace_manager())

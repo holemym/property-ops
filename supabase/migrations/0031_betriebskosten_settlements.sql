@@ -191,6 +191,7 @@ create index if not exists settlement_periods_workspace_property_idx
 create index if not exists settlement_periods_workspace_status_idx
   on public.settlement_periods (workspace_id, status);
 
+drop trigger if exists settlement_periods_set_updated_at on public.settlement_periods;
 create trigger settlement_periods_set_updated_at
   before update on public.settlement_periods
   for each row execute function public.set_updated_at();
@@ -244,6 +245,7 @@ create table if not exists public.settlement_cost_positions (
 create index if not exists settlement_cost_positions_period_category_idx
   on public.settlement_cost_positions (workspace_id, settlement_period_id, category);
 
+drop trigger if exists settlement_cost_positions_set_updated_at on public.settlement_cost_positions;
 create trigger settlement_cost_positions_set_updated_at
   before update on public.settlement_cost_positions
   for each row execute function public.set_updated_at();
@@ -295,6 +297,7 @@ create unique index if not exists settlement_allocation_rules_category_unique
   on public.settlement_allocation_rules (workspace_id, settlement_period_id, category)
   where category is not null;
 
+drop trigger if exists settlement_allocation_rules_set_updated_at on public.settlement_allocation_rules;
 create trigger settlement_allocation_rules_set_updated_at
   before update on public.settlement_allocation_rules
   for each row execute function public.set_updated_at();
@@ -487,6 +490,7 @@ create trigger settlement_cost_positions_period_guard
 
 alter table public.settlement_periods enable row level security;
 
+drop policy if exists "settlement_periods_select_finance" on public.settlement_periods;
 create policy "settlement_periods_select_finance"
   on public.settlement_periods for select
   using (
@@ -497,10 +501,12 @@ create policy "settlement_periods_select_finance"
     or public.current_role() = 'SUPER_ADMIN'
   );
 
+drop policy if exists "settlement_periods_insert_finance" on public.settlement_periods;
 create policy "settlement_periods_insert_finance"
   on public.settlement_periods for insert
   with check (workspace_id = public.current_workspace_id() and public.can_manage_finance());
 
+drop policy if exists "settlement_periods_update_finance" on public.settlement_periods;
 create policy "settlement_periods_update_finance"
   on public.settlement_periods for update
   using (workspace_id = public.current_workspace_id() and public.can_manage_finance())
@@ -511,6 +517,7 @@ create policy "settlement_periods_update_finance"
 
 alter table public.settlement_cost_positions enable row level security;
 
+drop policy if exists "settlement_cost_positions_select_finance" on public.settlement_cost_positions;
 create policy "settlement_cost_positions_select_finance"
   on public.settlement_cost_positions for select
   using (
@@ -521,10 +528,12 @@ create policy "settlement_cost_positions_select_finance"
     or public.current_role() = 'SUPER_ADMIN'
   );
 
+drop policy if exists "settlement_cost_positions_insert_finance" on public.settlement_cost_positions;
 create policy "settlement_cost_positions_insert_finance"
   on public.settlement_cost_positions for insert
   with check (workspace_id = public.current_workspace_id() and public.can_manage_finance());
 
+drop policy if exists "settlement_cost_positions_update_finance" on public.settlement_cost_positions;
 create policy "settlement_cost_positions_update_finance"
   on public.settlement_cost_positions for update
   using (workspace_id = public.current_workspace_id() and public.can_manage_finance())
@@ -534,12 +543,14 @@ create policy "settlement_cost_positions_update_finance"
 -- period: a mistyped supplier bill must be removable (exactly the
 -- invoice_line_items_delete_finance argument, 0019). The lock guard (section 7)
 -- blocks this once the parent period is FINALIZED, independent of RLS.
+drop policy if exists "settlement_cost_positions_delete_finance" on public.settlement_cost_positions;
 create policy "settlement_cost_positions_delete_finance"
   on public.settlement_cost_positions for delete
   using (workspace_id = public.current_workspace_id() and public.can_manage_finance());
 
 alter table public.settlement_allocation_rules enable row level security;
 
+drop policy if exists "settlement_allocation_rules_select_finance" on public.settlement_allocation_rules;
 create policy "settlement_allocation_rules_select_finance"
   on public.settlement_allocation_rules for select
   using (
@@ -550,21 +561,25 @@ create policy "settlement_allocation_rules_select_finance"
     or public.current_role() = 'SUPER_ADMIN'
   );
 
+drop policy if exists "settlement_allocation_rules_insert_finance" on public.settlement_allocation_rules;
 create policy "settlement_allocation_rules_insert_finance"
   on public.settlement_allocation_rules for insert
   with check (workspace_id = public.current_workspace_id() and public.can_manage_finance());
 
+drop policy if exists "settlement_allocation_rules_update_finance" on public.settlement_allocation_rules;
 create policy "settlement_allocation_rules_update_finance"
   on public.settlement_allocation_rules for update
   using (workspace_id = public.current_workspace_id() and public.can_manage_finance())
   with check (workspace_id = public.current_workspace_id() and public.can_manage_finance());
 
+drop policy if exists "settlement_allocation_rules_delete_finance" on public.settlement_allocation_rules;
 create policy "settlement_allocation_rules_delete_finance"
   on public.settlement_allocation_rules for delete
   using (workspace_id = public.current_workspace_id() and public.can_manage_finance());
 
 alter table public.settlement_unit_allocations enable row level security;
 
+drop policy if exists "settlement_unit_allocations_select_finance" on public.settlement_unit_allocations;
 create policy "settlement_unit_allocations_select_finance"
   on public.settlement_unit_allocations for select
   using (
@@ -575,15 +590,18 @@ create policy "settlement_unit_allocations_select_finance"
     or public.current_role() = 'SUPER_ADMIN'
   );
 
+drop policy if exists "settlement_unit_allocations_insert_finance" on public.settlement_unit_allocations;
 create policy "settlement_unit_allocations_insert_finance"
   on public.settlement_unit_allocations for insert
   with check (workspace_id = public.current_workspace_id() and public.can_manage_finance());
 
+drop policy if exists "settlement_unit_allocations_update_finance" on public.settlement_unit_allocations;
 create policy "settlement_unit_allocations_update_finance"
   on public.settlement_unit_allocations for update
   using (workspace_id = public.current_workspace_id() and public.can_manage_finance())
   with check (workspace_id = public.current_workspace_id() and public.can_manage_finance());
 
+drop policy if exists "settlement_unit_allocations_delete_finance" on public.settlement_unit_allocations;
 create policy "settlement_unit_allocations_delete_finance"
   on public.settlement_unit_allocations for delete
   using (workspace_id = public.current_workspace_id() and public.can_manage_finance());
