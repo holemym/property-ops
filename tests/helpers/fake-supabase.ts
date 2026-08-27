@@ -39,6 +39,7 @@ export function createFakeSupabaseClient(seed: Record<string, Row[]> = {}) {
     if (!tables[table]) tables[table] = []
     const filters: Array<[string, any]> = []
     const notEqFilters: Array<[string, any]> = []
+    const rangeFilters: Array<[string, '>=' | '<=', any]> = []
     let op: 'select' | 'insert' | 'update' | 'delete' = 'select'
     let payload: Row | null = null
     let single = false
@@ -70,6 +71,11 @@ export function createFakeSupabaseClient(seed: Record<string, Row[]> = {}) {
       // strict `===`, so seed fixtures must set the column explicitly to `null`
       // rather than omitting it (same convention every other fixture already follows).
       is(col: string, val: any) { filters.push([col, val]); return api },
+      // `.gte()` / `.lte()` — added for the U-B meters data layer
+      // (listMeterReadings' optional fromDate/toDate window). Range comparison on
+      // ISO date strings is lexicographic, which is correct for YYYY-MM-DD.
+      gte(col: string, val: any) { rangeFilters.push([col, '>=', val]); return api },
+      lte(col: string, val: any) { rangeFilters.push([col, '<=', val]); return api },
       or(filterString: string) { orFilter = filterString; return api },
       order(col: string, opts?: { ascending?: boolean }) { orderBy = col; ascending = opts?.ascending ?? true; return api },
       // Added minimally for P2-1's listNotificationsPage (house `.range()` pattern,
@@ -120,7 +126,8 @@ export function createFakeSupabaseClient(seed: Record<string, Row[]> = {}) {
           (r) =>
             matches(r, filters) &&
             matchesOrFilter(r, orFilter) &&
-            notEqFilters.every(([col, val]) => r[col] !== val)
+            notEqFilters.every(([col, val]) => r[col] !== val) &&
+            rangeFilters.every(([col, cmp, val]) => (cmp === '>=' ? r[col] >= val : r[col] <= val))
         )
         if (orderBy) {
           found = [...found].sort((a, b) => {
