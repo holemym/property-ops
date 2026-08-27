@@ -19,9 +19,16 @@ itself → a lawful-looking 100%-area heat statement) now clamped to the statuto
 persisting a `share_pct` that disagreed with the amount billed; and 10 unguarded
 statements after the required mid-file `commit;` that made a retry impossible. Also added
 `units_property_move_guard` (a unit could be moved between properties, orphaning its
-meter's `property_id`). **KNOWN GAP: `src/lib/data/settlements.ts` has NO test harness** —
-two of those fixes are verified by reading, not by test. Build a `persistAllocationRun`
-harness before U-C stacks reconciliation on top. **NEXT: U-C** (advance payments + annual
+meter's `property_id`). **Harness now EXISTS** (`f0fec61`, 611 tests): `tests/unit/data-settlements.test.ts`
+covers `persistAllocationRun`, converting both read-only-verified U-B fixes into real
+tests. **NEW KNOWN GAP it surfaced — needs a USER decision:** a meter INSTALLED
+mid-period has no reading dated `<= periodStart`, so `computeMeterConsumption` blocks the
+entire run; a mid-period meter REPLACEMENT therefore cannot be settled at all.
+`meters.installed_at`/`removed_at` exist (0032) but the consumption math never consults
+them. Blocking is the safe default (inferring a baseline would silently undercount that
+unit and overcharge the rest — the exact bug class this engine keeps producing), so the
+fix is a product/legal question about how a replacement is billed under HeizKG. Pinned by
+a test so any change is deliberate. **NEXT: U-C** (advance payments + annual
 Nachzahlung/Guthaben + tenant-portal statement), then the operator UI.
 
 **U-A Betriebskosten SHIPPED** (`fc5fd99`, migration **0031**, 551 tests). The user
