@@ -9,6 +9,22 @@ of truth for what to build next.** Strategy lives in
 
 ## ▶ HANDOVER — current state (as of 2026-07-30, post rentee portal + loading polish)
 
+**WHOLE-APP POLISH PASS SHIPPED 2026-08-26** (`f1ebdf5`..`e4ff08e`, 4 commits, 611 tests):
+three read-only reviews (cleanliness / UI consistency / loading+perf) triaged and
+implemented. Perf: single-round-trip pagination, batched signed URLs (new
+`src/lib/storage/sign.ts`), dashboard 7→4 queries, hub over-fetch scoped, meter-readings
+N+1 → one `.in()`, and **ticket-action side work (AI triage, emails, notification
+fan-outs) moved post-response via `next/server` `after()`** — audit events deliberately
+stay synchronous. Cleanliness: ~350 lines of dead components deleted; ONE formatter per
+concept (`format-money` / `format-bytes` / `formatDateTime` / `ui/native-select`) swept
+across ~30 call sites; email disconnected-log now masks recipient PII. UI: notifications
+list-gap bug + missing ErrorToast fixed, security table got the mobile card fallback,
+`announcement_status`/`lease_state` joined `status.ts`, `toneClasses` exported from
+badge.tsx, 10 loaders wrapped in `LoadingRegion` (SR-silent before), success toasts strip
+their params. Remaining review debt (deliberate, small): auth `logAuthEvent` awaits not
+moved to after(); UnitForm/PropertyForm/VendorForm's h-9 select variant left; inline
+`.replace(/_/g,' ')` enum labels not fully swept.
+
 **U-B Betriebskosten SHIPPED** (`23d8676`, migration **0032**, 602 tests) — meters +
 readings + CONSUMPTION basis + the HeizKG heat split, with HEATING/HOT_WATER now unlocked
 in the §21 catalog. Three adversarial reviews found **2 CRITICAL + 2 HIGH**, all fixed
