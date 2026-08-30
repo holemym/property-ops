@@ -1,3 +1,4 @@
+import { formatBytes } from '@/lib/format-bytes'
 import type { DocumentType } from '@/types/domain'
 
 // Shared display helpers for the documents surface — a single source of truth for the
@@ -35,9 +36,7 @@ export function documentTypeLabel(type: DocumentType): string {
 
 // Round a byte count to a friendly unit. Whole KB, one-decimal MB — no long decimals.
 export function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  return formatBytes(bytes)
 }
 
 // Lookup maps a document resolves its attached-entity label against. The page builds these

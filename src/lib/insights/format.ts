@@ -6,15 +6,8 @@
 // strings, so they must live in a server-safe module. charts.tsx imports them from here
 // too, for its own client-side use.
 
-const money = new Intl.NumberFormat('en-IE', {
-  style: 'currency',
-  currency: 'EUR',
-  maximumFractionDigits: 0,
-})
-
-export function formatMoney(value: number): string {
-  return money.format(Math.round(value))
-}
+// Whole-euro EUR — re-exported from THE shared formatter (src/lib/format-money).
+export { formatMoney } from '@/lib/format-money'
 
 export function formatDays(value: number | null): string {
   if (value === null) return '—'

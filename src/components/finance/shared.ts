@@ -5,23 +5,15 @@ import type { MonthPoint } from './MonthBars'
 // surface stays consistent with the rest of the app.
 export { formatDate } from '@/lib/format-date'
 
-// Shared, dependency-free helpers for the finance surface. Money is EUR, whole-euro
-// (no cents on aggregates or entries — matches the insights charts' formatMoney).
-const money = new Intl.NumberFormat('en-IE', {
-  style: 'currency',
-  currency: 'EUR',
-  maximumFractionDigits: 0,
-})
+// Money is EUR, whole-euro on this surface — re-exported from THE shared formatter.
+export { formatMoney } from '@/lib/format-money'
+import { formatMoney as sharedFormatMoney } from '@/lib/format-money'
 
-export function formatMoney(value: number): string {
-  return money.format(Math.round(value))
-}
-
-// A signed EUR string for net figures — an explicit − for losses so the sign reads at a
-// glance (Intl already renders the minus, but a leading + on gains does not exist).
+// A signed EUR string for net figures — an explicit + on gains so the sign reads at a
+// glance (Intl already renders the minus; a leading + does not exist).
 export function formatSignedMoney(value: number): string {
-  const rounded = Math.round(value)
-  return rounded > 0 ? `+${money.format(rounded)}` : money.format(rounded)
+  const s = sharedFormatMoney(value)
+  return Math.round(value) > 0 ? `+${s}` : s
 }
 
 // 'YYYY-MM' → 'Jun 2026' for the month bar-chart axis / net-by-month rows.

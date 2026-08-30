@@ -8,6 +8,8 @@ import { getTicket } from '@/lib/data/tickets'
 import { getProperty } from '@/lib/data/properties'
 import { getUnit } from '@/lib/data/units'
 import { listTicketComments } from '@/lib/data/ticket-comments'
+import { formatDateTime } from '@/lib/format-date'
+import { formatBytes } from '@/lib/format-bytes'
 import { signStoragePaths } from '@/lib/storage/sign'
 import { listAttachments, ATTACHMENTS_BUCKET } from '@/lib/data/attachments'
 import { Badge } from '@/components/ui/badge'
@@ -21,19 +23,6 @@ import { ErrorToast } from '@/components/common/ErrorToast'
 import { SubmitButton } from '@/components/tickets/SubmitButton'
 import { addPublicCommentAction } from '../actions'
 import { uploadAttachmentAction } from '@/app/(app)/tickets/attachment-actions'
-
-function formatDateTime(iso: string): string {
-  return new Date(iso).toLocaleString(undefined, {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  })
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-}
 
 // A label/value row for the summary card's definition grid.
 function SummaryField({

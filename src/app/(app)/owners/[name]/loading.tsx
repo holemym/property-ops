@@ -1,17 +1,21 @@
-export default function Loading() {
+import { LoadingRegion, Skel, CardSkeleton, TableSkeleton } from '@/components/common/skeletons'
+
+// Loading fallback for one owner's statement — back link, header, the three
+// billed/paid/outstanding stat cards, then the invoice table.
+export default function OwnerStatementLoading() {
   return (
-    <div className="flex flex-col gap-6">
-      <div className="h-4 w-20 animate-pulse rounded bg-muted" />
+    <LoadingRegion label="Loading owner statement">
+      <Skel className="h-4 w-20" />
       <div className="flex flex-col gap-2">
-        <div className="h-7 w-48 animate-pulse rounded bg-muted" />
-        <div className="h-4 w-32 animate-pulse rounded bg-muted" />
+        <Skel className="h-7 w-48" />
+        <Skel className="h-4 w-32" />
       </div>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         {Array.from({ length: 3 }).map((_, i) => (
-          <div key={i} className="h-20 animate-pulse rounded-xl border bg-muted/30" />
+          <CardSkeleton key={i} className="h-20" />
         ))}
       </div>
-      <div className="h-40 animate-pulse rounded-lg border bg-muted/20" />
-    </div>
+      <TableSkeleton rows={5} />
+    </LoadingRegion>
   )
 }

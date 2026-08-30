@@ -1,3 +1,4 @@
+import { formatDateTime } from '@/lib/format-date'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { ArrowRight, Inbox } from 'lucide-react'
@@ -237,7 +238,7 @@ function TicketWidget({
                   <span className="truncate text-sm font-medium text-foreground">{t.title}</span>
                   <span className="text-xs text-muted-foreground">
                     {propertyNames[t.property_id] ?? '—'} ·{' '}
-                    <span className={cn(agingTone(t.created_at))} title={new Date(t.created_at).toLocaleString()}>
+                    <span className={cn(agingTone(t.created_at))} title={formatDateTime(t.created_at)}>
                       {relativeDay(t.created_at)}
                     </span>
                   </span>

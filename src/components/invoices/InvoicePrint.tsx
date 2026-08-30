@@ -1,5 +1,6 @@
 'use client'
 
+import { formatMoneyIn } from '@/lib/format-money'
 import { Printer } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { invoiceTotals } from '@/lib/invoices/compute'
@@ -15,8 +16,7 @@ import type { Invoice, InvoiceLineItem } from '@/types/domain'
 // root (see the print:block/print:hidden usage on the detail page + the style tag below).
 // Keeping the print stylesheet local to this component avoids touching globals.css.
 
-const money = (currency: string) =>
-  new Intl.NumberFormat('en-IE', { style: 'currency', currency: currency || 'EUR' })
+const money = (currency: string) => ({ format: (v: number) => formatMoneyIn(currency, v) })
 
 // Long-month calendar date ('9 July 2026') for the printed document.
 const formatDate = formatDateLong

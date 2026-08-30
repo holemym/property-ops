@@ -1,3 +1,4 @@
+import { formatMoneyIn } from '@/lib/format-money'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { Home as HomeIcon, CirclePlus } from 'lucide-react'
@@ -80,7 +81,7 @@ export default async function PortalHomePage() {
   const badge = tenancy ? LEASE_BADGE[leaseState(tenancy, todayIso)] : null
 
   const currency = workspace?.currency || 'EUR'
-  const money = new Intl.NumberFormat('en-IE', { style: 'currency', currency })
+  const money = { format: (v: number) => formatMoneyIn(currency, v) }
 
   return (
     <div className="flex flex-col gap-6">

@@ -1,3 +1,4 @@
+import { formatDateTime } from '@/lib/format-date'
 import { Bell, MessageSquare, RefreshCw, UserCheck, type LucideIcon } from 'lucide-react'
 import { requireWorkspace } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
@@ -135,7 +136,7 @@ function NotificationRow({ notification: n }: { notification: Notification }) {
         </span>
         <span
           className="shrink-0 text-xs text-muted-foreground"
-          title={new Date(n.created_at).toLocaleString()}
+          title={formatDateTime(n.created_at)}
         >
           {relativeDay(n.created_at)}
         </span>

@@ -1,5 +1,7 @@
 'use client'
 
+import { selectClassName } from '@/components/ui/native-select'
+import { formatMoneyExact } from '@/lib/format-money'
 import { useState } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
@@ -24,8 +26,7 @@ import {
 const PARTY_TYPES = invoicePartyTypeEnum.options
 const DIRECTIONS = invoiceDirectionEnum.options
 
-const SELECT_CLASS =
-  'h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm text-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50'
+const SELECT_CLASS = selectClassName
 
 const DIRECTION_LABEL: Record<string, string> = {
   OUTBOUND: 'Outbound — we bill them',
@@ -56,10 +57,7 @@ export type InvoiceFormDefaults = {
 
 const EMPTY_LINE: LineRow = { description: '', quantity: '1', unitAmount: '0' }
 
-const money = new Intl.NumberFormat('en-IE', { style: 'currency', currency: 'EUR' })
-function fmt(value: number): string {
-  return money.format(value)
-}
+const fmt = formatMoneyExact
 
 function today(): string {
   return new Date().toISOString().slice(0, 10)

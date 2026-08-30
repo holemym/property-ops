@@ -1,3 +1,4 @@
+import { formatMoneyExact } from '@/lib/format-money'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { ArrowLeft, Download } from 'lucide-react'
@@ -26,7 +27,7 @@ import {
 
 import { formatDate } from '@/lib/format-date'
 
-const eur = new Intl.NumberFormat('en-IE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 2 })
+const eur = { format: formatMoneyExact }
 
 // One owner's statement — every invoice billed to them, with billed / paid / outstanding
 // and a printable version. Finance-gated. The owner is keyed by party name (URL-encoded).

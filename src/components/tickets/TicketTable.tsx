@@ -1,3 +1,4 @@
+import { formatDateTime } from '@/lib/format-date'
 import Link from 'next/link'
 import { ArrowDown, ArrowUp, ChevronsUpDown } from 'lucide-react'
 import {
@@ -111,7 +112,7 @@ export function TicketTable({
                     ' · ' +
                     t.category.replace(/_/g, ' ').toLowerCase()}
                 </span>
-                <span className="shrink-0" title={new Date(t.created_at).toLocaleString()}>
+                <span className="shrink-0" title={formatDateTime(t.created_at)}>
                   {relativeDay(t.created_at)}
                 </span>
               </div>
@@ -160,7 +161,7 @@ export function TicketTable({
                 <StatusBadge kind="ticket_status" value={t.status} />
               </TableCell>
               <TableCell className="px-4 py-3 text-muted-foreground">
-                <span title={new Date(t.created_at).toLocaleString()}>
+                <span title={formatDateTime(t.created_at)}>
                   {relativeDay(t.created_at)}
                 </span>
               </TableCell>

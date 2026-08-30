@@ -1,6 +1,7 @@
 'use server'
 
 import { redirect } from 'next/navigation'
+import { redirectWithError } from '@/lib/redirect-with-error'
 import { revalidatePath } from 'next/cache'
 import { createServiceClient } from '@/lib/supabase/service'
 import {
@@ -44,7 +45,7 @@ function jobPath(token: string): string {
 }
 
 function redirectJobError(token: string, message: string): never {
-  redirect(`${jobPath(token)}?error=${encodeURIComponent(message)}`)
+  redirectWithError(jobPath(token), message)
 }
 
 // Load + validate the token, or redirect. Returns the sanitized job view for the caller.

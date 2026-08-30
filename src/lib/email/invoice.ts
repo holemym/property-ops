@@ -1,3 +1,4 @@
+import { formatMoneyIn } from '@/lib/format-money'
 import { sendEmail, type SendEmailResult } from './send'
 import { invoiceTotals } from '@/lib/invoices/compute'
 import { formatDateLong } from '@/lib/format-date'
@@ -8,7 +9,7 @@ import type { Invoice, InvoiceLineItem } from '@/types/domain'
 // caller decides how to surface the result to the user.
 
 function money(currency: string) {
-  return new Intl.NumberFormat('en-IE', { style: 'currency', currency: currency || 'EUR' })
+  return { format: (v: number) => formatMoneyIn(currency, v) }
 }
 
 // Long-month calendar date ('9 July 2026') for the emailed invoice.

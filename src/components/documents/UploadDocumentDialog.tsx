@@ -1,5 +1,6 @@
 'use client'
 
+import { selectClassName } from '@/components/ui/native-select'
 import { useMemo, useState } from 'react'
 import { Upload } from 'lucide-react'
 import {
@@ -19,8 +20,7 @@ import { FileInput } from '@/components/ui/file-input'
 import { SubmitButton } from '@/components/tickets/SubmitButton'
 import type { DocumentType } from '@/types/domain'
 
-const SELECT_CLASS =
-  'h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30'
+const SELECT_CLASS = selectClassName
 
 // The eight document types, paired with a sentence-case label for the select.
 const TYPE_OPTIONS: { value: DocumentType; label: string }[] = [

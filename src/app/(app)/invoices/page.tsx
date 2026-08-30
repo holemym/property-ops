@@ -1,3 +1,4 @@
+import { formatMoneyIn } from '@/lib/format-money'
 import Link from 'next/link'
 import { ReceiptText, Download, Plus } from 'lucide-react'
 import { requirePermission } from '@/lib/auth/session'
@@ -21,8 +22,6 @@ import { GenerateRentDialog } from '@/components/invoices/GenerateRentDialog'
 import { GeneratedToast } from '@/components/invoices/GeneratedToast'
 import { generateRentInvoicesAction } from './actions'
 import type { InvoiceStatus, InvoicePartyType, InvoiceDirection, InvoiceLineItem } from '@/types/domain'
-
-const money = new Intl.NumberFormat('en-IE', { style: 'currency', currency: 'EUR' })
 
 export default async function InvoicesPage({
   searchParams,
@@ -95,13 +94,9 @@ export default async function InvoicesPage({
       lines.map((l) => ({ quantity: l.quantity, unit_amount: l.unit_amount })),
       inv.tax_rate,
     )
-    const fmt =
-      inv.currency && inv.currency !== 'EUR'
-        ? new Intl.NumberFormat('en-IE', { style: 'currency', currency: inv.currency })
-        : money
-    totalStringById.set(inv.id, fmt.format(total))
+    totalStringById.set(inv.id, formatMoneyIn(inv.currency, total))
   }
-  const totalFor = (id: string) => totalStringById.get(id) ?? money.format(0)
+  const totalFor = (id: string) => totalStringById.get(id) ?? formatMoneyIn('EUR', 0)
 
   const isFiltered = Boolean(status || partyType || direction || overdue)
 

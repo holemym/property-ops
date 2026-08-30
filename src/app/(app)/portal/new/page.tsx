@@ -1,3 +1,4 @@
+import { selectClassName } from '@/components/ui/native-select'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { Building2 } from 'lucide-react'
@@ -20,10 +21,7 @@ import { reportIssueAction } from '../actions'
 
 const CATEGORIES = ticketCategoryEnum.options
 
-// Shared graphite select styling — matches the operator ticket detail selects. Native
-// <select> is kept (no client JS) so optgroups and no-JS server-form posting work.
-const SELECT_CLASS =
-  'h-8 w-full rounded-lg border border-input bg-background px-2.5 text-sm text-foreground transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30'
+const SELECT_CLASS = selectClassName
 
 export default async function ReportIssuePage() {
   const user = await requireWorkspace()

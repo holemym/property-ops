@@ -41,11 +41,6 @@ export type SendEmailResult = {
   error?: string
 }
 
-/** True only when a real API key is configured — the single "is it connected?" switch. */
-export function isEmailEnabled(): boolean {
-  return Boolean(process.env.RESEND_API_KEY)
-}
-
 /**
  * Best-effort email send. NEVER throws — on any failure (missing recipient,
  * network error, non-2xx from Resend) it logs and returns a result with
@@ -69,8 +64,15 @@ export async function sendEmail(input: SendEmailInput): Promise<SendEmailResult>
 
   const apiKey = process.env.RESEND_API_KEY
   if (!apiKey) {
-    // DISCONNECTED: log the intent, make no network call, incur no cost.
-    console.info('[email] (disconnected) would send:', subject, '→', cleaned.join(', '))
+    // DISCONNECTED: log the intent, make no network call, incur no cost. Recipient
+    // addresses are MASKED (m***@domain) — this branch runs in any deployed env
+    // missing RESEND_API_KEY, and full addresses are PII that doesn't belong in
+    // server logs.
+    const masked = cleaned.map((addr) => {
+      const at = addr.indexOf('@')
+      return at > 0 ? `${addr[0]}***${addr.slice(at)}` : '***'
+    })
+    console.info('[email] (disconnected) would send:', subject, '→', masked.join(', '))
     return { sent: false, status: 'disconnected' }
   }
 

@@ -1,4 +1,9 @@
 import Link from 'next/link'
+import { selectClassName } from '@/components/ui/native-select'
+import { formatDateTime } from '@/lib/format-date'
+import { formatMoneyExact as formatMoney } from '@/lib/format-money'
+import { formatBytes } from '@/lib/format-bytes'
+
 import { notFound } from 'next/navigation'
 import { requirePermission } from '@/lib/auth/session'
 import { can } from '@/lib/auth/permissions'
@@ -52,22 +57,7 @@ const EVENT_LABELS: Record<TicketEventType, string> = {
   TICKET_CLOSED: 'Ticket closed',
 }
 
-const SELECT_CLASS =
-  'h-8 w-full rounded-lg border border-border bg-background px-2.5 text-sm text-foreground'
-
-function formatDateTime(iso: string): string {
-  return new Date(iso).toLocaleString()
-}
-
-function formatMoney(value: number): string {
-  return new Intl.NumberFormat(undefined, { style: 'currency', currency: 'EUR' }).format(value)
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-}
+const SELECT_CLASS = selectClassName
 
 // Compact old→new rendering for the audit timeline. STATUS_CHANGED carries {status},
 // the *_ASSIGNED events carry an id — we render whatever `status` we find, else fall

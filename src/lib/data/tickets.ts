@@ -268,40 +268,6 @@ export async function assignTicket(
   return data as Ticket
 }
 
-// Edit path for the "content"/cost/schedule fields only. Status is updateTicketStatus,
-// assignment is assignTicket — this separation keeps each mutation distinctly
-// auditable (a STATUS_CHANGED event vs a PRIORITY_CHANGED event, etc.). undefined-skip
-// / null-through, snake_case mapping.
-export type UpdateTicketInput = {
-  title?: string
-  description?: string
-  category?: TicketCategory
-  priority?: TicketPriority
-  estimatedCost?: number | null
-  actualCost?: number | null
-  scheduledAt?: string | null
-}
-
-export async function updateTicket(
-  supabase: SupabaseClient,
-  workspaceId: string,
-  id: string,
-  input: UpdateTicketInput
-): Promise<Ticket> {
-  const payload: Record<string, unknown> = {}
-  if (input.title !== undefined) payload.title = input.title
-  if (input.description !== undefined) payload.description = input.description
-  if (input.category !== undefined) payload.category = input.category
-  if (input.priority !== undefined) payload.priority = input.priority
-  if (input.estimatedCost !== undefined) payload.estimated_cost = input.estimatedCost
-  if (input.actualCost !== undefined) payload.actual_cost = input.actualCost
-  if (input.scheduledAt !== undefined) payload.scheduled_at = input.scheduledAt
-  const { data, error } = await supabase
-    .from('tickets').update(payload).eq('workspace_id', workspaceId).eq('id', id).select().single()
-  if (error) throw error
-  return data as Ticket
-}
-
 export type WorkspaceProfile = {
   id: string
   full_name: string | null

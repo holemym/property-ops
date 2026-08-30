@@ -1,5 +1,6 @@
 'use client'
 
+import { selectClassName } from '@/components/ui/native-select'
 import { useState } from 'react'
 import { Plus } from 'lucide-react'
 import {
@@ -18,8 +19,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { SubmitButton } from '@/components/tickets/SubmitButton'
 
-const SELECT_CLASS =
-  'h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30'
+const SELECT_CLASS = selectClassName
 
 export type PropertyOption = { id: string; label: string }
 

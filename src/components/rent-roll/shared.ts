@@ -6,21 +6,9 @@
 import { formatDate } from '@/lib/format-date'
 export { formatDate }
 
-const money = new Intl.NumberFormat('en-IE', {
-  style: 'currency',
-  currency: 'EUR',
-  maximumFractionDigits: 0,
-})
+// Whole-euro EUR — re-exported from THE shared formatter (src/lib/format-money).
+export { formatMoney } from '@/lib/format-money'
 
-export function formatMoney(value: number): string {
-  return money.format(Math.round(value))
-}
-
-// A lease span 'start – end' (or 'start – open-ended' when end is null).
-export function formatLeaseSpan(start: string | undefined, end: string | null | undefined): string {
-  if (!start) return '—'
-  return `${formatDate(start)} – ${end ? formatDate(end) : 'open-ended'}`
-}
 
 // Human days-left label for an expiring lease pill: 'today' / 'in 1 day' / 'in N days'.
 export function formatDaysLeft(daysLeft: number): string {

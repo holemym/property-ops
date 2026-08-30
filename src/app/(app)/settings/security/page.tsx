@@ -1,3 +1,4 @@
+import { formatDateTime } from '@/lib/format-date'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { History } from 'lucide-react'
@@ -107,7 +108,7 @@ export default async function SecuritySettingsPage() {
                 <TableBody>
                   {events.map((e) => (
                     <TableRow key={e.id}>
-                      <TableCell title={new Date(e.created_at).toLocaleString()}>
+                      <TableCell title={formatDateTime(e.created_at)}>
                         {relativeDay(e.created_at)}
                       </TableCell>
                       <TableCell>{authEventLabel(e.event_type)}</TableCell>

@@ -1,4 +1,6 @@
 import { headers } from 'next/headers'
+import { formatDateTime } from '@/lib/format-date'
+import { formatBytes } from '@/lib/format-bytes'
 import { signStoragePaths } from '@/lib/storage/sign'
 import { createServiceClient } from '@/lib/supabase/service'
 import { getValidVendorJob } from '@/lib/data/vendor-tokens'
@@ -22,16 +24,6 @@ import {
 // Explicitly non-cached: the token gate must run per request, and the ticket/comment
 // state changes as the vendor acts.
 export const dynamic = 'force-dynamic'
-
-function formatDateTime(iso: string): string {
-  return new Date(iso).toLocaleString()
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-}
 
 // The whitelisted attachment shape the vendor may see for THIS ticket. Explicit columns
 // only (never select('*')) and scoped to the token's workspace + ticket — the vendor can

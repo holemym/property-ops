@@ -1,3 +1,4 @@
+import { formatMoneyIn } from '@/lib/format-money'
 import { redirect } from 'next/navigation'
 import { ReceiptText } from 'lucide-react'
 import { requireWorkspace } from '@/lib/auth/session'
@@ -41,15 +42,7 @@ export default async function PortalChargesPage() {
     else linesByInvoice.set(line.invoice_id, [line])
   }
 
-  const moneyByCurrency = new Map<string, Intl.NumberFormat>()
-  function formatMoney(amount: number, currency: string): string {
-    let fmt = moneyByCurrency.get(currency)
-    if (!fmt) {
-      fmt = new Intl.NumberFormat('en-IE', { style: 'currency', currency })
-      moneyByCurrency.set(currency, fmt)
-    }
-    return fmt.format(amount)
-  }
+  const formatMoney = (amount: number, currency: string) => formatMoneyIn(currency, amount)
 
   return (
     <div className="flex flex-col gap-6">

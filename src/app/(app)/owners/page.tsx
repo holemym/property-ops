@@ -1,3 +1,4 @@
+import { formatMoneyExact } from '@/lib/format-money'
 import Link from 'next/link'
 import { Users } from 'lucide-react'
 import { requirePermission } from '@/lib/auth/session'
@@ -16,7 +17,9 @@ import {
 import { EmptyState } from '@/components/common/EmptyState'
 import { PageHeader } from '@/components/layout/PageHeader'
 
-const eur = new Intl.NumberFormat('en-IE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })
+// Cent-exact, matching the per-owner statement page one click deeper — the same
+// Billed/Paid/Outstanding figures used to render whole-euro here and with cents there.
+const eur = { format: formatMoneyExact }
 
 // Owner statements — a per-owner rollup of the invoices billed to them (party_type OWNER).
 // Finance-gated read, same audience as invoices/finance. An "owner" is a distinct party

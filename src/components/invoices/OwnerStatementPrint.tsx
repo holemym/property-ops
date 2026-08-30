@@ -1,5 +1,6 @@
 'use client'
 
+import { formatMoneyExact } from '@/lib/format-money'
 import { Printer } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { formatDateLong } from '@/lib/format-date'
@@ -9,7 +10,7 @@ import type { InvoiceStatus } from '@/types/domain'
 // print dialog, and a paper layout that is hidden on screen and shown alone on print
 // (the @media print rule hides the app chrome and reveals only #statement-print).
 
-const eur = new Intl.NumberFormat('en-IE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 2 })
+const eur = { format: formatMoneyExact }
 
 // Long-month calendar date ('9 July 2026') for the printed statement.
 const formatDate = formatDateLong

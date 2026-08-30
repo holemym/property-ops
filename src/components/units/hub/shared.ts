@@ -7,15 +7,8 @@ import type { DocumentType } from '@/types/domain'
 import { formatDate } from '@/lib/format-date'
 export { formatDate }
 
-const money = new Intl.NumberFormat('en-IE', {
-  style: 'currency',
-  currency: 'EUR',
-  maximumFractionDigits: 0,
-})
-
-export function formatMoney(value: number): string {
-  return money.format(Math.round(value))
-}
+// Whole-euro EUR — re-exported from THE shared formatter (src/lib/format-money).
+export { formatMoney } from '@/lib/format-money'
 
 // A tenancy span 'start – end' (or 'start – open-ended' when end is null).
 export function formatSpan(start: string, end: string | null): string {

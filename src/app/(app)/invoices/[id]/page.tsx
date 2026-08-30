@@ -27,7 +27,7 @@ import { InvoiceStatusActions } from '@/components/invoices/InvoiceStatusActions
 import { InvoicePrint, PrintInvoiceButton } from '@/components/invoices/InvoicePrint'
 import { SentToast } from '@/components/invoices/SentToast'
 import { DEMO_INVOICE_SENT_MESSAGE } from '@/lib/demo'
-import { formatDate } from '@/lib/format-date'
+import { formatDate, formatDateTime } from '@/lib/format-date'
 import { setInvoiceStatusAction, sendInvoiceAction } from '../actions'
 
 function SummaryField({ label, children }: { label: string; children: React.ReactNode }) {
@@ -149,7 +149,7 @@ export default async function InvoiceDetailPage({
                   </SummaryField>
                   {invoice.paid_at && (
                     <SummaryField label="Paid at">
-                      {new Date(invoice.paid_at).toLocaleString()}
+                      {formatDateTime(invoice.paid_at)}
                     </SummaryField>
                   )}
                   {invoice.notes && (

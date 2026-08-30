@@ -3,6 +3,7 @@ import { FileText } from 'lucide-react'
 import { requireWorkspace } from '@/lib/auth/session'
 import { isTenantRole } from '@/lib/auth/permissions'
 import { createClient } from '@/lib/supabase/server'
+import { formatBytes } from '@/lib/format-bytes'
 import { signStoragePaths } from '@/lib/storage/sign'
 import { createServiceClient } from '@/lib/supabase/service'
 import { listDocuments, DOCUMENTS_BUCKET } from '@/lib/data/documents'
@@ -27,12 +28,6 @@ import type { Document } from '@/types/domain'
 // Batch variant: ONE storage-API call for the page's whole document list.
 function signForTenant(docs: Document[]): Promise<Map<string, string>> {
   return signStoragePaths(createServiceClient(), DOCUMENTS_BUCKET, docs.map((d) => d.storage_path))
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
 export default async function PortalDocumentsPage() {

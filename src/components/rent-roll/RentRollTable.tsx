@@ -1,4 +1,4 @@
-import { StatusBadge } from '@/components/common/StatusBadge'
+import { StatusBadge } from '@/components/ui/badge'
 import {
   Table,
   TableBody,
@@ -37,7 +37,7 @@ export function RentRollTable({ rows }: { rows: RentRollRow[] }) {
               </span>
             </div>
             <div className="flex flex-wrap items-center gap-1.5">
-              <StatusBadge status={row.status} />
+              <StatusBadge kind="unit_status" value={row.status} />
               <span className={row.tenantName ? 'text-sm' : 'text-sm text-muted-foreground'}>
                 {row.tenantName ?? '—'}
               </span>
@@ -77,7 +77,7 @@ export function RentRollTable({ rows }: { rows: RentRollRow[] }) {
             <TableCell className="font-medium text-foreground">{row.label}</TableCell>
             <TableCell className="text-muted-foreground">{row.propertyName}</TableCell>
             <TableCell>
-              <StatusBadge status={row.status} />
+              <StatusBadge kind="unit_status" value={row.status} />
             </TableCell>
             <TableCell className={row.tenantName ? 'text-foreground' : 'text-muted-foreground'}>
               {row.tenantName ?? '—'}
