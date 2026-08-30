@@ -1,4 +1,5 @@
 import { headers } from 'next/headers'
+import { signStoragePaths } from '@/lib/storage/sign'
 import { createServiceClient } from '@/lib/supabase/service'
 import { getValidVendorJob } from '@/lib/data/vendor-tokens'
 import { ATTACHMENTS_BUCKET } from '@/lib/data/attachments'
@@ -57,20 +58,9 @@ async function loadVendorAttachments(
     .order('created_at', { ascending: true })
   if (error || !data) return []
   const rows = data as VendorAttachment[]
-  return Promise.all(
-    rows.map(async (att) => {
-      let url: string | null = null
-      try {
-        const signed = await service.storage
-          .from(ATTACHMENTS_BUCKET)
-          .createSignedUrl(att.storage_path, 60)
-        url = signed.data?.signedUrl ?? null
-      } catch {
-        url = null
-      }
-      return { att, url }
-    })
-  )
+  // Batch-sign: one storage-API call for the whole set; a failed path omits its link.
+  const urls = await signStoragePaths(service, ATTACHMENTS_BUCKET, rows.map((r) => r.storage_path))
+  return rows.map((att) => ({ att, url: urls.get(att.storage_path) ?? null }))
 }
 
 // The whitelisted PUBLIC-comment shape the vendor may see. Explicit columns only — NEVER
@@ -128,12 +118,15 @@ export default async function VendorJobPage({
   // Invalid / expired / revoked → generic page, NO ticket detail, no distinguishing oracle.
   if (!job) return <InvalidLinkPage />
 
-  const comments = await loadPublicComments(service, job.token.workspace_id, job.token.ticket_id)
-  const attachments = await loadVendorAttachments(
-    service,
-    job.token.workspace_id,
-    job.token.ticket_id
-  )
+  // Independent reads (both keyed on workspace+ticket) — batch them.
+  const [comments, attachments] = await Promise.all([
+    loadPublicComments(service, job.token.workspace_id, job.token.ticket_id),
+    loadVendorAttachments(
+      service,
+      job.token.workspace_id,
+      job.token.ticket_id
+    ),
+  ])
 
   const accepted = Boolean(job.token.accepted_at)
   const declined = Boolean(job.token.declined_at)

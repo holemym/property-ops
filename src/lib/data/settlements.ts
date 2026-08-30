@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { OperatingCostCategory, AllocationBasis, SettlementStatus, MeterKind } from '@/types/domain'
 import { listUnits } from '@/lib/data/units'
-import { listMeters, listMeterReadings } from '@/lib/data/meters'
+import { listMeters } from '@/lib/data/meters'
 import { computeMeterConsumption, type MeterConsumptionInput } from '@/lib/betriebskosten/consumption'
 import {
   allocateBetriebskosten,
@@ -535,17 +535,33 @@ async function buildUnitConsumption(
   // see it. Consumption is already scoped to the period by reading_date, so an
   // out-of-period meter contributes nothing anyway.
   const meters = await listMeters(supabase, workspaceId, { propertyId, kind })
-  const meterInputs: MeterConsumptionInput[] = []
-  for (const meter of meters) {
-    if (!meter.unit_id) continue
-    const readings = await listMeterReadings(supabase, workspaceId, meter.id)
-    meterInputs.push({
-      meterId: meter.id,
-      unitId: meter.unit_id,
-      multiplier: meter.multiplier,
-      readings: readings.map((r) => ({ readingDate: r.reading_date, value: r.value })),
-    })
+  const unitMeters = meters.filter((m) => m.unit_id !== null)
+  // ONE readings query for the whole meter set (the old per-meter loop was a
+  // serialized N+1 — 20 meters = 20 round-trips, and it ran once per CONSUMPTION
+  // category). No date window on purpose: the baseline is the latest reading AT OR
+  // BEFORE periodStart, which a naive fromDate filter would cut off; reading
+  // volume per meter is small (typically 1-12/year) so the full series is cheap.
+  const readingsByMeter = new Map<string, { readingDate: string; value: number }[]>()
+  if (unitMeters.length > 0) {
+    const { data, error } = await supabase
+      .from('meter_readings')
+      .select('*')
+      .eq('workspace_id', workspaceId)
+      .in('meter_id', unitMeters.map((m) => m.id))
+      .order('reading_date', { ascending: true })
+    if (error) throw error
+    for (const r of (data ?? []) as { meter_id: string; reading_date: string; value: number }[]) {
+      const list = readingsByMeter.get(r.meter_id) ?? []
+      list.push({ readingDate: r.reading_date, value: r.value })
+      readingsByMeter.set(r.meter_id, list)
+    }
   }
+  const meterInputs: MeterConsumptionInput[] = unitMeters.map((meter) => ({
+    meterId: meter.id,
+    unitId: meter.unit_id as string,
+    multiplier: meter.multiplier,
+    readings: readingsByMeter.get(meter.id) ?? [],
+  }))
   const consumption = computeMeterConsumption(meterInputs, periodStart, periodEnd)
 
   const byUnit = new Map<string, number | null>()
@@ -599,9 +615,11 @@ export async function persistAllocationRun(
     throw new Error(`persistAllocationRun: no settlement period '${settlementPeriodId}' in this workspace`)
   }
 
-  const units = await listUnits(supabase, workspaceId, { propertyId: period.property_id })
-  const costPositions = await listCostPositions(supabase, workspaceId, settlementPeriodId)
-  const rules = await listAllocationRules(supabase, workspaceId, settlementPeriodId)
+  const [units, costPositions, rules] = await Promise.all([
+    listUnits(supabase, workspaceId, { propertyId: period.property_id }),
+    listCostPositions(supabase, workspaceId, settlementPeriodId),
+    listAllocationRules(supabase, workspaceId, settlementPeriodId),
+  ])
 
   const defaultRule = rules.find((r) => r.category === null) ?? null
   const overrideByCategory = new Map(rules.filter((r) => r.category !== null).map((r) => [r.category, r]))

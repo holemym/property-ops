@@ -116,29 +116,36 @@ export async function listTicketsPage(
   const filters = params.filters ?? {}
   const pairs = ticketFilterPairs(filters)
 
-  let countQuery = supabase
-    .from('tickets')
-    .select('id', { count: 'exact', head: true })
-    .eq('workspace_id', workspaceId)
-  for (const [col, val] of pairs) countQuery = countQuery.eq(col, val)
-  if (filters.search) countQuery = countQuery.ilike('title', `%${filters.search}%`)
-  const { count, error: countError } = await countQuery
-  if (countError) throw countError
-  const total = count ?? 0
+  // ONE round-trip: PostgREST returns the exact count WITH the rows, so the
+  // old separate head-only count query was a guaranteed extra ~100ms on every
+  // list visit. The requested page is fetched optimistically; only the rare
+  // out-of-range page (filters shrank the list under the current page) pays a
+  // second, clamped fetch.
+  const fetchPage = async (page: number) => {
+    const from = (page - 1) * pageSize
+    let query = supabase
+      .from('tickets')
+      .select('*', { count: 'exact' })
+      .eq('workspace_id', workspaceId)
+    for (const [col, val] of pairs) query = query.eq(col, val)
+    if (filters.search) query = query.ilike('title', `%${filters.search}%`)
+    query = query.order(orderBy, { ascending })
+    if (orderBy !== 'created_at') query = query.order('created_at', { ascending: false })
+    const { data, count, error } = await query.range(from, from + pageSize - 1)
+    if (error) throw error
+    return { rows: (data ?? []) as Ticket[], total: count ?? 0 }
+  }
+
+  const requested = Math.max(1, params.page ?? 1)
+  let page = requested
+  let { rows, total } = await fetchPage(page)
   const pageCount = Math.max(1, Math.ceil(total / pageSize))
-  const page = Math.min(Math.max(1, params.page ?? 1), pageCount)
-  const from = (page - 1) * pageSize
-  const to = from + pageSize - 1
+  if (rows.length === 0 && total > 0 && requested > pageCount) {
+    page = pageCount
+    ;({ rows, total } = await fetchPage(page))
+  }
 
-  let query = supabase.from('tickets').select('*').eq('workspace_id', workspaceId)
-  for (const [col, val] of pairs) query = query.eq(col, val)
-  if (filters.search) query = query.ilike('title', `%${filters.search}%`)
-  query = query.order(orderBy, { ascending })
-  if (orderBy !== 'created_at') query = query.order('created_at', { ascending: false })
-  const { data, error } = await query.range(from, to)
-  if (error) throw error
-
-  return { rows: (data ?? []) as Ticket[], total, page, pageSize, pageCount }
+  return { rows, total, page, pageSize, pageCount }
 }
 
 export async function getTicket(

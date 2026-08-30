@@ -28,19 +28,19 @@ export default async function SecuritySettingsPage() {
   // just to paint the initial list. Only VERIFIED totp factors are shown; an abandoned
   // unverified enrollment (user started, never scanned/confirmed) is not a "factor" from
   // the account owner's point of view and starting over just creates a fresh one.
-  const { data: factorsData } = await supabase.auth.mfa.listFactors()
+  // S2-2: admin-only audit log section, gated exactly like /settings/users
+  // (users:invite — SUPER_ADMIN/OWNER only). The query only runs when the section
+  // will render; RLS (auth_events_select_admin, 0028) gates the same tier at the
+  // DB layer independently. Factors (auth server) + events (DB) are independent,
+  // so they batch — the old sequential awaits serialized two network hops.
+  const canSeeAuditLog = can(user.role, 'users:invite')
+  const [{ data: factorsData }, events] = await Promise.all([
+    supabase.auth.mfa.listFactors(),
+    canSeeAuditLog ? listRecentAuthEvents(supabase, user.workspaceId) : Promise.resolve([]),
+  ])
   const factors = (factorsData?.totp ?? [])
     .filter((f) => f.status === 'verified')
     .map((f) => ({ id: f.id, createdAt: f.created_at }))
-
-  // S2-2: admin-only audit log section, gated exactly like /settings/users
-  // (users:invite — SUPER_ADMIN/OWNER only, narrower than every other role
-  // that reaches this page). The query only runs when the section will
-  // render — no point reading rows the caller isn't allowed to act on, and
-  // it doubles as RLS's own belt-and-suspenders (auth_events_select_admin,
-  // migration 0028, gates on the same tier at the DB layer independently).
-  const canSeeAuditLog = can(user.role, 'users:invite')
-  const events = canSeeAuditLog ? await listRecentAuthEvents(supabase, user.workspaceId) : []
 
   return (
     <div className="flex flex-col gap-6">

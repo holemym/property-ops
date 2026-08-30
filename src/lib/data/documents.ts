@@ -73,13 +73,18 @@ export function buildDocumentStoragePath(workspaceId: string, fileName: string):
  */
 export async function listDocuments(
   supabase: SupabaseClient,
-  workspaceId: string
+  workspaceId: string,
+  filters: { propertyId?: string } = {}
 ): Promise<Document[]> {
-  const { data, error } = await supabase
+  let query = supabase
     .from('documents')
     .select('*')
     .eq('workspace_id', workspaceId)
-    .order('created_at', { ascending: false })
+  // Optional direct-attribution scope (property hub). The unit hub keeps the
+  // unfiltered list on purpose: its scope is unit_id OR tenancy-of-unit, an OR
+  // the page computes in JS.
+  if (filters.propertyId) query = query.eq('property_id', filters.propertyId)
+  const { data, error } = await query.order('created_at', { ascending: false })
   if (error) throw error
   return data as Document[]
 }

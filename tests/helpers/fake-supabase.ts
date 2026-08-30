@@ -76,6 +76,10 @@ export function createFakeSupabaseClient(seed: Record<string, Row[]> = {}) {
       // ISO date strings is lexicographic, which is correct for YYYY-MM-DD.
       gte(col: string, val: any) { rangeFilters.push([col, '>=', val]); return api },
       lte(col: string, val: any) { rangeFilters.push([col, '<=', val]); return api },
+      // `.in(col, values)` — added for U-B's batched meter-readings fetch
+      // (buildUnitConsumption's single .in('meter_id', ids) query).
+      inFilter: null as null | [string, any[]],
+      in(col: string, vals: any[]) { api.inFilter = [col, vals]; return api },
       or(filterString: string) { orFilter = filterString; return api },
       order(col: string, opts?: { ascending?: boolean }) { orderBy = col; ascending = opts?.ascending ?? true; return api },
       // Added minimally for P2-1's listNotificationsPage (house `.range()` pattern,
@@ -127,7 +131,8 @@ export function createFakeSupabaseClient(seed: Record<string, Row[]> = {}) {
             matches(r, filters) &&
             matchesOrFilter(r, orFilter) &&
             notEqFilters.every(([col, val]) => r[col] !== val) &&
-            rangeFilters.every(([col, cmp, val]) => (cmp === '>=' ? r[col] >= val : r[col] <= val))
+            rangeFilters.every(([col, cmp, val]) => (cmp === '>=' ? r[col] >= val : r[col] <= val)) &&
+            (api.inFilter === null || (api.inFilter[1] as any[]).includes(r[api.inFilter[0]]))
         )
         if (orderBy) {
           found = [...found].sort((a, b) => {

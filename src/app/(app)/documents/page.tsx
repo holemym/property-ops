@@ -2,6 +2,7 @@ import { FileText } from 'lucide-react'
 import { requirePermission } from '@/lib/auth/session'
 import { can } from '@/lib/auth/permissions'
 import { createClient } from '@/lib/supabase/server'
+import { signStoragePaths } from '@/lib/storage/sign'
 import { listDocuments, DOCUMENTS_BUCKET } from '@/lib/data/documents'
 import { uploadDocumentAction } from './actions'
 import { listProperties } from '@/lib/data/properties'
@@ -16,29 +17,10 @@ import { DocumentsTable } from '@/components/documents/DocumentsTable'
 import { ExpiringDocuments } from '@/components/documents/ExpiringDocuments'
 import { UploadDocumentDialog } from '@/components/documents/UploadDocumentDialog'
 import type { EntityMaps } from '@/components/documents/document-display'
-import type { Document } from '@/types/domain'
 
-type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>
 
 // Window (days) over which an upcoming expiry surfaces in the "Expiring documents" card.
 const EXPIRY_WINDOW_DAYS = 90
-
-// Sign a short-lived download URL for a document's object in the private documents bucket.
-// Returns null (link omitted) when signing fails, so one bad path never crashes the render
-// — mirrors the ticket attachment signing pattern.
-async function signDocumentUrl(
-  supabase: SupabaseServerClient,
-  doc: Document
-): Promise<string | null> {
-  try {
-    const { data } = await supabase.storage
-      .from(DOCUMENTS_BUCKET)
-      .createSignedUrl(doc.storage_path, 60)
-    return data?.signedUrl ?? null
-  } catch {
-    return null
-  }
-}
 
 export default async function DocumentsPage() {
   // Managers + accountant hold documents:read; accountant is read-only (no documents:write).
@@ -78,11 +60,10 @@ export default async function DocumentsPage() {
     .filter((d) => d.expires_at && new Date(d.expires_at) <= windowEnd)
     .sort((a, b) => (a.expires_at as string).localeCompare(b.expires_at as string))
 
-  // Sign a download URL per document (60s TTL, private bucket). Signing per-render is fine;
-  // a failed path is skipped (null url) rather than crashing the page.
-  const rows = await Promise.all(
-    documents.map(async (doc) => ({ doc, url: await signDocumentUrl(supabase, doc) }))
-  )
+  // Batch-sign download URLs (60s TTL, private bucket) — one storage-API call for
+  // the whole page instead of one per document; a failed path just omits its link.
+  const signedUrls = await signStoragePaths(supabase, DOCUMENTS_BUCKET, documents.map((d) => d.storage_path))
+  const rows = documents.map((doc) => ({ doc, url: signedUrls.get(doc.storage_path) ?? null }))
 
   // Attach-to options for the upload dialog (write-only). Units carry their property name
   // for disambiguation; tenancies show the tenant name.

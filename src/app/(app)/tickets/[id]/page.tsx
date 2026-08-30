@@ -13,7 +13,8 @@ import { getUnit } from '@/lib/data/units'
 import { getVendor, listVendors } from '@/lib/data/vendors'
 import { listTicketEvents, type TicketEvent } from '@/lib/data/ticket-events'
 import { listTicketComments } from '@/lib/data/ticket-comments'
-import { listAttachments, ATTACHMENTS_BUCKET, type Attachment } from '@/lib/data/attachments'
+import { signStoragePaths } from '@/lib/storage/sign'
+import { listAttachments, ATTACHMENTS_BUCKET } from '@/lib/data/attachments'
 import { uploadAttachmentAction } from '../attachment-actions'
 import { nextStatuses } from '@/lib/tickets/status-flow'
 import { StatusBadge } from '@/components/ui/badge'
@@ -66,22 +67,6 @@ function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-}
-
-// Generate a short-lived signed URL for a private-bucket attachment. Returns null (link
-// omitted) if signing fails, so one bad path never crashes the page render.
-async function signAttachmentUrl(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  att: Attachment
-): Promise<string | null> {
-  try {
-    const { data } = await supabase.storage
-      .from(ATTACHMENTS_BUCKET)
-      .createSignedUrl(att.storage_path, 60)
-    return data?.signedUrl ?? null
-  } catch {
-    return null
-  }
 }
 
 // Compact old→new rendering for the audit timeline. STATUS_CHANGED carries {status},
@@ -142,7 +127,7 @@ export default async function TicketDetailPage({
   const canAssign = can(user.role, 'tickets:assign')
   const canInternal = can(user.role, 'tickets:comment-internal')
 
-  const [property, unit, events, comments, operators, vendors, assignedOperator, assignedVendor, reporter] =
+  const [property, unit, events, comments, operators, vendors, assignedOperator, assignedVendor, reporter, attachments] =
     await Promise.all([
       getProperty(supabase, user.workspaceId, ticket.property_id),
       ticket.unit_id ? getUnit(supabase, user.workspaceId, ticket.unit_id) : Promise.resolve(null),
@@ -157,6 +142,9 @@ export default async function TicketDetailPage({
         ? getVendor(supabase, user.workspaceId, ticket.assigned_vendor_id)
         : Promise.resolve(null),
       getWorkspaceProfile(supabase, user.workspaceId, ticket.created_by_user_id),
+      // Depends only on (workspaceId, id) — batching it here saves a full serialized
+      // round-trip on every ticket open; only the signing step below has to follow it.
+      listAttachments(supabase, user.workspaceId, id),
     ])
 
   // Resolve author ids → names for the comment thread and audit actors. operators +
@@ -168,12 +156,17 @@ export default async function TicketDetailPage({
   const displayName = (userId: string | null) =>
     userId ? nameById.get(userId) ?? userId : 'System'
 
-  // Attachments + short-lived signed download URLs (private bucket). Signing per-render is
+  // Short-lived signed download URLs (private bucket). Signing per-render is
   // fine (60s TTL); if a single path fails to sign we skip its link rather than crash.
-  const attachments = await listAttachments(supabase, user.workspaceId, id)
-  const signedAttachments = await Promise.all(
-    attachments.map(async (att) => ({ att, url: await signAttachmentUrl(supabase, att) }))
+  const attachmentUrls = await signStoragePaths(
+    supabase,
+    ATTACHMENTS_BUCKET,
+    attachments.map((a) => a.storage_path)
   )
+  const signedAttachments = attachments.map((att) => ({
+    att,
+    url: attachmentUrls.get(att.storage_path) ?? null,
+  }))
   const boundUploadAttachment = uploadAttachmentAction.bind(null, id, 'manager')
 
   const transitions = nextStatuses(ticket.status)

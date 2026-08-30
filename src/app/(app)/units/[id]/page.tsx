@@ -8,7 +8,7 @@ import { getUnit } from '@/lib/data/units'
 import { getProperty } from '@/lib/data/properties'
 import { listTickets } from '@/lib/data/tickets'
 import { listTenanciesForUnit } from '@/lib/data/tenancies'
-import { listIncomeRecords, listExpenseRecords } from '@/lib/data/finance'
+import { listExpenseRecords } from '@/lib/data/finance'
 import { listDocuments } from '@/lib/data/documents'
 import { buildUnitTimeline, defaultWindow } from '@/lib/occupancy/timeline'
 import { UnitForm } from '@/components/units/UnitForm'
@@ -53,13 +53,16 @@ export default async function UnitDetailPage({
   const unit = await getUnit(supabase, user.workspaceId, id)
   if (!unit) notFound()
 
-  const [property, allTickets, tenancies, incomeRecords, expenseRecords, documents] =
+  // Tickets + expenses are DB-scoped to this unit (the old version pulled the whole
+  // workspace and filtered in JS — payload scaled with workspace size on every hub
+  // open, and one fetch was discarded entirely). Documents stay unfiltered because
+  // this page's scope is unit_id OR tenancy-of-unit, an OR computed below.
+  const [property, unitTickets, tenancies, expenseRecords, documents] =
     await Promise.all([
       getProperty(supabase, user.workspaceId, unit.property_id),
-      listTickets(supabase, user.workspaceId),
+      listTickets(supabase, user.workspaceId, { unitId: id }),
       listTenanciesForUnit(supabase, user.workspaceId, id),
-      listIncomeRecords(supabase, user.workspaceId),
-      listExpenseRecords(supabase, user.workspaceId),
+      listExpenseRecords(supabase, user.workspaceId, { unitId: id }),
       listDocuments(supabase, user.workspaceId),
     ])
 
@@ -71,11 +74,8 @@ export default async function UnitDetailPage({
   const window = defaultWindow(new Date())
   const segments = buildUnitTimeline(unit.status, tenancies, window)
 
-  // Tickets / finance / documents scoped to THIS unit.
-  const unitTickets = allTickets.filter((t) => t.unit_id === id)
   const openTickets = unitTickets.filter((t) => isTicketOpen(t.status))
-  const unitExpenses = expenseRecords.filter((r) => r.unit_id === id)
-  void incomeRecords
+  const unitExpenses = expenseRecords
   const supersededTicketIds = new Set(
     unitExpenses.map((e) => e.ticket_id).filter((v): v is string => v !== null)
   )

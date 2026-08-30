@@ -62,33 +62,31 @@ export default async function DashboardPage() {
   // parallel (not N+1). RLS scopes every query to this workspace. listTickets has no
   // server-side LIMIT today (Phase-4 optimization), so widgets slice in JS below;
   // workspace ticket volume is bounded at MVP scale.
-  const [counts, newTickets, urgentTickets, waitingTickets, mineTickets, allTickets, properties] =
-    await Promise.all([
-      countTicketsByStatus(supabase, user.workspaceId),
-      listTickets(supabase, user.workspaceId, { status: 'NEW' }),
-      listTickets(supabase, user.workspaceId, { priority: 'URGENT' }),
-      listTickets(supabase, user.workspaceId, { status: 'WAITING_FOR_INFO' }),
-      listTickets(supabase, user.workspaceId, { assignedOperatorId: user.id }),
-      // For the "recently resolved/closed" widget we need RESOLVED-or-CLOSED sorted by
-      // recency — a set the data layer's single-status filter can't express — so fetch
-      // the workspace list once and derive it in JS.
-      listTickets(supabase, user.workspaceId),
-      listProperties(supabase, user.workspaceId),
-    ])
+  const [counts, allTickets, properties, mfaFactors] = await Promise.all([
+    countTicketsByStatus(supabase, user.workspaceId),
+    // ONE workspace ticket read; every widget slice below derives from it in JS.
+    // (The old version issued four extra filtered listTickets calls whose results
+    // were all strict subsets of this one — 7 queries where 3 do.) listTickets has
+    // no server-side LIMIT today (Phase-4 optimization); volume is bounded at MVP
+    // scale and the filters were plain .eq()s, so JS-filtering preserves both the
+    // rows and the created_at-desc order exactly.
+    listTickets(supabase, user.workspaceId),
+    listProperties(supabase, user.workspaceId),
+    // mfa.listFactors() reaches the auth server; `.catch` isolates it so a transient
+    // auth hiccup can't 500 the app's main landing page — same fail-safe as before,
+    // now in the batch instead of a serialized follow-up await.
+    supabase.auth.mfa.listFactors().catch(() => null),
+  ])
+  const newTickets = allTickets.filter((t) => t.status === 'NEW')
+  const urgentTickets = allTickets.filter((t) => t.priority === 'URGENT')
+  const waitingTickets = allTickets.filter((t) => t.status === 'WAITING_FOR_INFO')
+  const mineTickets = allTickets.filter((t) => t.assigned_operator_id === user.id)
 
   // Soft enforcement: OWNER/SUPER_ADMIN with no verified TOTP factor sees a dismissible
-  // nag pointing at /settings/security. Every other role (including a fully-enrolled
-  // owner) never sees it. mfa.listFactors() reaches the auth server, so it's read in its
-  // OWN guarded await — NOT the all-or-nothing Promise.all above, where a transient auth
-  // hiccup would 500 the app's main landing page for every user — and fails safe to "no
-  // nag" (never a false nag, never a 500), matching the TopNav unread-count guard (P2-2).
-  let hasVerifiedMfaFactor = true
-  try {
-    const { data: mfaData } = await supabase.auth.mfa.listFactors()
-    hasVerifiedMfaFactor = (mfaData?.totp ?? []).some((f) => f.status === 'verified')
-  } catch {
-    // read failed — leave hasVerifiedMfaFactor = true so the nag stays suppressed
-  }
+  // nag pointing at /settings/security. Fails safe to "no nag" (never a false nag,
+  // never a 500) when the factors read errored.
+  const hasVerifiedMfaFactor =
+    mfaFactors === null || (mfaFactors.data?.totp ?? []).some((f) => f.status === 'verified')
   const showMfaNag = (user.role === 'OWNER' || user.role === 'SUPER_ADMIN') && !hasVerifiedMfaFactor
 
   const propertyNames = Object.fromEntries(properties.map((p) => [p.id, p.name]))

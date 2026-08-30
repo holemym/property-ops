@@ -60,7 +60,7 @@ export default async function PropertyDetailPage({
       listTenancies(supabase, user.workspaceId),
       listIncomeRecords(supabase, user.workspaceId),
       listExpenseRecords(supabase, user.workspaceId),
-      listDocuments(supabase, user.workspaceId),
+      listDocuments(supabase, user.workspaceId, { propertyId: id }),
     ])
 
   const canWrite = can(user.role, 'properties:write')
@@ -96,8 +96,8 @@ export default async function PropertyDetailPage({
     .reduce((sum, r) => sum + r.amount, 0)
   const net = income - expense
 
-  // Documents attached directly to this property.
-  const propertyDocuments = documents.filter((d) => d.property_id === id)
+  // Documents attached directly to this property (DB-scoped above).
+  const propertyDocuments = documents
 
   const addressParts = [
     property.address_line1,

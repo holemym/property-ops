@@ -8,6 +8,7 @@ import { getTicket } from '@/lib/data/tickets'
 import { getProperty } from '@/lib/data/properties'
 import { getUnit } from '@/lib/data/units'
 import { listTicketComments } from '@/lib/data/ticket-comments'
+import { signStoragePaths } from '@/lib/storage/sign'
 import { listAttachments, ATTACHMENTS_BUCKET } from '@/lib/data/attachments'
 import { Badge } from '@/components/ui/badge'
 import { RequestProgress } from '@/components/portal/RequestProgress'
@@ -72,31 +73,26 @@ export default async function PortalTicketDetailPage({
   const ticket = await getTicket(supabase, user.workspaceId, id)
   if (!ticket) notFound()
 
-  const [property, unit, comments] = await Promise.all([
+  const [property, unit, comments, attachments] = await Promise.all([
     getProperty(supabase, user.workspaceId, ticket.property_id),
     ticket.unit_id ? getUnit(supabase, user.workspaceId, ticket.unit_id) : Promise.resolve(null),
     // RLS (comments_select_own_public) returns ONLY PUBLIC comments on the tenant's own
     // ticket — INTERNAL comments are invisible to them, full stop.
     listTicketComments(supabase, user.workspaceId, id),
+    // Attachments on the tenant's own ticket (RLS-scoped); depends only on
+    // (workspaceId, id), so it batches — only the URL signing below has to follow.
+    listAttachments(supabase, user.workspaceId, id),
   ])
-
-  // Attachments on the tenant's own ticket + short-lived signed download URLs (private
-  // bucket). RLS scopes the list to this ticket; a failed sign just omits that link.
-  const attachments = await listAttachments(supabase, user.workspaceId, id)
-  const signedAttachments = await Promise.all(
-    attachments.map(async (att) => {
-      let url: string | null = null
-      try {
-        const { data } = await supabase.storage
-          .from(ATTACHMENTS_BUCKET)
-          .createSignedUrl(att.storage_path, 60)
-        url = data?.signedUrl ?? null
-      } catch {
-        url = null
-      }
-      return { att, url }
-    })
+  // Batch-sign (one storage-API call for all attachments); a failed path omits its link.
+  const attachmentUrls = await signStoragePaths(
+    supabase,
+    ATTACHMENTS_BUCKET,
+    attachments.map((a) => a.storage_path)
   )
+  const signedAttachments = attachments.map((att) => ({
+    att,
+    url: attachmentUrls.get(att.storage_path) ?? null,
+  }))
 
   const boundAddComment = addPublicCommentAction.bind(null, id)
   // Tenants can always attach to their OWN ticket (they own it) — no canWrite gate.

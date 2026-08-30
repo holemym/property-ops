@@ -155,33 +155,34 @@ export async function listInvoicesPage(
   // straddling a midnight rollover mid-request.
   const todayIso = new Date().toISOString().slice(0, 10)
 
-  let countQuery = supabase
-    .from('invoices')
-    .select('id', { count: 'exact', head: true })
-    .eq('workspace_id', workspaceId)
-  if (f.status) countQuery = countQuery.eq('status', f.status)
-  if (f.partyType) countQuery = countQuery.eq('party_type', f.partyType)
-  if (f.direction) countQuery = countQuery.eq('direction', f.direction)
-  if (f.propertyId) countQuery = countQuery.eq('property_id', f.propertyId)
-  if (f.overdue) countQuery = countQuery.lt('due_date', todayIso).in('status', ['SENT', 'PARTIAL'])
-  const { count, error: countError } = await countQuery
-  if (countError) throw countError
-  const total = count ?? 0
+  // ONE round-trip: the exact count rides along with the rows (PostgREST
+  // `count: 'exact'` + `.range()`), instead of a separate head-only count query.
+  // Only the rare out-of-range page pays a second, clamped fetch.
+  const fetchPage = async (page: number) => {
+    const from = (page - 1) * pageSize
+    let query = supabase.from('invoices').select('*', { count: 'exact' }).eq('workspace_id', workspaceId)
+    if (f.status) query = query.eq('status', f.status)
+    if (f.partyType) query = query.eq('party_type', f.partyType)
+    if (f.direction) query = query.eq('direction', f.direction)
+    if (f.propertyId) query = query.eq('property_id', f.propertyId)
+    if (f.overdue) query = query.lt('due_date', todayIso).in('status', ['SENT', 'PARTIAL'])
+    const { data, count, error } = await query
+      .order('created_at', { ascending: false })
+      .range(from, from + pageSize - 1)
+    if (error) throw error
+    return { rows: (data ?? []) as Invoice[], total: count ?? 0 }
+  }
+
+  const requested = Math.max(1, params.page ?? 1)
+  let page = requested
+  let { rows, total } = await fetchPage(page)
   const pageCount = Math.max(1, Math.ceil(total / pageSize))
-  const page = Math.min(Math.max(1, params.page ?? 1), pageCount)
-  const from = (page - 1) * pageSize
-  const to = from + pageSize - 1
+  if (rows.length === 0 && total > 0 && requested > pageCount) {
+    page = pageCount
+    ;({ rows, total } = await fetchPage(page))
+  }
 
-  let query = supabase.from('invoices').select('*').eq('workspace_id', workspaceId)
-  if (f.status) query = query.eq('status', f.status)
-  if (f.partyType) query = query.eq('party_type', f.partyType)
-  if (f.direction) query = query.eq('direction', f.direction)
-  if (f.propertyId) query = query.eq('property_id', f.propertyId)
-  if (f.overdue) query = query.lt('due_date', todayIso).in('status', ['SENT', 'PARTIAL'])
-  const { data, error } = await query.order('created_at', { ascending: false }).range(from, to)
-  if (error) throw error
-
-  return { rows: (data ?? []) as Invoice[], total, page, pageSize, pageCount }
+  return { rows, total, page, pageSize, pageCount }
 }
 
 export type CreateInvoiceLineInput = {

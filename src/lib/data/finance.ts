@@ -28,13 +28,18 @@ export async function listIncomeRecords(
  */
 export async function listExpenseRecords(
   supabase: SupabaseClient,
-  workspaceId: string
+  workspaceId: string,
+  filters: { unitId?: string } = {}
 ): Promise<ExpenseRecord[]> {
-  const { data, error } = await supabase
+  let query = supabase
     .from('expense_records')
     .select('*')
     .eq('workspace_id', workspaceId)
-    .order('incurred_on', { ascending: false })
+  // Optional single-column scope for the unit hub — the property hub deliberately
+  // does NOT use this (its scope is property_id OR unit-of-property, an OR the
+  // page computes in JS over the workspace ledger).
+  if (filters.unitId) query = query.eq('unit_id', filters.unitId)
+  const { data, error } = await query.order('incurred_on', { ascending: false })
   if (error) throw error
   return data as ExpenseRecord[]
 }

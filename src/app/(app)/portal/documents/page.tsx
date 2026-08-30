@@ -3,6 +3,7 @@ import { FileText } from 'lucide-react'
 import { requireWorkspace } from '@/lib/auth/session'
 import { isTenantRole } from '@/lib/auth/permissions'
 import { createClient } from '@/lib/supabase/server'
+import { signStoragePaths } from '@/lib/storage/sign'
 import { createServiceClient } from '@/lib/supabase/service'
 import { listDocuments, DOCUMENTS_BUCKET } from '@/lib/data/documents'
 import { getUnit, type Unit } from '@/lib/data/units'
@@ -23,15 +24,9 @@ import type { Document } from '@/types/domain'
 // under the tenant's OWN RLS-scoped client (documents_select_own_tenant, migration
 // 0030) — never a client-supplied path. Mirrors the vendor job-token page's service-
 // role signing after out-of-band authorization (src/app/job/[token]/page.tsx).
-async function signForTenant(doc: Document): Promise<string | null> {
-  try {
-    const { data } = await createServiceClient()
-      .storage.from(DOCUMENTS_BUCKET)
-      .createSignedUrl(doc.storage_path, 60)
-    return data?.signedUrl ?? null
-  } catch {
-    return null
-  }
+// Batch variant: ONE storage-API call for the page's whole document list.
+function signForTenant(docs: Document[]): Promise<Map<string, string>> {
+  return signStoragePaths(createServiceClient(), DOCUMENTS_BUCKET, docs.map((d) => d.storage_path))
 }
 
 function formatBytes(bytes: number): string {
@@ -69,9 +64,8 @@ export default async function PortalDocumentsPage() {
     properties.filter((p): p is NonNullable<typeof p> => p !== null).map((p) => [p.id, p.name])
   )
 
-  const rows = await Promise.all(
-    documents.map(async (doc) => ({ doc, url: await signForTenant(doc) }))
-  )
+  const signedUrls = await signForTenant(documents)
+  const rows = documents.map((doc) => ({ doc, url: signedUrls.get(doc.storage_path) ?? null }))
 
   return (
     <div className="flex flex-col gap-6">
