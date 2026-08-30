@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { UserPlus } from 'lucide-react'
 import { requirePermission } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
@@ -60,6 +61,13 @@ export default async function UsersSettingsPage({
           Invite
         </Button>
       </form>
+      <p className="text-sm text-muted-foreground">
+        Residents aren&apos;t invited here — open their record under{' '}
+        <Link href="/people" className="text-foreground underline-offset-4 hover:underline">
+          People
+        </Link>{' '}
+        and use &ldquo;Invite to portal&rdquo;.
+      </p>
 
       {/* Mobile: stacked cards (the table's columns don't fit a phone; below sm it hides).
           Rows carry an activate/deactivate form, so the card is a plain div (not a Link)

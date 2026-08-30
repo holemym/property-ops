@@ -24,6 +24,7 @@ export default async function TicketsPage({
     status?: string
     priority?: string
     propertyId?: string
+    unitId?: string
     q?: string
     sort?: string
     dir?: string
@@ -36,6 +37,7 @@ export default async function TicketsPage({
     status: rawStatus,
     priority: rawPriority,
     propertyId: rawPropertyId,
+    unitId: rawUnitId,
     q,
     sort: rawSort,
     dir: rawDir,
@@ -50,6 +52,7 @@ export default async function TicketsPage({
     ? (rawPriority as TicketPriority)
     : undefined
   const propertyId = rawPropertyId && UUID_RE.test(rawPropertyId) ? rawPropertyId : undefined
+  const unitId = rawUnitId && UUID_RE.test(rawUnitId) ? rawUnitId : undefined
 
   const sort = isSortColumn(rawSort) ? rawSort : 'created'
   const dir: SortDir = rawDir === 'asc' ? 'asc' : 'desc'
@@ -60,7 +63,7 @@ export default async function TicketsPage({
   // select (small set, fetched whole).
   const [ticketPage, properties] = await Promise.all([
     listTicketsPage(supabase, user.workspaceId, {
-      filters: { status, priority, propertyId, search: q },
+      filters: { status, priority, propertyId, unitId, search: q },
       orderBy: TICKET_DB_COLUMN[sort],
       ascending: dir === 'asc',
       page: requestedPage,
@@ -75,6 +78,7 @@ export default async function TicketsPage({
   if (status) filterParams.status = status
   if (priority) filterParams.priority = priority
   if (propertyId) filterParams.propertyId = propertyId
+  if (unitId) filterParams.unitId = unitId
   if (q) filterParams.q = q
 
   const isFiltered = Boolean(status || priority || propertyId || q)

@@ -234,7 +234,13 @@ export default async function TicketDetailPage({
                     ticket.property_id
                   )}
                 </SummaryField>
-                {unit && <SummaryField label="Unit">{unit.label}</SummaryField>}
+                {unit && (
+                  <SummaryField label="Unit">
+                    <Link href={`/units/${unit.id}`} className="text-foreground underline-offset-4 hover:underline">
+                      {unit.label}
+                    </Link>
+                  </SummaryField>
+                )}
                 <SummaryField label="Description" wide>
                   <span className="whitespace-pre-wrap">{ticket.description}</span>
                 </SummaryField>
@@ -492,7 +498,16 @@ export default async function TicketDetailPage({
                     {assignedOperator?.full_name ?? assignedOperator?.id ?? 'Unassigned'}
                   </SummaryField>
                   <SummaryField label="Vendor">
-                    {assignedVendor?.company_name ?? 'Unassigned'}
+                    {assignedVendor ? (
+                      <Link
+                        href={`/vendors/${assignedVendor.id}`}
+                        className="text-foreground underline-offset-4 hover:underline"
+                      >
+                        {assignedVendor.company_name}
+                      </Link>
+                    ) : (
+                      'Unassigned'
+                    )}
                   </SummaryField>
                 </dl>
               </CardContent>

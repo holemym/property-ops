@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { CalendarClock } from 'lucide-react'
 import { requirePermission } from '@/lib/auth/session'
 import { can } from '@/lib/auth/permissions'
@@ -10,6 +11,7 @@ import { listTickets } from '@/lib/data/tickets'
 import { buildUnitTimeline, defaultWindow } from '@/lib/occupancy/timeline'
 import { isTicketOpen } from '@/lib/status'
 import { PageHeader } from '@/components/layout/PageHeader'
+import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/common/EmptyState'
 import { ErrorToast } from '@/components/common/ErrorToast'
 import { TapeChart, type PropertyGroup } from '@/components/occupancy/TapeChart'
@@ -87,6 +89,13 @@ export default async function OccupancyPage() {
           icon={<CalendarClock />}
           title="No units to chart yet"
           body="Add units to a property, then record tenancies to see occupancy spans across the months ahead."
+          action={
+            canWrite ? (
+              <Button render={<Link href="/units/new" />} nativeButton={false}>
+                Add a unit
+              </Button>
+            ) : undefined
+          }
         />
       ) : (
         <>

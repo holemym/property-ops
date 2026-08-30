@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { Building2, Wrench, FileText } from 'lucide-react'
+import { Building2, Wrench, FileText, Plus } from 'lucide-react'
 import { requirePermission } from '@/lib/auth/session'
 import { can } from '@/lib/auth/permissions'
 import { createClient } from '@/lib/supabase/server'
@@ -10,6 +10,9 @@ import { listTickets } from '@/lib/data/tickets'
 import { listTenanciesForUnit } from '@/lib/data/tenancies'
 import { listExpenseRecords } from '@/lib/data/finance'
 import { listDocuments } from '@/lib/data/documents'
+import { listTenants } from '@/lib/data/tenants'
+import { NewTenancyDialog } from '@/components/occupancy/NewTenancyDialog'
+import { createTenancyAction } from '../../occupancy/actions'
 import { buildUnitTimeline, defaultWindow } from '@/lib/occupancy/timeline'
 import { UnitForm } from '@/components/units/UnitForm'
 import { StatusBadge } from '@/components/ui/badge'
@@ -57,13 +60,15 @@ export default async function UnitDetailPage({
   // workspace and filtered in JS — payload scaled with workspace size on every hub
   // open, and one fetch was discarded entirely). Documents stay unfiltered because
   // this page's scope is unit_id OR tenancy-of-unit, an OR computed below.
-  const [property, unitTickets, tenancies, expenseRecords, documents] =
+  const [property, unitTickets, tenancies, expenseRecords, documents, tenants] =
     await Promise.all([
       getProperty(supabase, user.workspaceId, unit.property_id),
       listTickets(supabase, user.workspaceId, { unitId: id }),
       listTenanciesForUnit(supabase, user.workspaceId, id),
       listExpenseRecords(supabase, user.workspaceId, { unitId: id }),
       listDocuments(supabase, user.workspaceId),
+      // For the hosted New-tenancy dialog's person picker (same data /occupancy loads).
+      listTenants(supabase, user.workspaceId),
     ])
 
   const canWrite = can(user.role, 'units:write')
@@ -97,6 +102,8 @@ export default async function UnitDetailPage({
     <div className="motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-[--duration-slow]">
       <PageHeader
         title={`Unit ${unit.label}`}
+        backHref="/units"
+        backLabel="Units"
         actions={
           <div className="flex items-center gap-3">
             <span className="text-sm text-muted-foreground">
@@ -154,19 +161,44 @@ export default async function UnitDetailPage({
         </Card>
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          <TenancyHistoryCard tenancies={tenancies} today={today} />
+          <TenancyHistoryCard
+            tenancies={tenancies}
+            today={today}
+            action={
+              canWrite ? (
+                <NewTenancyDialog
+                  action={createTenancyAction}
+                  units={[{ id: unit.id, label: unit.label, propertyName: property?.name ?? '' }]}
+                  tenants={tenants}
+                  defaultUnitId={unit.id}
+                />
+              ) : undefined
+            }
+          />
 
           <Card>
             <CardHeader className="flex-row items-center justify-between">
               <CardTitle>Tickets</CardTitle>
-              <Button
-                variant="ghost"
-                size="sm"
-                render={<Link href={`/tickets?propertyId=${unit.property_id}`} />}
-              >
-                <Wrench className="size-4" />
-                View all
-              </Button>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  render={<Link href={`/tickets/new?propertyId=${unit.property_id}&unitId=${unit.id}`} />}
+                  nativeButton={false}
+                >
+                  <Plus className="size-4" />
+                  New ticket
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  render={<Link href={`/tickets?unitId=${unit.id}`} />}
+                  nativeButton={false}
+                >
+                  <Wrench className="size-4" />
+                  View all
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
               {unitTickets.length === 0 ? (

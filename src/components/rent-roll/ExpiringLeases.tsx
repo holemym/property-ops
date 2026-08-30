@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import type { ExpiringLease } from '@/lib/occupancy/rent-roll'
@@ -40,7 +41,10 @@ export function ExpiringLeases({
                   <p className="truncate text-sm font-medium text-foreground">{lease.tenantName}</p>
                   <p className="truncate text-xs text-muted-foreground">
                     {lease.propertyName ? `${lease.propertyName} · ` : ''}
-                    {lease.unitLabel} · ends {formatDate(lease.leaseEnd)}
+                    <Link href={`/units/${lease.unitId}`} className="hover:underline">
+                      {lease.unitLabel}
+                    </Link>{' '}
+                    · ends {formatDate(lease.leaseEnd)}
                   </p>
                 </div>
                 <Badge variant="amber" className="shrink-0 tabular-nums">

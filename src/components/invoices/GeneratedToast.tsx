@@ -31,7 +31,10 @@ export function GeneratedToast({ generated, skipped }: { generated: number; skip
         `${skipped === 1 ? 'That invoice was' : `All ${skipped} invoices were`} already billed for this month.`,
       )
     } else {
-      toast('No active tenancies with rent to bill for this month.')
+      toast('No active tenancies with rent to bill for this month.', {
+        // Say WHERE tenancies-with-rent get recorded instead of dead-ending.
+        action: { label: 'Open occupancy', onClick: () => router.push('/occupancy') },
+      })
     }
     // Strip the result params (ErrorToast's strip-after-show pattern) so a refresh
     // doesn't re-announce "Drafted N invoices" for work that already happened.

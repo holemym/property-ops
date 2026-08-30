@@ -1,14 +1,16 @@
 import { formatDateTime } from '@/lib/format-date'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import { ArrowRight, Inbox } from 'lucide-react'
+import { ArrowRight, Building2, Inbox } from 'lucide-react'
 import { requireWorkspace } from '@/lib/auth/session'
-import { isTenantRole } from '@/lib/auth/permissions'
+import { can, isTenantRole } from '@/lib/auth/permissions'
 import { createClient } from '@/lib/supabase/server'
 import { listTickets, countTicketsByStatus, type Ticket } from '@/lib/data/tickets'
 import { listProperties } from '@/lib/data/properties'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { StatusBadge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { EmptyState } from '@/components/common/EmptyState'
 import { DashboardMfaNag } from '@/components/dashboard/DashboardMfaNag'
 import { cn } from '@/lib/utils'
 import { relativeDay } from '@/lib/relative-date'
@@ -110,6 +112,30 @@ export default async function DashboardPage() {
     .filter((t) => t.status === 'RESOLVED' || t.status === 'CLOSED')
     .sort((a, b) => b.updated_at.localeCompare(a.updated_at))
     .slice(0, RECENT_CAP)
+
+  // A brand-new workspace has no properties, so a ticket-only dashboard is six zero
+  // cards and five empty widgets with NO path to the first real action. Show the
+  // setup chain instead — the single biggest new-owner strand the flow review found.
+  if (properties.length === 0) {
+    return (
+      <div className="motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-[--duration-slow]">
+        <PageHeader title="Dashboard" subtitle="Let's set up your portfolio." />
+        {showMfaNag && <DashboardMfaNag />}
+        <EmptyState
+          icon={<Building2 />}
+          title="Set up your portfolio"
+          body="Start with a property, add its units, record tenancies, then invite residents to the portal — everything else (tickets, rent, statements) builds on those."
+          action={
+            can(user.role, 'properties:write') ? (
+              <Button render={<Link href="/properties/new" />} nativeButton={false}>
+                Add your first property
+              </Button>
+            ) : undefined
+          }
+        />
+      </div>
+    )
+  }
 
   return (
     <div className="motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-[--duration-slow]">

@@ -30,6 +30,7 @@ export default async function InvoicesPage({
     status?: string
     partyType?: string
     direction?: string
+    propertyId?: string
     page?: string
     overdue?: string
     generated?: string
@@ -42,6 +43,7 @@ export default async function InvoicesPage({
     status: rawStatus,
     partyType: rawPartyType,
     direction: rawDirection,
+    propertyId: rawPropertyId,
     page: rawPage,
     overdue: rawOverdue,
     generated: rawGenerated,
@@ -59,6 +61,9 @@ export default async function InvoicesPage({
     ? (rawDirection as InvoiceDirection)
     : undefined
   const overdue = rawOverdue === '1'
+  // UUID-guarded like the tickets page — feeds the property hub's "View invoices" link.
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+  const propertyId = rawPropertyId && UUID_RE.test(rawPropertyId) ? rawPropertyId : undefined
 
   const requestedPage = Math.max(1, Number.parseInt(rawPage ?? '1', 10) || 1)
   // Server-computed so the "Generate rent" dialog's month default and the overdue badge
@@ -69,7 +74,7 @@ export default async function InvoicesPage({
 
   const supabase = await createClient()
   const invoicePage = await listInvoicesPage(supabase, user.workspaceId, {
-    filters: { status, partyType, direction, overdue },
+    filters: { status, partyType, direction, propertyId, overdue },
     page: requestedPage,
   })
   const invoices = invoicePage.rows

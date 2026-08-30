@@ -20,10 +20,10 @@ const PRIORITIES = ticketPriorityEnum.options
 export default async function NewTicketPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>
+  searchParams: Promise<{ error?: string; propertyId?: string; unitId?: string }>
 }) {
   const user = await requirePermission('tickets:write')
-  const { error } = await searchParams
+  const { error, propertyId: prefillPropertyId, unitId: prefillUnitId } = await searchParams
   const supabase = await createClient()
   // Only ACTIVE properties are selectable. Units are loaded for ALL properties and
   // grouped by property in a single flat <optgroup> select (no client JS) — the operator
@@ -114,7 +114,14 @@ export default async function NewTicketPage({
           <select
             id="propertyId"
             name="propertyId"
-            defaultValue={properties[0]?.id ?? ''}
+            // Prefill from ?propertyId= (unit/property hub "New ticket" buttons). An
+            // unknown id falls back to the first property; the action re-validates the
+            // property/unit pairing server-side either way.
+            defaultValue={
+              (prefillPropertyId && properties.some((p) => p.id === prefillPropertyId)
+                ? prefillPropertyId
+                : properties[0]?.id) ?? ''
+            }
             className="h-9 w-full rounded-md border px-2 text-sm"
             required
           >
@@ -131,7 +138,9 @@ export default async function NewTicketPage({
           <select
             id="unitId"
             name="unitId"
-            defaultValue=""
+            defaultValue={
+              prefillUnitId && units.some((u) => u.id === prefillUnitId) ? prefillUnitId : ''
+            }
             className="h-9 w-full rounded-md border px-2 text-sm"
           >
             <option value="">No specific unit</option>

@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { DoorOpen, KeyRound, CircleCheck } from 'lucide-react'
 import { requirePermission } from '@/lib/auth/session'
@@ -67,7 +68,7 @@ export default async function PersonDetailPage({
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title={tenant.full_name} subtitle="Tenant contact record." />
+      <PageHeader title={tenant.full_name} subtitle="Tenant contact record." backHref="/people" backLabel="People" />
 
       <FormError message={error} />
 
@@ -135,7 +136,13 @@ export default async function PersonDetailPage({
                   >
                     <div className="min-w-0">
                       <div className="truncate text-sm font-medium text-foreground">
-                        {unit ? `${unit.propertyName} · ${unit.label}` : 'Unknown unit'}
+                        {unit ? (
+                          <Link href={`/units/${t.unit_id}`} className="hover:underline">
+                            {unit.propertyName} · {unit.label}
+                          </Link>
+                        ) : (
+                          'Unknown unit'
+                        )}
                       </div>
                       <div className="text-xs text-muted-foreground">
                         {formatDate(t.start_date)} –{' '}

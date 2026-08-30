@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { ReceiptText } from 'lucide-react'
 import { requirePermission } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
@@ -6,6 +7,7 @@ import { listUnits } from '@/lib/data/units'
 import { listTenancies } from '@/lib/data/tenancies'
 import { rentRoll, expiringLeases, totalMonthlyRent } from '@/lib/occupancy/rent-roll'
 import { PageHeader } from '@/components/layout/PageHeader'
+import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/common/EmptyState'
 import { ErrorToast } from '@/components/common/ErrorToast'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -64,6 +66,11 @@ export default async function RentRollPage() {
           icon={<ReceiptText />}
           title="No units to report yet"
           body="Add units to a property, then record tenancies to see rent, occupancy, and lease-expiration alerts here."
+          action={
+            <Button render={<Link href="/units/new" />} nativeButton={false}>
+              Add a unit
+            </Button>
+          }
         />
       ) : (
         <>

@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { DoorClosed, MapPin, Wrench } from 'lucide-react'
+import { DoorClosed, MapPin, Wrench, Plus, Receipt } from 'lucide-react'
 import { requirePermission } from '@/lib/auth/session'
 import { can } from '@/lib/auth/permissions'
 import { createClient } from '@/lib/supabase/server'
@@ -110,6 +110,8 @@ export default async function PropertyDetailPage({
     <div className="motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-[--duration-slow]">
       <PageHeader
         title={property.name}
+        backHref="/properties"
+        backLabel="Properties"
         actions={
           <div className="flex items-center gap-3">
             <StatusBadge kind="entity_status" value={property.status} />
@@ -181,14 +183,26 @@ export default async function PropertyDetailPage({
             <HubCard
               title="Open tickets"
               action={
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  render={<Link href={`/tickets?propertyId=${property.id}`} />}
-                >
-                  <Wrench className="size-4" />
-                  View all
-                </Button>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    render={<Link href={`/tickets/new?propertyId=${property.id}`} />}
+                    nativeButton={false}
+                  >
+                    <Plus className="size-4" />
+                    New ticket
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    render={<Link href={`/tickets?propertyId=${property.id}`} />}
+                    nativeButton={false}
+                  >
+                    <Wrench className="size-4" />
+                    View all
+                  </Button>
+                </div>
               }
             >
               <TicketsList tickets={openTickets} />
@@ -196,7 +210,20 @@ export default async function PropertyDetailPage({
           </div>
 
           <div className="flex flex-col gap-6">
-            <HubCard title="Finance snapshot">
+            <HubCard
+              title="Finance snapshot"
+              action={
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  render={<Link href={`/invoices?propertyId=${property.id}`} />}
+                  nativeButton={false}
+                >
+                  <Receipt className="size-4" />
+                  View invoices
+                </Button>
+              }
+            >
               <FinanceSnapshot income={income} expense={expense} />
             </HubCard>
 

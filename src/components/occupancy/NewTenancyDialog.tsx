@@ -34,10 +34,13 @@ export function NewTenancyDialog({
   action,
   units,
   tenants,
+  defaultUnitId,
 }: {
   action: (formData: FormData) => void | Promise<void>
   units: UnitOption[]
   tenants: TenantOption[]
+  /** Preselects the unit — set when the dialog is hosted on a unit's own hub. */
+  defaultUnitId?: string
 }) {
   const [open, setOpen] = useState(false)
   const nameInputRef = useRef<HTMLInputElement>(null)
@@ -87,7 +90,7 @@ export function NewTenancyDialog({
               id="unitId"
               name="unitId"
               required
-              defaultValue={units[0]?.id ?? ''}
+              defaultValue={defaultUnitId ?? units[0]?.id ?? ''}
               className={selectClass}
             >
               {units.map((u) => (

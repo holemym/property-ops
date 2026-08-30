@@ -139,7 +139,19 @@ export default async function InvoiceDetailPage({
               </CardHeader>
               <CardContent>
                 <dl className="grid gap-4 sm:grid-cols-2">
-                  <SummaryField label="Party">{invoice.party_name}</SummaryField>
+                  <SummaryField label="Party">
+                  {invoice.party_type === 'OWNER' ? (
+                    // The owner statement links each invoice back here; make it two-way.
+                    <Link
+                      href={`/owners/${encodeURIComponent(invoice.party_name)}`}
+                      className="text-foreground underline-offset-4 hover:underline"
+                    >
+                      {invoice.party_name}
+                    </Link>
+                  ) : (
+                    invoice.party_name
+                  )}
+                </SummaryField>
                   <SummaryField label="Issue date">{formatDate(invoice.issue_date)}</SummaryField>
                   <SummaryField label="Due date">
                     {invoice.due_date ? formatDate(invoice.due_date) : '—'}

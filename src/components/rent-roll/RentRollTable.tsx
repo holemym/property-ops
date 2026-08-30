@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { StatusBadge } from '@/components/ui/badge'
 import {
   Table,
@@ -16,15 +17,18 @@ import { formatMoney, formatDate } from './shared'
 export function RentRollTable({ rows }: { rows: RentRollRow[] }) {
   return (
     <>
-      {/* Mobile: stacked cards (the table's columns don't fit a phone; below sm it hides).
-          Rows have no detail page, so each card is a plain div. */}
+      {/* Mobile: stacked cards (the table's columns don't fit a phone; below sm it
+          hides). The unit label links to the unit hub — these rows ARE units. */}
       <ul className="flex flex-col gap-2 sm:hidden">
         {rows.map((row) => (
           <li key={row.unitId} className="flex flex-col gap-2 rounded-lg border bg-card p-3">
             <div className="flex items-center justify-between gap-2">
-              <span className="min-w-0 truncate font-medium leading-snug text-foreground">
+              <Link
+                href={`/units/${row.unitId}`}
+                className="min-w-0 truncate font-medium leading-snug text-foreground hover:underline"
+              >
                 {row.label}
-              </span>
+              </Link>
               <span className="shrink-0 text-right tabular-nums">
                 {typeof row.rent === 'number' ? (
                   <>
@@ -74,7 +78,11 @@ export function RentRollTable({ rows }: { rows: RentRollRow[] }) {
       <TableBody>
         {rows.map((row) => (
           <TableRow key={row.unitId}>
-            <TableCell className="font-medium text-foreground">{row.label}</TableCell>
+            <TableCell className="font-medium text-foreground">
+              <Link href={`/units/${row.unitId}`} className="hover:underline">
+                {row.label}
+              </Link>
+            </TableCell>
             <TableCell className="text-muted-foreground">{row.propertyName}</TableCell>
             <TableCell>
               <StatusBadge kind="unit_status" value={row.status} />

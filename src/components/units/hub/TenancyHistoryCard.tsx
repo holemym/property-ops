@@ -28,9 +28,13 @@ const PHASE_ORDER: Record<TenancyPhase, number> = { current: 0, upcoming: 1, pas
 export function TenancyHistoryCard({
   tenancies,
   today,
+  action,
 }: {
   tenancies: Tenancy[]
   today: string
+  /** Optional header slot — the unit hub hosts the New-tenancy dialog here so
+   * recording a tenancy no longer requires knowing it lives on /occupancy. */
+  action?: React.ReactNode
 }) {
   const rows = tenancies
     .map((t) => ({ tenancy: t, phase: tenancyPhase(t.start_date, t.end_date, today) }))
@@ -49,8 +53,9 @@ export function TenancyHistoryCard({
 
   return (
     <Card>
-      <CardHeader>
+      <CardHeader className="flex-row items-center justify-between">
         <CardTitle>Tenancy history</CardTitle>
+        {action}
       </CardHeader>
       <CardContent>
         {rows.length === 0 ? (
