@@ -1,3 +1,4 @@
+import { LoadingRegion } from '@/components/common/skeletons'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Card } from '@/components/ui/card'
 
@@ -6,7 +7,7 @@ import { Card } from '@/components/ui/card'
 // reflow when data arrives.
 export default function PortalHomeLoading() {
   return (
-    <div className="flex flex-col gap-6">
+    <LoadingRegion label="Loading your home">
       <div className="space-y-2">
         <Skeleton className="h-8 w-32" />
         <Skeleton className="h-4 w-64" />
@@ -41,6 +42,6 @@ export default function PortalHomeLoading() {
           </div>
         </Card>
       </div>
-    </div>
+    </LoadingRegion>
   )
 }

@@ -103,7 +103,13 @@ export default function LeafletMap({ properties }: { properties: MapProperty[] }
 
     const icon = createPinIcon()
     for (const property of properties) {
-      L.marker([property.latitude, property.longitude], { icon })
+      L.marker([property.latitude, property.longitude], {
+        icon,
+        // Accessible name: Leaflet markers are keyboard-focusable; without these the
+        // divIcon pins are announced as nothing.
+        title: property.name,
+        alt: property.name,
+      })
         .addTo(map)
         .bindPopup(buildPopupContent(property))
     }

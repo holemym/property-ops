@@ -8,7 +8,7 @@ import { PageHeader } from '@/components/layout/PageHeader'
 import { EmptyState } from '@/components/common/EmptyState'
 import { ErrorToast } from '@/components/common/ErrorToast'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
+import { Badge, StatusBadge } from '@/components/ui/badge'
 import { SubmitButton } from '@/components/tickets/SubmitButton'
 import { NewAnnouncementDialog } from '@/components/announcements/NewAnnouncementDialog'
 import { formatDate } from '@/lib/format-date'
@@ -64,9 +64,7 @@ export default async function AnnouncementsPage() {
                 <CardHeader>
                   <CardTitle className="flex min-w-0 flex-wrap items-center gap-2">
                     <span className="min-w-0 break-words">{a.title}</span>
-                    <Badge variant={isPublished ? 'green' : 'muted'}>
-                      {isPublished ? 'Published' : 'Draft'}
-                    </Badge>
+                    <StatusBadge kind="announcement_status" value={a.status} />
                     {a.property_id && (
                       <Badge variant="outline">
                         {propertyNameById.get(a.property_id) ?? 'Unknown property'}

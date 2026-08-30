@@ -1,17 +1,19 @@
 import { formatDateTime } from '@/lib/format-date'
-import { Bell, MessageSquare, RefreshCw, UserCheck, type LucideIcon } from 'lucide-react'
+import { Bell, CheckCheck, MessageSquare, RefreshCw, UserCheck, type LucideIcon } from 'lucide-react'
 import { requireWorkspace } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { listNotificationsPage, countUnread, type Notification } from '@/lib/data/notifications'
-import { statusBadge, type StatusTone } from '@/lib/status'
+import { statusBadge } from '@/lib/status'
 import { relativeDay } from '@/lib/relative-date'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { EmptyState } from '@/components/common/EmptyState'
 import { Pagination } from '@/components/common/Pagination'
 import { Card } from '@/components/ui/card'
+import { ErrorToast } from '@/components/common/ErrorToast'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { markReadNotificationAction, markAllReadNotificationsAction } from './actions'
+import { toneClasses } from '@/components/ui/badge'
 import type { NotificationType } from '@/types/domain'
 
 // P0-4: replaced the monochrome tone dot with a distinct glyph per notification type —
@@ -24,15 +26,6 @@ const NOTIFICATION_ICON: Record<NotificationType, LucideIcon> = {
   TICKET_ASSIGNED: UserCheck,
   TICKET_STATUS_CHANGED: RefreshCw,
   TICKET_COMMENT: MessageSquare,
-}
-
-const TONE_ICON_BG: Record<StatusTone, string> = {
-  neutral: 'bg-muted text-foreground',
-  muted: 'bg-muted text-muted-foreground',
-  blue: 'bg-blue-100 text-blue-800 dark:bg-blue-500/20 dark:text-blue-300',
-  amber: 'bg-amber-100 text-amber-900 dark:bg-amber-500/20 dark:text-amber-300',
-  green: 'bg-green-100 text-green-800 dark:bg-green-500/20 dark:text-green-300',
-  red: 'bg-red-100 text-red-800 dark:bg-red-500/20 dark:text-red-300',
 }
 
 export default async function NotificationsPage({
@@ -59,6 +52,10 @@ export default async function NotificationsPage({
 
   return (
     <div className="flex flex-col gap-6">
+      {/* markAllRead surfaces failures via ?error= — without this toast the message
+          landed in the URL and was never shown (the only action-hosting page that
+          lacked it). */}
+      <ErrorToast />
       <PageHeader
         title="Notifications"
         subtitle="Updates on tickets you're following, in one inbox."
@@ -66,6 +63,7 @@ export default async function NotificationsPage({
           unreadCount > 0 && (
             <form action={markAllReadNotificationsAction}>
               <Button type="submit" variant="outline" size="sm">
+                <CheckCheck className="size-4" />
                 Mark all read
               </Button>
             </form>
@@ -81,10 +79,19 @@ export default async function NotificationsPage({
         />
       ) : (
         <div className="flex flex-col gap-4">
-          <Card className="divide-y p-0">
-            {page.rows.map((n) => (
-              <NotificationRow key={n.id} notification={n} />
-            ))}
+          {/* ONE child (the ul) so the Card's own gap-(--card-spacing) never applies —
+              multiple direct children rendered each row as a gapped island with a
+              floating divider (the skeleton showed the contiguous look, so the page
+              visibly shifted when data landed). ul/li also restores list semantics
+              for screen readers, matching every peer list-in-card. */}
+          <Card className="p-0">
+            <ul className="divide-y divide-border">
+              {page.rows.map((n) => (
+                <li key={n.id}>
+                  <NotificationRow notification={n} />
+                </li>
+              ))}
+            </ul>
           </Card>
           <Pagination
             page={page.page}
@@ -116,13 +123,14 @@ function NotificationRow({ notification: n }: { notification: Notification }) {
         type="submit"
         className={cn(
           'flex w-full items-start gap-3 px-4 py-3.5 text-left transition-colors hover:bg-accent',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
           unread && 'bg-muted/40',
         )}
       >
         <span
           className={cn(
             'mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full',
-            TONE_ICON_BG[tone],
+            toneClasses[tone],
           )}
           aria-hidden
         >

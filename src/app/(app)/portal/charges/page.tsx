@@ -1,6 +1,6 @@
 import { formatMoneyIn } from '@/lib/format-money'
 import { redirect } from 'next/navigation'
-import { ReceiptText } from 'lucide-react'
+import { Receipt } from 'lucide-react'
 import { requireWorkspace } from '@/lib/auth/session'
 import { isTenantRole } from '@/lib/auth/permissions'
 import { createClient } from '@/lib/supabase/server'
@@ -52,7 +52,7 @@ export default async function PortalChargesPage() {
 
       {invoices.length === 0 ? (
         <EmptyState
-          icon={<ReceiptText />}
+          icon={<Receipt />}
           title="No charges yet"
           body="Invoices your property manager issues to you will appear here."
         />

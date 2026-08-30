@@ -1,3 +1,4 @@
+import { LoadingRegion } from '@/components/common/skeletons'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Card } from '@/components/ui/card'
 
@@ -6,7 +7,7 @@ import { Card } from '@/components/ui/card'
 // data arrives.
 export default function PortalChargesLoading() {
   return (
-    <div className="flex flex-col gap-6">
+    <LoadingRegion label="Loading your charges">
       <div className="space-y-2">
         <Skeleton className="h-8 w-32" />
         <Skeleton className="h-4 w-64" />
@@ -33,6 +34,6 @@ export default function PortalChargesLoading() {
           <Skeleton className="h-4 w-full max-w-md" />
         </div>
       </Card>
-    </div>
+    </LoadingRegion>
   )
 }

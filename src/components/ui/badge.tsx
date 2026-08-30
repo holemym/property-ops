@@ -84,4 +84,16 @@ function StatusBadge({ className, ...input }: StatusBadgeProps) {
   )
 }
 
+// The six status-tone class pairs, exported for non-pill uses of the SAME color
+// system (e.g. the notifications icon chips). One palette, two shapes — a change
+// here reaches every consumer; never re-hardcode these strings elsewhere.
+export const toneClasses: Record<import('@/lib/status').StatusTone, string> = {
+  neutral: 'bg-muted text-foreground',
+  muted: 'bg-muted text-muted-foreground',
+  blue: 'bg-blue-100 text-blue-800 dark:bg-blue-500/20 dark:text-blue-300',
+  amber: 'bg-amber-100 text-amber-900 dark:bg-amber-500/20 dark:text-amber-300',
+  green: 'bg-green-100 text-green-800 dark:bg-green-500/20 dark:text-green-300',
+  red: 'bg-red-100 text-red-800 dark:bg-red-500/20 dark:text-red-300',
+}
+
 export { Badge, badgeVariants, StatusBadge }

@@ -1,3 +1,4 @@
+import { LoadingRegion } from '@/components/common/skeletons'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Card } from '@/components/ui/card'
 
@@ -5,7 +6,7 @@ import { Card } from '@/components/ui/card'
 // notice cards — so the shell doesn't reflow when data arrives.
 export default function PortalAnnouncementsLoading() {
   return (
-    <div className="flex flex-col gap-6">
+    <LoadingRegion label="Loading announcements">
       <div className="space-y-2">
         <Skeleton className="h-8 w-40" />
         <Skeleton className="h-4 w-72" />
@@ -23,6 +24,6 @@ export default function PortalAnnouncementsLoading() {
           </Card>
         ))}
       </div>
-    </div>
+    </LoadingRegion>
   )
 }

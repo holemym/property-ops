@@ -1,3 +1,4 @@
+import { LoadingRegion } from '@/components/common/skeletons'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Card } from '@/components/ui/card'
 
@@ -6,7 +7,7 @@ import { Card } from '@/components/ui/card'
 // reflow when data arrives.
 export default function AnnouncementsLoading() {
   return (
-    <div className="flex flex-col gap-6">
+    <LoadingRegion label="Loading announcements">
       <div className="flex items-start justify-between gap-3">
         <div className="space-y-2">
           <Skeleton className="h-7 w-40" />
@@ -27,6 +28,6 @@ export default function AnnouncementsLoading() {
           </Card>
         ))}
       </div>
-    </div>
+    </LoadingRegion>
   )
 }

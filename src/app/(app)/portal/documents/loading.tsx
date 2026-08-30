@@ -1,3 +1,4 @@
+import { LoadingRegion } from '@/components/common/skeletons'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Card } from '@/components/ui/card'
 
@@ -5,7 +6,7 @@ import { Card } from '@/components/ui/card'
 // card list of rows) so the shell doesn't reflow when data arrives.
 export default function PortalDocumentsLoading() {
   return (
-    <div className="flex flex-col gap-6">
+    <LoadingRegion label="Loading your documents">
       <div className="space-y-2">
         <Skeleton className="h-8 w-40" />
         <Skeleton className="h-4 w-96 max-w-full" />
@@ -24,6 +25,6 @@ export default function PortalDocumentsLoading() {
           ))}
         </ul>
       </Card>
-    </div>
+    </LoadingRegion>
   )
 }

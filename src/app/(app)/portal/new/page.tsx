@@ -40,7 +40,7 @@ export default async function ReportIssuePage() {
 
   if (properties.length === 0) {
     return (
-      <div className="flex flex-col">
+      <div className="flex flex-col gap-6">
         <PageHeader
           title="Report an issue"
           subtitle="Tell us what needs attention and where."
@@ -61,7 +61,7 @@ export default async function ReportIssuePage() {
   }))
 
   return (
-    <div className="flex flex-col">
+    <div className="flex flex-col gap-6">
       <ErrorToast />
 
       <PageHeader

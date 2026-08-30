@@ -1,3 +1,4 @@
+import { LoadingRegion } from '@/components/common/skeletons'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Card } from '@/components/ui/card'
 
@@ -5,7 +6,7 @@ import { Card } from '@/components/ui/card'
 // CTA, then a card list of request rows — so the shell doesn't reflow when data arrives.
 export default function PortalLoading() {
   return (
-    <div className="flex flex-col">
+    <LoadingRegion label="Loading your requests">
       <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="space-y-2">
           <Skeleton className="h-8 w-40" />
@@ -27,6 +28,6 @@ export default function PortalLoading() {
           ))}
         </ul>
       </Card>
-    </div>
+    </LoadingRegion>
   )
 }

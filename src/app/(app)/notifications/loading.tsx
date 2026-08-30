@@ -18,8 +18,8 @@ export default function NotificationsLoading() {
         <div aria-hidden className="divide-y rounded-xl border">
           {Array.from({ length: 6 }).map((_, i) => (
             <div key={i} className="flex items-start gap-3 px-4 py-3.5">
-              {/* type dot */}
-              <Skel className="mt-1 size-2 shrink-0 rounded-full" />
+              {/* type icon chip (size-6, matching the real row) */}
+              <Skel className="mt-0.5 size-6 shrink-0 rounded-full" />
               <div className="flex min-w-0 flex-1 flex-col gap-1.5">
                 <Skel className="h-4 w-56 max-w-full" />
                 <Skel className="h-3 w-72 max-w-full" />

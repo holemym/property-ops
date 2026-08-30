@@ -26,7 +26,7 @@ export default async function PortalPage() {
   const tickets = await listTickets(supabase, user.workspaceId)
 
   return (
-    <div className="flex flex-col">
+    <div className="flex flex-col gap-6">
       <ErrorToast />
 
       <PageHeader
@@ -59,7 +59,7 @@ export default async function PortalPage() {
               <li key={t.id}>
                 <Link
                   href={`/portal/${t.id}`}
-                  className="flex items-center gap-3 px-4 py-3.5 transition-colors hover:bg-muted/40"
+                  className="flex items-center gap-3 px-4 py-3.5 transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                 >
                   <div className="flex min-w-0 flex-col gap-1">
                     <span className="truncate text-sm font-medium text-foreground">

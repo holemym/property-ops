@@ -123,7 +123,9 @@ const TENANT_GROUPS: NavGroup[] = [
       { href: '/portal', label: 'My requests', icon: Inbox },
       { href: '/portal/new', label: 'Report an issue', icon: CirclePlus },
       { href: '/portal/documents', label: 'My documents', icon: FileText },
-      { href: '/portal/charges', label: 'My charges', icon: ReceiptText },
+      // Receipt = the invoices glyph (operator nav uses it for /invoices) — My charges
+      // is the same concept; ReceiptText stays reserved for Rent roll.
+      { href: '/portal/charges', label: 'My charges', icon: Receipt },
       { href: '/portal/announcements', label: 'Announcements', icon: Megaphone },
     ],
   },

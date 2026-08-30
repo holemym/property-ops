@@ -96,28 +96,55 @@ export default async function SecuritySettingsPage() {
                 body="Sign-ins and account changes for this workspace will appear here."
               />
             ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>When</TableHead>
-                    <TableHead>Event</TableHead>
-                    <TableHead>Who</TableHead>
-                    <TableHead>IP address</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
+              <>
+                {/* Mobile: stacked cards (the house table pattern) — this was the only
+                    table in the app that horizontally scrolled on a phone instead. */}
+                <ul className="flex flex-col divide-y sm:hidden">
                   {events.map((e) => (
-                    <TableRow key={e.id}>
-                      <TableCell title={formatDateTime(e.created_at)}>
-                        {relativeDay(e.created_at)}
-                      </TableCell>
-                      <TableCell>{authEventLabel(e.event_type)}</TableCell>
-                      <TableCell>{e.email ?? '—'}</TableCell>
-                      <TableCell>{e.ip ?? '—'}</TableCell>
-                    </TableRow>
+                    <li key={e.id} className="flex flex-col gap-1 py-3">
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className="text-sm font-medium text-foreground">
+                          {authEventLabel(e.event_type)}
+                        </span>
+                        <span
+                          className="shrink-0 text-xs text-muted-foreground"
+                          title={formatDateTime(e.created_at)}
+                        >
+                          {relativeDay(e.created_at)}
+                        </span>
+                      </div>
+                      <span className="break-words text-sm text-muted-foreground">
+                        {e.email ?? '—'}
+                        {e.ip ? ` · ${e.ip}` : ''}
+                      </span>
+                    </li>
                   ))}
-                </TableBody>
-              </Table>
+                </ul>
+                <div className="hidden sm:block">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>When</TableHead>
+                        <TableHead>Event</TableHead>
+                        <TableHead>Who</TableHead>
+                        <TableHead>IP address</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {events.map((e) => (
+                        <TableRow key={e.id}>
+                          <TableCell title={formatDateTime(e.created_at)}>
+                            {relativeDay(e.created_at)}
+                          </TableCell>
+                          <TableCell>{authEventLabel(e.event_type)}</TableCell>
+                          <TableCell>{e.email ?? '—'}</TableCell>
+                          <TableCell>{e.ip ?? '—'}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </>
             )}
           </CardContent>
         </Card>

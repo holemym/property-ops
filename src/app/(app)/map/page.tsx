@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { MapPinned } from 'lucide-react'
+import { MapPinned, LocateFixed } from 'lucide-react'
 import { requirePermission } from '@/lib/auth/session'
 import { can } from '@/lib/auth/permissions'
 import { createClient } from '@/lib/supabase/server'
@@ -103,6 +103,7 @@ export default async function MapPage({
           showHeaderBackfill ? (
             <form action={backfillPropertyGeocodesAction}>
               <Button type="submit" variant="outline">
+                <LocateFixed className="size-4" />
                 Locate {Math.min(missingCount, GEOCODE_BACKFILL_CAP)} missing
               </Button>
             </form>
@@ -129,7 +130,10 @@ export default async function MapPage({
           action={
             canManage ? (
               <form action={backfillPropertyGeocodesAction}>
-                <Button type="submit">Locate missing</Button>
+                <Button type="submit">
+                  <LocateFixed className="size-4" />
+                  Locate missing
+                </Button>
               </form>
             ) : undefined
           }

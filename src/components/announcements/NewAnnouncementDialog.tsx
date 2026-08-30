@@ -42,7 +42,7 @@ export function NewAnnouncementDialog({
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger
         render={
-          <Button size="sm">
+          <Button>
             <Plus />
             New announcement
           </Button>

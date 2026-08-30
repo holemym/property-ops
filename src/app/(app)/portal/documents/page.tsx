@@ -3,6 +3,7 @@ import { FileText } from 'lucide-react'
 import { requireWorkspace } from '@/lib/auth/session'
 import { isTenantRole } from '@/lib/auth/permissions'
 import { createClient } from '@/lib/supabase/server'
+import { documentTypeLabel } from '@/components/documents/document-display'
 import { formatBytes } from '@/lib/format-bytes'
 import { signStoragePaths } from '@/lib/storage/sign'
 import { createServiceClient } from '@/lib/supabase/service'
@@ -95,9 +96,7 @@ export default async function PortalDocumentsPage() {
                   <div className="flex min-w-0 flex-col gap-1">
                     <span className="truncate text-sm font-medium text-foreground">{doc.title}</span>
                     <span className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-                      <Badge variant="outline" className="capitalize">
-                        {doc.document_type.replace(/_/g, ' ').toLowerCase()}
-                      </Badge>
+                      <Badge variant="outline">{documentTypeLabel(doc.document_type)}</Badge>
                       <span>{formatDate(doc.created_at)}</span>
                       <span>· {formatBytes(doc.file_size)}</span>
                       {(unit || propertyName) && (

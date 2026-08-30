@@ -1,3 +1,4 @@
+import { LoadingRegion } from '@/components/common/skeletons'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 
@@ -6,7 +7,7 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card'
 // status column — so the page doesn't reflow when data arrives.
 export default function PortalDetailLoading() {
   return (
-    <div className="flex flex-col gap-6">
+    <LoadingRegion label="Loading your request">
       <div className="flex flex-col gap-3">
         <Skeleton className="h-4 w-28" />
         <div className="flex flex-wrap items-center gap-2.5">
@@ -67,6 +68,6 @@ export default function PortalDetailLoading() {
           </Card>
         </div>
       </div>
-    </div>
+    </LoadingRegion>
   )
 }

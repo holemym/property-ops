@@ -1,4 +1,5 @@
 import type {
+  AnnouncementStatus,
   EntityStatus,
   InvoiceStatus,
   NotificationType,
@@ -44,6 +45,8 @@ export type StatusBadgeInput =
   | { kind: 'invoice_status'; value: InvoiceStatus }
   | { kind: 'vendor_is_active'; value: boolean }
   | { kind: 'notification_type'; value: NotificationType }
+  | { kind: 'announcement_status'; value: AnnouncementStatus }
+  | { kind: 'lease_state'; value: LeaseState }
 
 const TICKET_STATUS: Record<TicketStatus, StatusBadgeSpec> = {
   NEW: { label: 'New', tone: 'neutral' },
@@ -96,6 +99,22 @@ const NOTIFICATION_TYPE: Record<NotificationType, StatusBadgeSpec> = {
   TICKET_COMMENT: { label: 'Comment', tone: 'neutral' },
 }
 
+// Announcement lifecycle (operator compose surface). DRAFT is muted — it exists but
+// no tenant can see it; PUBLISHED is green — live in every relevant portal.
+const ANNOUNCEMENT_STATUS: Record<AnnouncementStatus, StatusBadgeSpec> = {
+  DRAFT: { label: 'Draft', tone: 'muted' },
+  PUBLISHED: { label: 'Published', tone: 'green' },
+}
+
+// Tenant-facing lease state (portal My home). Not a DB enum — derived from the
+// tenancy's dates — but it IS a status pill, so its colors live here with the rest.
+export type LeaseState = 'current' | 'ending_soon' | 'ended'
+const LEASE_STATE: Record<LeaseState, StatusBadgeSpec> = {
+  current: { label: 'Current', tone: 'green' },
+  ending_soon: { label: 'Ending soon', tone: 'amber' },
+  ended: { label: 'Ended', tone: 'muted' },
+}
+
 /**
  * Map a domain status value to its `{ label, tone }` presentation.
  * The overloads keep call sites type-safe: `statusBadge('unit_status', u.status)`
@@ -108,6 +127,8 @@ export function statusBadge(kind: 'entity_status', value: EntityStatus): StatusB
 export function statusBadge(kind: 'invoice_status', value: InvoiceStatus): StatusBadgeSpec
 export function statusBadge(kind: 'vendor_is_active', value: boolean): StatusBadgeSpec
 export function statusBadge(kind: 'notification_type', value: NotificationType): StatusBadgeSpec
+export function statusBadge(kind: 'announcement_status', value: AnnouncementStatus): StatusBadgeSpec
+export function statusBadge(kind: 'lease_state', value: LeaseState): StatusBadgeSpec
 export function statusBadge(kind: StatusBadgeInput['kind'], value: string | boolean): StatusBadgeSpec {
   switch (kind) {
     case 'ticket_status':
@@ -124,6 +145,10 @@ export function statusBadge(kind: StatusBadgeInput['kind'], value: string | bool
       return VENDOR_IS_ACTIVE[value ? 'true' : 'false']
     case 'notification_type':
       return NOTIFICATION_TYPE[value as NotificationType]
+    case 'announcement_status':
+      return ANNOUNCEMENT_STATUS[value as AnnouncementStatus]
+    case 'lease_state':
+      return LEASE_STATE[value as LeaseState]
   }
 }
 

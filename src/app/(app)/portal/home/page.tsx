@@ -15,18 +15,10 @@ import { PageHeader } from '@/components/layout/PageHeader'
 import { EmptyState } from '@/components/common/EmptyState'
 import { ErrorToast } from '@/components/common/ErrorToast'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
+import { StatusBadge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { formatDate } from '@/lib/format-date'
 import type { Role } from '@/types/domain'
-
-// Lease-state badge tone/label — mirrors the Badge variant vocabulary used everywhere
-// else (saturated colour reserved for status; graphite/outline for everything else).
-const LEASE_BADGE: Record<ReturnType<typeof leaseState>, { label: string; variant: 'green' | 'amber' | 'muted' }> = {
-  current: { label: 'Current', variant: 'green' },
-  ending_soon: { label: 'Ending soon', variant: 'amber' },
-  ended: { label: 'Ended', variant: 'muted' },
-}
 
 // A short, tenant-friendly label for a manager's role — never the raw enum.
 const ROLE_LABEL: Partial<Record<Role, string>> = {
@@ -78,7 +70,7 @@ export default async function PortalHomePage() {
   ])
   const property = unit ? await getProperty(supabase, user.workspaceId, unit.property_id) : null
   const contact = resolveContact(operators, tenancy?.created_by_user_id ?? null)
-  const badge = tenancy ? LEASE_BADGE[leaseState(tenancy, todayIso)] : null
+  const lease = tenancy ? leaseState(tenancy, todayIso) : null
 
   const currency = workspace?.currency || 'EUR'
   const money = { format: (v: number) => formatMoneyIn(currency, v) }
@@ -101,7 +93,7 @@ export default async function PortalHomePage() {
             <CardHeader>
               <CardTitle className="flex flex-wrap items-center gap-2">
                 Your home
-                {badge && <Badge variant={badge.variant}>{badge.label}</Badge>}
+                {lease && <StatusBadge kind="lease_state" value={lease} />}
               </CardTitle>
             </CardHeader>
             <CardContent>
