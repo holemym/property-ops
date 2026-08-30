@@ -1,6 +1,7 @@
 'use server'
 
 import { redirect } from 'next/navigation'
+import { after } from 'next/server'
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
@@ -122,15 +123,21 @@ export async function createTicketAction(formData: FormData) {
   // Claude Haiku classification. runAutoTriage swallows its own errors, so triage can
   // never fail the create — awaited here only so the suggestion note is present when the
   // manager lands on the detail page.
-  await runAutoTriage(createServiceClient(), {
-    workspaceId: user.workspaceId,
-    ticketId,
-    createdByUserId: user.id,
-    title,
-    description,
-    filedCategory: category,
-    filedPriority: priority,
-  })
+  // Runs AFTER the response (next/server after()): with ANTHROPIC_API_KEY set this is
+  // a 1-3s Claude call, and it was serialized onto the hottest write path — the manager
+  // waited out the classification just to get redirected. The suggestion note now
+  // appears on the detail page's next load instead of its first paint.
+  after(() =>
+    runAutoTriage(createServiceClient(), {
+      workspaceId: user.workspaceId,
+      ticketId,
+      createdByUserId: user.id,
+      title,
+      description,
+      filedCategory: category,
+      filedPriority: priority,
+    })
+  )
 
   // Best-effort confirmation email to the tenant a ticket was filed ON BEHALF OF. This
   // operator-create path does not currently set created_for_user_id (it's always null
@@ -139,18 +146,20 @@ export async function createTicketAction(formData: FormData) {
   // Own try/catch, never blocks the redirect. Disconnected-safe.
   const createdForUserId = (parsed.data as { createdForUserId?: string | null }).createdForUserId ?? null
   if (createdForUserId) {
-    try {
-      await notifyTicketCreated(createServiceClient(), {
-        ticketId,
-        workspaceId: user.workspaceId,
-        title,
-        category,
-        priority,
-        reporterUserId: createdForUserId,
-      })
-    } catch (e) {
-      console.error('Failed to send ticket-created email for ticket', ticketId, e)
-    }
+    after(async () => {
+      try {
+        await notifyTicketCreated(createServiceClient(), {
+          ticketId,
+          workspaceId: user.workspaceId,
+          title,
+          category,
+          priority,
+          reporterUserId: createdForUserId,
+        })
+      } catch (e) {
+        console.error('Failed to send ticket-created email for ticket', ticketId, e)
+      }
+    })
   }
 
   revalidatePath('/tickets')
@@ -221,20 +230,22 @@ export async function transitionTicketStatusAction(id: string, formData: FormDat
   // Best-effort email to the reporter (tenant filed-for, else the creator). Mirrors the
   // audit block: own try/catch, service-role client for the auth.admin email lookup,
   // never blocks the redirect. Disconnected-safe (no-op with no RESEND_API_KEY).
-  try {
-    await notifyTicketStatusChanged(createServiceClient(), {
-      ticketId: id,
-      workspaceId: user.workspaceId,
-      title: ticket.title,
-      category: ticket.category,
-      priority: ticket.priority,
-      reporterUserId: ticket.created_for_user_id ?? ticket.created_by_user_id,
-      fromStatus: ticket.status,
-      toStatus: nextStatus,
-    })
-  } catch (e) {
-    console.error('Failed to send status-changed email for ticket', id, e)
-  }
+  after(async () => {
+    try {
+      await notifyTicketStatusChanged(createServiceClient(), {
+        ticketId: id,
+        workspaceId: user.workspaceId,
+        title: ticket.title,
+        category: ticket.category,
+        priority: ticket.priority,
+        reporterUserId: ticket.created_for_user_id ?? ticket.created_by_user_id,
+        fromStatus: ticket.status,
+        toStatus: nextStatus,
+      })
+    } catch (e) {
+      console.error('Failed to send status-changed email for ticket', id, e)
+    }
+  })
 
   // Best-effort in-app notification (P2-1) — fans out to BOTH created_by and
   // created_for when distinct. The email above only reaches one address (via the
@@ -242,26 +253,31 @@ export async function transitionTicketStatusAction(id: string, formData: FormDat
   // inbox can afford to ping both real stakeholders. resolveStatusChangedRecipients
   // already excludes the actor, and createNotification independently re-checks the
   // same guard per recipient.
-  try {
-    const recipients = resolveStatusChangedRecipients(
-      user.id,
-      ticket.created_by_user_id,
-      ticket.created_for_user_id
-    )
-    for (const recipientUserId of recipients) {
-      await createNotification(createServiceClient(), {
-        workspaceId: user.workspaceId,
-        recipientUserId,
-        actorUserId: user.id,
-        type: 'TICKET_STATUS_CHANGED',
-        title: 'Ticket status changed',
-        body: ticket.title,
-        href: detailPath,
-      })
+  after(async () => {
+    try {
+      const recipients = resolveStatusChangedRecipients(
+        user.id,
+        ticket.created_by_user_id,
+        ticket.created_for_user_id
+      )
+      // Parallel — these were also written serially per recipient.
+      await Promise.all(
+        recipients.map((recipientUserId) =>
+          createNotification(createServiceClient(), {
+            workspaceId: user.workspaceId,
+            recipientUserId,
+            actorUserId: user.id,
+            type: 'TICKET_STATUS_CHANGED',
+            title: 'Ticket status changed',
+            body: ticket.title,
+            href: detailPath,
+          })
+        )
+      )
+    } catch (e) {
+      console.error('Failed to write status-changed notification for ticket', id, e)
     }
-  } catch (e) {
-    console.error('Failed to write status-changed notification for ticket', id, e)
-  }
+  })
 
   revalidatePath(detailPath)
   redirect(detailPath)
@@ -318,36 +334,40 @@ export async function assignOperatorAction(id: string, formData: FormData) {
 
   // Best-effort email to the newly-assigned operator. Only on an ASSIGN (operatorId set);
   // an unassign (null) has no recipient to notify. Email resolved via auth.admin.
+  // Post-response (after()): the email path is an auth.admin lookup + a mail-API
+  // call — two network hops the assign click no longer waits out.
   if (operatorId) {
-    try {
-      await notifyOperatorAssigned(createServiceClient(), {
-        ticketId: id,
-        workspaceId: user.workspaceId,
-        title: ticket.title,
-        category: ticket.category,
-        priority: ticket.priority,
-        operatorUserId: operatorId,
-      })
-    } catch (e) {
-      console.error('Failed to send operator-assigned email for ticket', id, e)
-    }
+    after(async () => {
+      try {
+        await notifyOperatorAssigned(createServiceClient(), {
+          ticketId: id,
+          workspaceId: user.workspaceId,
+          title: ticket.title,
+          category: ticket.category,
+          priority: ticket.priority,
+          operatorUserId: operatorId,
+        })
+      } catch (e) {
+        console.error('Failed to send operator-assigned email for ticket', id, e)
+      }
 
-    // Best-effort in-app notification (P2-1) — sits beside the email above, same
-    // ASSIGN-only guard. resolveOperatorAssignedRecipient returns null on a
-    // self-assign; createNotification independently re-checks the same guard.
-    try {
-      await createNotification(createServiceClient(), {
-        workspaceId: user.workspaceId,
-        recipientUserId: resolveOperatorAssignedRecipient(user.id, operatorId),
-        actorUserId: user.id,
-        type: 'TICKET_ASSIGNED',
-        title: 'Ticket assigned to you',
-        body: ticket.title,
-        href: detailPath,
-      })
-    } catch (e) {
-      console.error('Failed to write operator-assigned notification for ticket', id, e)
-    }
+      // Best-effort in-app notification (P2-1) — same ASSIGN-only guard.
+      // resolveOperatorAssignedRecipient returns null on a self-assign;
+      // createNotification independently re-checks the same guard.
+      try {
+        await createNotification(createServiceClient(), {
+          workspaceId: user.workspaceId,
+          recipientUserId: resolveOperatorAssignedRecipient(user.id, operatorId),
+          actorUserId: user.id,
+          type: 'TICKET_ASSIGNED',
+          title: 'Ticket assigned to you',
+          body: ticket.title,
+          href: detailPath,
+        })
+      } catch (e) {
+        console.error('Failed to write operator-assigned notification for ticket', id, e)
+      }
+    })
   }
 
   revalidatePath(detailPath)
@@ -404,19 +424,21 @@ export async function assignVendorAction(id: string, formData: FormData) {
   // separate action). Only on an ASSIGN; the vendor object (with its email column) was
   // loaded above during the in-workspace check.
   if (vendorId && vendor) {
-    try {
-      await notifyVendorAssigned({
-        ticketId: id,
-        workspaceId: user.workspaceId,
-        title: ticket.title,
-        category: ticket.category,
-        priority: ticket.priority,
-        vendorEmail: vendor.email,
-        vendorName: vendor.contact_name ?? vendor.company_name,
-      })
-    } catch (e) {
-      console.error('Failed to send vendor-assigned email for ticket', id, e)
-    }
+    after(async () => {
+      try {
+        await notifyVendorAssigned({
+          ticketId: id,
+          workspaceId: user.workspaceId,
+          title: ticket.title,
+          category: ticket.category,
+          priority: ticket.priority,
+          vendorEmail: vendor.email,
+          vendorName: vendor.contact_name ?? vendor.company_name,
+        })
+      } catch (e) {
+        console.error('Failed to send vendor-assigned email for ticket', id, e)
+      }
+    })
   }
 
   revalidatePath(detailPath)
@@ -507,22 +529,24 @@ export async function generateVendorLinkAction(id: string) {
   // so delivery no longer depends on the manager copy-pasting the ?joblink= URL. The link
   // is `${NEXT_PUBLIC_SITE_URL}/job/<rawToken>` — the exact path the /job/[token] route
   // serves. Best-effort: own try/catch, never blocks the redirect. Disconnected-safe.
-  try {
-    const base = process.env.NEXT_PUBLIC_SITE_URL
-    const jobUrl = base ? `${base}/job/${rawToken}` : `/job/${rawToken}`
-    await notifyVendorJobLink({
-      ticketId: id,
-      workspaceId: user.workspaceId,
-      title: ticket.title,
-      category: ticket.category,
-      priority: ticket.priority,
-      vendorEmail: vendor.email,
-      vendorName: vendor.contact_name ?? vendor.company_name,
-      jobUrl,
-    })
-  } catch (e) {
-    console.error('Failed to send vendor job-link email for ticket', id, e)
-  }
+  after(async () => {
+    try {
+      const base = process.env.NEXT_PUBLIC_SITE_URL
+      const jobUrl = base ? `${base}/job/${rawToken}` : `/job/${rawToken}`
+      await notifyVendorJobLink({
+        ticketId: id,
+        workspaceId: user.workspaceId,
+        title: ticket.title,
+        category: ticket.category,
+        priority: ticket.priority,
+        vendorEmail: vendor.email,
+        vendorName: vendor.contact_name ?? vendor.company_name,
+        jobUrl,
+      })
+    } catch (e) {
+      console.error('Failed to send vendor job-link email for ticket', id, e)
+    }
+  })
 
   // The raw token is ALSO returned to the manager ONCE via their own URL (fallback, and
   // the sole delivery path while email is disconnected — see docstring).
@@ -584,29 +608,35 @@ export async function addTicketCommentAction(id: string, formData: FormData) {
   // which this action doesn't otherwise load — fetched here, scoped to its own
   // try/catch so a lookup failure only costs the notification, never the comment
   // that has already been saved.
-  try {
-    const ticket = await getTicket(supabase, user.workspaceId, id)
-    if (ticket) {
-      const reporterUserId = ticket.created_for_user_id ?? ticket.created_by_user_id
-      const recipientUserId = resolveCommentRecipient(
-        visibility,
-        user.id,
-        reporterUserId,
-        ticket.assigned_operator_id
-      )
-      await createNotification(createServiceClient(), {
-        workspaceId: user.workspaceId,
-        recipientUserId,
-        actorUserId: user.id,
-        type: 'TICKET_COMMENT',
-        title: 'New comment',
-        body: ticket.title,
-        href: detailPath,
-      })
+  after(async () => {
+    try {
+      // Service client, not the request-scoped one: after() runs post-response, where
+      // the cookie-bound client may no longer read its request context. The query is
+      // still pinned to user.workspaceId, and the caller already passed the RLS check
+      // for this ticket by writing the comment above.
+      const ticket = await getTicket(createServiceClient(), user.workspaceId, id)
+      if (ticket) {
+        const reporterUserId = ticket.created_for_user_id ?? ticket.created_by_user_id
+        const recipientUserId = resolveCommentRecipient(
+          visibility,
+          user.id,
+          reporterUserId,
+          ticket.assigned_operator_id
+        )
+        await createNotification(createServiceClient(), {
+          workspaceId: user.workspaceId,
+          recipientUserId,
+          actorUserId: user.id,
+          type: 'TICKET_COMMENT',
+          title: 'New comment',
+          body: ticket.title,
+          href: detailPath,
+        })
+      }
+    } catch (e) {
+      console.error('Failed to write comment notification for ticket', id, e)
     }
-  } catch (e) {
-    console.error('Failed to write comment notification for ticket', id, e)
-  }
+  })
 
   revalidatePath(detailPath)
   redirect(detailPath)
