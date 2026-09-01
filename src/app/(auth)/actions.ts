@@ -6,6 +6,7 @@ import { redirect } from 'next/navigation'
 import { redirectWithError } from '@/lib/redirect-with-error'
 import { AUTH_CALLBACK_URL } from '@/lib/urls'
 import { isInviteOnly } from '@/lib/auth/signup-mode'
+import { isGoogleAuthEnabled } from '@/lib/auth/providers'
 import { signupSchema, passwordSchema } from '@/lib/validation/auth'
 import { requireUser } from '@/lib/auth/session'
 import { checkRateLimit, clientIp } from '@/lib/rate-limit'
@@ -74,12 +75,28 @@ export async function signInWithPassword(formData: FormData) {
 }
 
 export async function signInWithMagicLink(formData: FormData) {
+  // Same abuse guard as password login/signup — every call here triggers a real email
+  // send to an arbitrary address, so it was the one auth action with no app-level limit.
+  const h = await headers()
+  const ip = clientIp(h)
+  const allowed = await checkRateLimit(`magic:${ip}`, 5, 15 * 60)
+  if (!allowed) {
+    redirectWithError('/login', 'Too many attempts. Try again in a few minutes.')
+  }
+
   const email = String(formData.get('email') ?? '')
   const supabase = await createClient()
 
   const { error } = await supabase.auth.signInWithOtp({
     email,
-    options: { emailRedirectTo: AUTH_CALLBACK_URL },
+    options: {
+      emailRedirectTo: AUTH_CALLBACK_URL,
+      // Supabase's default (true) CREATES a fresh account for an unknown email — which
+      // silently bypassed invite-only mode's signup enforcement. Open mode keeps the
+      // default: a magic-link signup there is just signup. Unknown emails in invite
+      // mode get "Signups not allowed for otp" → friendlyAuthError's invite hint.
+      shouldCreateUser: !isInviteOnly(),
+    },
   })
 
   if (error) {
@@ -89,6 +106,12 @@ export async function signInWithMagicLink(formData: FormData) {
 }
 
 export async function signInWithGoogle() {
+  // Enforcement half of the NEXT_PUBLIC_AUTH_GOOGLE gate (the login page merely stops
+  // rendering the button) — clicking a stale form on a disabled provider previously
+  // surfaced Supabase's raw "provider is not enabled" as a generic error.
+  if (!isGoogleAuthEnabled()) {
+    redirectWithError('/login', 'Google sign-in is not available on this deployment.')
+  }
   const supabase = await createClient()
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: 'google',

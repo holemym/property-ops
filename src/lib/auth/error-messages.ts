@@ -32,8 +32,20 @@ export function friendlyAuthError(error: AuthErrorLike): string {
   if (code === 'weak_password' || message.includes('password should be')) {
     return 'Please choose a stronger password.'
   }
-  if (code === 'over_request_rate_limit' || code === 'over_email_send_rate_limit' || message.includes('rate limit')) {
+  // Email-send limit is checked BEFORE the generic rate-limit branch (its message,
+  // "email rate limit exceeded", also matches the generic substring). It is a
+  // PROJECT-WIDE budget on Supabase's mailer (2/hour on the built-in one), not the
+  // caller's own attempts — "too many attempts" was blaming first-time users for it.
+  if (code === 'over_email_send_rate_limit' || message.includes('email rate limit')) {
+    return 'The email service is at its hourly sending limit — please try again in about an hour.'
+  }
+  if (code === 'over_request_rate_limit' || message.includes('rate limit')) {
     return 'Too many attempts. Try again in a few minutes.'
+  }
+  // signInWithOtp with shouldCreateUser: false (invite-only mode) rejects unknown
+  // emails with "Signups not allowed for otp".
+  if (code === 'otp_disabled' || message.includes('signups not allowed')) {
+    return 'No account exists for this email. Ask your administrator for an invite.'
   }
 
   return 'Something went wrong. Please try again.'

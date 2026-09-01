@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { isDemoEnabled } from '@/lib/demo'
+import { isGoogleAuthEnabled } from '@/lib/auth/providers'
 import { signInWithPassword, signInWithMagicLink, signInWithGoogle } from '../actions'
 import { enterDemo } from '../demo-actions'
 
@@ -67,12 +68,17 @@ export default async function LoginPage({
           </Button>
         </form>
 
-        <form action={signInWithGoogle}>
-          <Button type="submit" variant="outline" size="lg" className="w-full">
-            <GoogleGlyph className="size-4" />
-            Continue with Google
-          </Button>
-        </form>
+        {/* Only rendered when the Supabase project actually has the Google provider
+            enabled (NEXT_PUBLIC_AUTH_GOOGLE=1 — see lib/auth/providers.ts): the button
+            was live while the provider was off, a guaranteed dead end for testers. */}
+        {isGoogleAuthEnabled() && (
+          <form action={signInWithGoogle}>
+            <Button type="submit" variant="outline" size="lg" className="w-full">
+              <GoogleGlyph className="size-4" />
+              Continue with Google
+            </Button>
+          </form>
+        )}
 
         {isDemoEnabled() && (
           <form action={enterDemo}>
