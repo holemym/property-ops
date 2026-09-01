@@ -134,30 +134,45 @@
   }
 }
 
-/* Leaflet overrides (Track M — /map, src/components/map/LeafletMap.tsx). Leaflet's CSS is
-   imported from the dynamically-loaded LeafletMap chunk (see PropertyMap.tsx's next/dynamic
-   ssr:false — kept out of the shared bundle deliberately), so it's injected into the
-   document AFTER this global stylesheet. A same-specificity override here would therefore
-   LOSE the cascade tie on load order (confirmed live: `.leaflet-popup-content-wrapper {
-   background: white; color: #333 }` from leaflet.css was winning). Each selector below adds
-   one extra qualifier over Leaflet's own so it wins regardless of injection order. Retints
-   the popup to the app's popover tokens (dark-mode aware) per the spec's ~20-line budget. */
-.leaflet-container .leaflet-popup-content-wrapper,
-.leaflet-container .leaflet-popup-tip {
+/* MapLibre overrides (Track M — /map, src/components/map/VectorMap.tsx). maplibre-gl.css
+   is imported from the dynamically-loaded VectorMap chunk (see PropertyMap.tsx's
+   next/dynamic ssr:false — kept out of the shared bundle deliberately), so it's injected
+   AFTER this global stylesheet and a same-specificity override would lose the cascade tie
+   on load order (the exact hazard the old Leaflet block here documented). Each selector
+   adds one qualifier over maplibre-gl.css's own. Retints popup + controls to the app's
+   tokens; the vector basemap (OpenFreeMap positron) is already a calm light gray, so the
+   old raster grayscale filter is gone for good. */
+.maplibregl-map {
+  font: inherit; /* maplibre ships its own font stack; use the app's */
+}
+.maplibregl-popup .maplibregl-popup-content {
   background: var(--popover);
   color: var(--popover-foreground);
-}
-.leaflet-container .leaflet-popup-content-wrapper {
+  border: 1px solid var(--border);
   border-radius: var(--radius-lg);
+  box-shadow: 0 4px 12px rgb(0 0 0 / 0.08);
+  padding: 0.75rem 1rem;
 }
-.leaflet-container .leaflet-popup-content {
-  margin: 0.75rem 1rem;
+.maplibregl-popup.maplibregl-popup-anchor-bottom .maplibregl-popup-tip {
+  border-top-color: var(--popover);
 }
-.leaflet-popup-content-wrapper .leaflet-popup-content a {
-  color: var(--foreground);
+.maplibregl-popup.maplibregl-popup-anchor-top .maplibregl-popup-tip {
+  border-bottom-color: var(--popover);
 }
-.leaflet-tile-pane {
-  filter: grayscale(0.85) contrast(0.9);
+.maplibregl-popup.maplibregl-popup-anchor-left .maplibregl-popup-tip {
+  border-right-color: var(--popover);
+}
+.maplibregl-popup.maplibregl-popup-anchor-right .maplibregl-popup-tip {
+  border-left-color: var(--popover);
+}
+.maplibregl-ctrl.maplibregl-ctrl-group {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.05);
+}
+.maplibregl-ctrl.maplibregl-ctrl-group button + button {
+  border-top: 1px solid var(--border);
 }
 /* ---------------------------------------------------------------------------
    Skeleton sheen — the "gray wireframe" loading treatment.

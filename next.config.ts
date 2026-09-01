@@ -13,9 +13,17 @@ const CSP = [
   // /_vercel/speed-insights/script.js path instead, already covered by 'self'.
   "script-src 'self' 'unsafe-inline' https://va.vercel-scripts.com",
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob: https://*.tile.openstreetmap.org",
+  // blob:/data: cover MapLibre's rendered canvas + marker assets. The old raster
+  // *.tile.openstreetmap.org host is gone with the Leaflet map.
+  "img-src 'self' data: blob:",
   "font-src 'self'",
-  `connect-src 'self'${SUPABASE_URL ? ` ${SUPABASE_URL}` : ""}`,
+  // tiles.openfreemap.org: MapLibre fetches the style JSON, vector tiles, sprites,
+  // and glyph PBFs over fetch — all governed by connect-src.
+  `connect-src 'self'${SUPABASE_URL ? ` ${SUPABASE_URL}` : ""} https://tiles.openfreemap.org`,
+  // MapLibre spins its tile-decoding web worker up from a blob: URL; without an
+  // explicit worker-src this falls back to script-src (no blob:) and the map
+  // would go blank the day the header flips to enforcing.
+  "worker-src 'self' blob:",
   "frame-ancestors 'none'",
   "base-uri 'self'",
   "form-action 'self'",

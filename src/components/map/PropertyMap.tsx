@@ -17,24 +17,24 @@ export type MapProperty = {
   openTicketCount: number
 }
 
-// Leaflet touches `window` at import time, so it can only ever run on the client. This
+// MapLibre needs a real DOM + WebGL context, so it can only ever run on the client. This
 // ssr:false dynamic import (only legal inside a Client Component — see
-// node_modules/next/dist/docs/01-app/02-guides/lazy-loading.md) also keeps the `leaflet`
-// package itself out of the shared client bundle: it's split into its own chunk, fetched
-// only when a manager actually opens /map (the M2 build-output acceptance check).
-const LeafletMap = dynamic(() => import('./LeafletMap'), {
+// node_modules/next/dist/docs/01-app/02-guides/lazy-loading.md) also keeps `maplibre-gl`
+// out of the shared client bundle: it's split into its own chunk, fetched only when a
+// manager actually opens /map (the M2 build-output acceptance check).
+const VectorMap = dynamic(() => import('./VectorMap'), {
   ssr: false,
   loading: () => <CardSkeleton className="h-full w-full" />,
 })
 
 // Public entry point rendered from the (server) /map page. Owns the map's fixed footprint
-// so the container has a real height BEFORE Leaflet mounts into it (Leaflet needs a
-// non-zero-size element at init, or tiles render broken) — mirrors the spec's mobile
-// sizing (h-[60vh] min-h-80) at every viewport, not just phones.
+// so the container has a real height BEFORE the map mounts into it (a zero-height canvas
+// at init renders broken) — mirrors the spec's mobile sizing (h-[60vh] min-h-80) at every
+// viewport, not just phones. rounded-xl matches the app's card radius.
 export function PropertyMap({ properties }: { properties: MapProperty[] }) {
   return (
-    <div className="h-[60vh] w-full min-h-80 overflow-hidden rounded-lg border">
-      <LeafletMap properties={properties} />
+    <div className="h-[60vh] w-full min-h-80 overflow-hidden rounded-xl border">
+      <VectorMap properties={properties} />
     </div>
   )
 }

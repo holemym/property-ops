@@ -21,7 +21,7 @@ import { backfillPropertyGeocodesAction } from './actions'
 // Until migration 0024 is applied in a given environment, Supabase's `.select('*')` omits
 // latitude/longitude/geocoded_at from the row entirely — they read back as `undefined`, NOT
 // `null` (see ROADMAP.md's Track M USER-action note). A `!== null` check alone would treat
-// that as "located" and hand Leaflet an (undefined, undefined) LatLng, which throws. This
+// that as "located" and hand the map an (undefined, undefined) LngLat, which throws. This
 // type predicate treats anything that isn't an actual number as "not located" and narrows
 // latitude/longitude to `number` so the .map() below needs no unsafe `as number` casts.
 function hasCoordinates(

@@ -1,7 +1,7 @@
-import { PageHeaderSkeleton, CardSkeleton, Skel, LoadingRegion } from '@/components/common/skeletons'
+﻿import { PageHeaderSkeleton, CardSkeleton, Skel, LoadingRegion } from '@/components/common/skeletons'
 
-// Loading fallback for /map. Mirrors the real layout — header, the "N of M located" note,
-// and the map's own footprint — so the shell doesn't reflow when data (and Leaflet) arrive.
+// Loading fallback for /map. Mirrors the real layout вЂ” header, the "N of M located" note,
+// and the map's own footprint вЂ” so the shell doesn't reflow when data (and MapLibre) arrive.
 export default function MapLoading() {
   return (
     <LoadingRegion label="Loading the map">
