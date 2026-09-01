@@ -1,10 +1,11 @@
+import { LoadingRegion } from '@/components/common/skeletons'
 import { Skeleton } from '@/components/ui/skeleton'
 
 // Loading fallback for the new-invoice form. Header + a stack of field skeletons and a couple
 // of line-item rows, so the shell doesn't reflow when the attribution lists finish loading.
 export default function NewInvoiceLoading() {
   return (
-    <div className="flex flex-col gap-6">
+    <LoadingRegion label="Loading new invoice…">
       <div className="space-y-2">
         <Skeleton className="h-7 w-40" />
         <Skeleton className="h-4 w-72" />
@@ -30,6 +31,6 @@ export default function NewInvoiceLoading() {
 
         <Skeleton className="h-9 w-32 rounded-lg" />
       </div>
-    </div>
+    </LoadingRegion>
   )
 }

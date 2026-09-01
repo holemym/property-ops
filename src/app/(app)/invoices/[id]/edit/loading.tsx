@@ -1,5 +1,9 @@
-import { FormSkeleton } from '@/components/common/skeletons'
+import { FormSkeleton, LoadingRegion } from '@/components/common/skeletons'
 
 export default function Loading() {
-  return <FormSkeleton fields={7} />
+  return (
+    <LoadingRegion label="Loading edit invoice…">
+      <FormSkeleton fields={7} />
+    </LoadingRegion>
+  )
 }

@@ -1,3 +1,4 @@
+import { LoadingRegion } from '@/components/common/skeletons'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 
@@ -5,7 +6,7 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card'
 // column and a one-third status/links column — matching the real layout so it doesn't reflow.
 export default function InvoiceDetailLoading() {
   return (
-    <div className="flex flex-col gap-6">
+    <LoadingRegion label="Loading invoice…">
       <div className="flex flex-col gap-3">
         <Skeleton className="h-4 w-24" />
         <div className="flex items-center gap-2.5">
@@ -58,6 +59,6 @@ export default function InvoiceDetailLoading() {
           </Card>
         </div>
       </div>
-    </div>
+    </LoadingRegion>
   )
 }

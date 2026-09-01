@@ -22,6 +22,15 @@ const CSP = [
 ].join("; ");
 
 const nextConfig: NextConfig = {
+  // Client router cache for dynamic routes (PERF-3). Every route here is dynamic
+  // (cookies), so the Next default of 0 refetched the ENTIRE page on every repeat
+  // navigation — back/forward and sidebar re-visits within 30s are now instant
+  // client-cache hits. Mutations stay correct: every server action calls
+  // revalidatePath, which busts this cache. Accepted staleness surface: the TopNav
+  // unread bell can lag up to 30s between navigations.
+  experimental: {
+    staleTimes: { dynamic: 30 },
+  },
   async headers() {
     return [
       {

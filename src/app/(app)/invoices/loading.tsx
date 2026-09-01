@@ -1,10 +1,11 @@
+import { LoadingRegion } from '@/components/common/skeletons'
 import { Skeleton } from '@/components/ui/skeleton'
 
 // Loading fallback for the invoices list. Mirrors the real layout — header, a filter row,
 // and a table — so the shell doesn't reflow when data arrives.
 export default function InvoicesLoading() {
   return (
-    <div className="flex flex-col gap-6">
+    <LoadingRegion label="Loading invoices…">
       <div className="space-y-2">
         <Skeleton className="h-7 w-32" />
         <Skeleton className="h-4 w-80" />
@@ -30,6 +31,6 @@ export default function InvoicesLoading() {
           </div>
         ))}
       </div>
-    </div>
+    </LoadingRegion>
   )
 }

@@ -1,5 +1,9 @@
-import { HubSkeleton } from '@/components/common/skeletons'
+import { HubSkeleton, LoadingRegion } from '@/components/common/skeletons'
 
 export default function Loading() {
-  return <HubSkeleton />
+  return (
+    <LoadingRegion label="Loading unit…">
+      <HubSkeleton />
+    </LoadingRegion>
+  )
 }

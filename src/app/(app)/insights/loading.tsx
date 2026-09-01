@@ -1,3 +1,4 @@
+import { LoadingRegion } from '@/components/common/skeletons'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 
@@ -6,7 +7,7 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card'
 // reflow when data arrives.
 export default function InsightsLoading() {
   return (
-    <div className="flex flex-col gap-6">
+    <LoadingRegion label="Loading insights…">
       <div className="space-y-2">
         <Skeleton className="h-7 w-32" />
         <Skeleton className="h-4 w-80" />
@@ -55,6 +56,6 @@ export default function InsightsLoading() {
           <Skeleton className="h-48 w-full rounded-md" />
         </CardContent>
       </Card>
-    </div>
+    </LoadingRegion>
   )
 }

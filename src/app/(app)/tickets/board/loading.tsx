@@ -1,3 +1,4 @@
+import { LoadingRegion } from '@/components/common/skeletons'
 import { Skeleton } from '@/components/ui/skeleton'
 
 // Loading fallback for the ticket board. Mirrors the real layout — header plus a row of
@@ -7,7 +8,7 @@ const COLUMN_CARD_COUNTS = [3, 2, 2, 1, 2, 1, 1, 0, 0]
 
 export default function TicketBoardLoading() {
   return (
-    <div className="flex flex-col gap-6">
+    <LoadingRegion label="Loading ticket board…">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="space-y-2">
           <Skeleton className="h-7 w-24" />
@@ -41,6 +42,6 @@ export default function TicketBoardLoading() {
           </div>
         ))}
       </div>
-    </div>
+    </LoadingRegion>
   )
 }

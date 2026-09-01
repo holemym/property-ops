@@ -1,3 +1,4 @@
+import { LoadingRegion } from '@/components/common/skeletons'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 
@@ -6,7 +7,7 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card'
 // assignment column — so the page doesn't reflow when data arrives.
 export default function TicketDetailLoading() {
   return (
-    <div className="flex flex-col gap-6">
+    <LoadingRegion label="Loading ticket…">
       <div className="flex flex-col gap-3">
         <Skeleton className="h-4 w-20" />
         <div className="flex flex-wrap items-center gap-2.5">
@@ -80,6 +81,6 @@ export default function TicketDetailLoading() {
           </Card>
         </div>
       </div>
-    </div>
+    </LoadingRegion>
   )
 }

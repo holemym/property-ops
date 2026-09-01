@@ -1,3 +1,4 @@
+import { LoadingRegion } from '@/components/common/skeletons'
 import { Skeleton } from '@/components/ui/skeleton'
 
 // Loading fallback for the occupancy tape chart. Mirrors the real layout — header, a
@@ -5,7 +6,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 // the shell doesn't reflow when data arrives.
 export default function OccupancyLoading() {
   return (
-    <div className="flex flex-col gap-6">
+    <LoadingRegion label="Loading occupancy…">
       <div className="flex items-start justify-between gap-3">
         <div className="space-y-2">
           <Skeleton className="h-7 w-40" />
@@ -39,6 +40,6 @@ export default function OccupancyLoading() {
           </div>
         ))}
       </div>
-    </div>
+    </LoadingRegion>
   )
 }

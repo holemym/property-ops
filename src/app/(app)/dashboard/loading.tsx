@@ -1,3 +1,4 @@
+import { LoadingRegion } from '@/components/common/skeletons'
 import { Skeleton } from '@/components/ui/skeleton'
 
 // Loading fallback for the dashboard route. Mirrors the real layout — header, the
@@ -5,30 +6,32 @@ import { Skeleton } from '@/components/ui/skeleton'
 // when data arrives. The pulse is reduced-motion-safe via the global guard.
 export default function DashboardLoading() {
   return (
-    <div>
-      {/* Page header */}
-      <div className="mb-6 space-y-2">
-        <Skeleton className="h-7 w-40" />
-        <Skeleton className="h-4 w-64" />
-      </div>
+    <LoadingRegion label="Loading dashboard…">
+      <div>
+        {/* Page header */}
+        <div className="mb-6 space-y-2">
+          <Skeleton className="h-7 w-40" />
+          <Skeleton className="h-4 w-64" />
+        </div>
 
-      {/* Metric strip — six graphite cards */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-        {Array.from({ length: 6 }).map((_, i) => (
-          <div key={i} className="flex flex-col gap-2 rounded-xl border bg-card p-4">
-            <Skeleton className="h-8 w-10" />
-            <Skeleton className="h-3 w-16" />
-          </div>
-        ))}
-      </div>
+        {/* Metric strip — six graphite cards */}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="flex flex-col gap-2 rounded-xl border bg-card p-4">
+              <Skeleton className="h-8 w-10" />
+              <Skeleton className="h-3 w-16" />
+            </div>
+          ))}
+        </div>
 
-      {/* Queue grid — five list cards */}
-      <div className="mt-6 grid gap-4 lg:grid-cols-2">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <QueueCardSkeleton key={i} />
-        ))}
+        {/* Queue grid — five list cards */}
+        <div className="mt-6 grid gap-4 lg:grid-cols-2">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <QueueCardSkeleton key={i} />
+          ))}
+        </div>
       </div>
-    </div>
+    </LoadingRegion>
   )
 }
 

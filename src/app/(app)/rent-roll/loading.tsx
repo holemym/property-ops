@@ -1,3 +1,4 @@
+import { LoadingRegion } from '@/components/common/skeletons'
 import { Skeleton } from '@/components/ui/skeleton'
 
 // Loading fallback for the rent roll. Mirrors the real layout — header, a three-metric
@@ -5,7 +6,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 // when data arrives.
 export default function RentRollLoading() {
   return (
-    <div className="flex flex-col gap-6">
+    <LoadingRegion label="Loading rent roll…">
       <div className="space-y-2">
         <Skeleton className="h-7 w-40" />
         <Skeleton className="h-4 w-80" />
@@ -50,6 +51,6 @@ export default function RentRollLoading() {
           ))}
         </div>
       </div>
-    </div>
+    </LoadingRegion>
   )
 }

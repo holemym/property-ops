@@ -1,5 +1,9 @@
-import { FormSkeleton } from '@/components/common/skeletons'
+import { FormSkeleton, LoadingRegion } from '@/components/common/skeletons'
 
 export default function Loading() {
-  return <FormSkeleton />
+  return (
+    <LoadingRegion label="Loading new property…">
+      <FormSkeleton />
+    </LoadingRegion>
+  )
 }

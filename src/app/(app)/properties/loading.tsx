@@ -1,10 +1,11 @@
+import { LoadingRegion } from '@/components/common/skeletons'
 import { Skeleton } from '@/components/ui/skeleton'
 
 // Loading fallback for the properties list. Mirrors the real layout — header, filter
 // bar, and a four-column table — so the shell doesn't reflow when data arrives.
 export default function PropertiesLoading() {
   return (
-    <div className="flex flex-col gap-6">
+    <LoadingRegion label="Loading properties…">
       <div className="flex items-start justify-between gap-3">
         <div className="space-y-2">
           <Skeleton className="h-7 w-40" />
@@ -19,7 +20,7 @@ export default function PropertiesLoading() {
       </div>
 
       <ListTableSkeleton />
-    </div>
+    </LoadingRegion>
   )
 }
 
