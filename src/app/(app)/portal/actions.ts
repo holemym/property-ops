@@ -1,6 +1,7 @@
 'use server'
 
 import { redirect } from 'next/navigation'
+import { after } from 'next/server'
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
@@ -8,11 +9,12 @@ import { requireWorkspace } from '@/lib/auth/session'
 import { isTenantRole } from '@/lib/auth/permissions'
 import { redirectWithError } from '@/lib/redirect-with-error'
 import { ticketCreateSchema, ticketCommentSchema } from '@/lib/validation/ticket'
-import { createTicket } from '@/lib/data/tickets'
+import { createTicket, getTicket, listWorkspaceOperators } from '@/lib/data/tickets'
 import { createTicketComment } from '@/lib/data/ticket-comments'
 import { appendTicketEvent } from '@/lib/data/ticket-events'
 import { getProperty } from '@/lib/data/properties'
 import { getUnit } from '@/lib/data/units'
+import { createNotification, resolveCommentRecipient } from '@/lib/notifications/notify-inapp'
 
 // =============================================================================
 // TENANT PORTAL server actions (P3.7).
@@ -113,8 +115,43 @@ export async function reportIssueAction(formData: FormData) {
     console.error('Failed to log TICKET_CREATED event for tenant ticket', ticketId, e)
   }
 
+  // Best-effort in-app fan-out to the workspace's managers — without it a tenant-filed
+  // request sat silent until someone happened to open the inbox. Post-response
+  // (after()) with the SERVICE client only (the request-scoped cookie client is unsafe
+  // post-response — see tickets/actions.ts); own try/catch, never blocks the tenant's
+  // redirect. Recipients come from listWorkspaceOperators (active OWNER/OPERATOR/
+  // SUPER_ADMIN — the same roster the assign select uses); createNotification's own
+  // guards de-dupe the demo workspace and any actor==recipient case. Type reuses
+  // TICKET_STATUS_CHANGED (the ticket entered NEW) — notification_type is a Postgres
+  // enum (migration 0026) and minting a TICKET_CREATED value would need a migration.
+  // href is the OPERATOR path, matching every stored notification href; resolve-href
+  // remaps it per viewer role.
+  after(async () => {
+    try {
+      const service = createServiceClient()
+      const managers = await listWorkspaceOperators(service, user.workspaceId)
+      await Promise.all(
+        managers.map((manager) =>
+          createNotification(service, {
+            workspaceId: user.workspaceId,
+            recipientUserId: manager.id,
+            actorUserId: user.id,
+            type: 'TICKET_STATUS_CHANGED',
+            title: 'New maintenance request',
+            body: title,
+            href: `/tickets/${ticketId}`,
+          })
+        )
+      )
+    } catch (e) {
+      console.error('Failed to write new-request notifications for ticket', ticketId, e)
+    }
+  })
+
   revalidatePath('/portal')
-  redirect(`/portal/${ticketId}`)
+  // ?created=1 → the detail page renders its one-time success line (with the
+  // add-photos hint pointing at the existing upload control).
+  redirect(`/portal/${ticketId}?created=1`)
 }
 
 export async function addPublicCommentAction(id: string, formData: FormData) {
@@ -163,6 +200,39 @@ export async function addPublicCommentAction(id: string, formData: FormData) {
   } catch (e) {
     console.error('Failed to log COMMENT_ADDED event for tenant ticket', id, e)
   }
+
+  // Best-effort in-app notification — the tenant analog of addTicketCommentAction's
+  // block in tickets/actions.ts (same after() + service-client + own-try/catch shape).
+  // resolveCommentRecipient handles the routing: the tenant IS the reporter, so it
+  // resolves to the assigned operator, with its existing null fallback when nobody is
+  // assigned yet. Visibility is the action's hardcoded 'PUBLIC'. Operator-path href,
+  // remapped per viewer by resolve-href.
+  after(async () => {
+    try {
+      const service = createServiceClient()
+      const ticket = await getTicket(service, user.workspaceId, id)
+      if (ticket) {
+        const reporterUserId = ticket.created_for_user_id ?? ticket.created_by_user_id
+        const recipientUserId = resolveCommentRecipient(
+          'PUBLIC',
+          user.id,
+          reporterUserId,
+          ticket.assigned_operator_id
+        )
+        await createNotification(service, {
+          workspaceId: user.workspaceId,
+          recipientUserId,
+          actorUserId: user.id,
+          type: 'TICKET_COMMENT',
+          title: 'New comment',
+          body: ticket.title,
+          href: `/tickets/${id}`,
+        })
+      }
+    } catch (e) {
+      console.error('Failed to write comment notification for tenant ticket', id, e)
+    }
+  })
 
   revalidatePath(detailPath)
   redirect(detailPath)

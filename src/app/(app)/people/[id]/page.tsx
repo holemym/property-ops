@@ -111,6 +111,27 @@ export default async function PersonDetailPage({
               Portal invitation sent.
             </p>
           )}
+          {/* The email already had an account (inviteOrAttachUser's attach path) — no
+              invite email went out, so saying "invitation sent" would be false. */}
+          {portal === 'attached' && (
+            <p role="status" className="mt-3 text-sm text-muted-foreground">
+              This resident already had an account — portal access was attached. Ask them
+              to sign in at {process.env.NEXT_PUBLIC_SITE_URL ?? ''}/login.
+            </p>
+          )}
+          {/* Portal ↔ charges linkage warning: rent invoices reach /portal/charges only
+              through a tenancy whose tenant_id points at this person (RLS
+              invoices_select_own_tenant, migration 0030). Portal access with zero linked
+              tenancies means their charges surface will stay empty no matter what is
+              invoiced against the free-text tenancy. Warning copy only — shown whenever
+              this person has (or is about to get) portal access. */}
+          {tenancies.length === 0 && (tenant.auth_user_id || (canInvite && tenant.email)) && (
+            <p className="mt-3 text-sm text-amber-600 dark:text-amber-500">
+              No tenancy is linked to this person — rent charges won&apos;t appear in
+              their portal until a tenancy links them (pick them under
+              &ldquo;Person&rdquo; when recording the tenancy).
+            </p>
+          )}
         </CardContent>
       </Card>
 

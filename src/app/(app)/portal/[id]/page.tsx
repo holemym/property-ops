@@ -4,7 +4,7 @@ import { ArrowLeft } from 'lucide-react'
 import { requireWorkspace } from '@/lib/auth/session'
 import { isTenantRole } from '@/lib/auth/permissions'
 import { createClient } from '@/lib/supabase/server'
-import { getTicket } from '@/lib/data/tickets'
+import { getTicket, listWorkspaceOperators } from '@/lib/data/tickets'
 import { getProperty } from '@/lib/data/properties'
 import { getUnit } from '@/lib/data/units'
 import { listTicketComments } from '@/lib/data/ticket-comments'
@@ -46,10 +46,13 @@ function SummaryField({
 
 export default async function PortalTicketDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>
+  searchParams: Promise<{ error?: string; created?: string }>
 }) {
   const { id } = await params
+  const { created } = await searchParams
   const user = await requireWorkspace()
   if (!isTenantRole(user.role)) redirect('/tickets')
 
@@ -62,7 +65,7 @@ export default async function PortalTicketDetailPage({
   const ticket = await getTicket(supabase, user.workspaceId, id)
   if (!ticket) notFound()
 
-  const [property, unit, comments, attachments] = await Promise.all([
+  const [property, unit, comments, attachments, operators] = await Promise.all([
     getProperty(supabase, user.workspaceId, ticket.property_id),
     ticket.unit_id ? getUnit(supabase, user.workspaceId, ticket.unit_id) : Promise.resolve(null),
     // RLS (comments_select_own_public) returns ONLY PUBLIC comments on the tenant's own
@@ -71,7 +74,19 @@ export default async function PortalTicketDetailPage({
     // Attachments on the tenant's own ticket (RLS-scoped); depends only on
     // (workspaceId, id), so it batches — only the URL signing below has to follow.
     listAttachments(supabase, user.workspaceId, id),
+    // Manager names for message attribution — a tenant may read workspace profiles
+    // (profiles_select_self_or_workspace, migration 0002), and this is the same
+    // roster the operator detail page resolves comment authors from.
+    listWorkspaceOperators(supabase, user.workspaceId),
   ])
+
+  // Author attribution for the message thread: the signed-in tenant's own messages say
+  // "You"; anything else resolves to the manager's profile name, falling back to a
+  // generic workspace label rather than a raw id.
+  const nameById = new Map<string, string>()
+  for (const op of operators) if (op.full_name) nameById.set(op.id, op.full_name)
+  const authorLabel = (authorUserId: string) =>
+    authorUserId === user.id ? 'You' : nameById.get(authorUserId) ?? 'Property management'
   // Batch-sign (one storage-API call for all attachments); a failed path omits its link.
   const attachmentUrls = await signStoragePaths(
     supabase,
@@ -91,6 +106,19 @@ export default async function PortalTicketDetailPage({
     <div className="flex flex-col gap-6">
       {/* Server actions redirect back with ?error= — surfaced as a toast. */}
       <ErrorToast />
+
+      {/* One-time success line after reportIssueAction redirects here with ?created=1
+          (house ?portal=invited pattern from people/[id]). Doubles as the photo hint:
+          the report form has no file input, but this page's Attachments card does. */}
+      {created === '1' && (
+        <p
+          role="status"
+          className="rounded-lg border border-emerald-200 bg-emerald-50/60 px-3 py-2.5 text-sm text-emerald-900 dark:border-emerald-500/20 dark:bg-emerald-500/5 dark:text-emerald-200"
+        >
+          Request received — we&apos;ll get back to you. If photos help show the problem,
+          add them under Attachments below.
+        </p>
+      )}
 
       {/* Header — title, read-only status, category. NO priority, NO costs, NO
           assignment, NO audit timeline. A clean status view for the tenant. */}
@@ -148,14 +176,32 @@ export default async function PortalTicketDetailPage({
                 </p>
               ) : (
                 <ul className="flex flex-col gap-3">
-                  {comments.map((c) => (
-                    <li key={c.id} className="rounded-lg border p-3 text-sm">
-                      <div className="mb-1.5 text-xs text-muted-foreground">
-                        {formatDateTime(c.created_at)}
-                      </div>
-                      <p className="whitespace-pre-wrap text-foreground">{c.body}</p>
-                    </li>
-                  ))}
+                  {comments.map((c) => {
+                    const mine = c.author_user_id === user.id
+                    return (
+                      <li
+                        key={c.id}
+                        className={
+                          // The tenant's own messages get a subtle muted tint so the
+                          // two sides of the conversation read apart at a glance;
+                          // management replies stay on the plain card row.
+                          mine
+                            ? 'rounded-lg border bg-muted/40 p-3 text-sm'
+                            : 'rounded-lg border p-3 text-sm'
+                        }
+                      >
+                        <div className="mb-1.5 flex flex-wrap items-center gap-2">
+                          <span className="font-medium text-foreground">
+                            {authorLabel(c.author_user_id)}
+                          </span>
+                          <span className="text-xs text-muted-foreground">
+                            {formatDateTime(c.created_at)}
+                          </span>
+                        </div>
+                        <p className="whitespace-pre-wrap text-foreground">{c.body}</p>
+                      </li>
+                    )
+                  })}
                 </ul>
               )}
 

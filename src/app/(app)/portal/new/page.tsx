@@ -7,6 +7,8 @@ import { isTenantRole } from '@/lib/auth/permissions'
 import { createClient } from '@/lib/supabase/server'
 import { listProperties } from '@/lib/data/properties'
 import { listUnits } from '@/lib/data/units'
+import { listMyTenancies } from '@/lib/data/tenancies'
+import { pickCurrentTenancy } from '@/lib/portal-tenancy'
 import { ticketCategoryEnum } from '@/lib/validation/ticket'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -33,10 +35,25 @@ export default async function ReportIssuePage() {
   // Units load for all properties and group by property in an optgroup select (no client
   // JS); the action re-validates the unit belongs to the chosen property. NOTE: NO
   // priority field — tenants cannot set priority; the action forces NORMAL.
-  const [properties, units] = await Promise.all([
+  const [properties, units, tenancies] = await Promise.all([
     listProperties(supabase, user.workspaceId, { status: 'ACTIVE' }),
     listUnits(supabase, user.workspaceId),
+    // RLS-scoped to the caller's own leases (tenancies_select_own_tenant) — same
+    // fetch portal/home makes to resolve "your home".
+    listMyTenancies(supabase, user.workspaceId),
   ])
+
+  // Preselect the tenant's OWN home (derived from their current tenancy, exactly like
+  // portal/home) instead of defaulting to the first property in the portfolio. The full
+  // selects stay available — "somewhere else" is still one change away. If no current
+  // tenancy resolves (or its property is not in the ACTIVE list the selects offer),
+  // fall back to today's first-property default.
+  const todayIso = new Date().toISOString().slice(0, 10)
+  const tenancy = pickCurrentTenancy(tenancies, todayIso)
+  const myUnit = tenancy ? units.find((u) => u.id === tenancy.unit_id) : undefined
+  const myProperty = myUnit ? properties.find((p) => p.id === myUnit.property_id) : undefined
+  const defaultPropertyId = myProperty?.id ?? properties[0]?.id ?? ''
+  const defaultUnitId = myProperty && myUnit ? myUnit.id : ''
 
   if (properties.length === 0) {
     return (
@@ -112,7 +129,7 @@ export default async function ReportIssuePage() {
                 <select
                   id="propertyId"
                   name="propertyId"
-                  defaultValue={properties[0]?.id ?? ''}
+                  defaultValue={defaultPropertyId}
                   className={SELECT_CLASS}
                   required
                 >
@@ -126,7 +143,7 @@ export default async function ReportIssuePage() {
 
               <div className="flex flex-col gap-2">
                 <Label htmlFor="unitId">Unit (optional)</Label>
-                <select id="unitId" name="unitId" defaultValue="" className={SELECT_CLASS}>
+                <select id="unitId" name="unitId" defaultValue={defaultUnitId} className={SELECT_CLASS}>
                   <option value="">No specific unit</option>
                   {unitsByProperty.map(
                     ({ property, units: propUnits }) =>

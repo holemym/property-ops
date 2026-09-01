@@ -2,7 +2,7 @@ import { cache } from 'react'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { redirectWithError } from '@/lib/redirect-with-error'
-import { assertPermission, type Permission } from '@/lib/auth/permissions'
+import { assertPermission, can, isTenantRole, type Permission } from '@/lib/auth/permissions'
 import { needsMfaChallenge } from '@/lib/auth/mfa'
 import type { Role } from '@/types/domain'
 
@@ -128,8 +128,19 @@ export async function requireWorkspace(): Promise<CurrentUser & { workspaceId: s
 // Unlike requireUser/requireWorkspace (which redirect), a permission failure here
 // throws a plain Error, surfaced via Next.js's default error boundary. Revisit if
 // Server Actions need friendlier "you don't have permission" UX later.
+//
+// EXCEPTION — tenant roles: a tenant hitting an operator URL (/tickets, /people, a
+// stale bookmark, a notification href before resolve-href existed) is an expected
+// navigation, not a staff permission bug, and the throw landed them on the generic
+// "Something went wrong" boundary. Tenants hold ZERO operator permissions, so any
+// permission failure for a tenant role redirects to their own home surface instead.
+// Non-tenant roles keep the loud throw — a staff permission gap IS a bug worth
+// surfacing.
 export async function requirePermission(permission: Permission): Promise<CurrentUser & { workspaceId: string }> {
   const user = await requireWorkspace()
+  if (isTenantRole(user.role) && !can(user.role, permission)) {
+    redirect('/portal/home')
+  }
   assertPermission(user.role, permission)
   return user
 }
