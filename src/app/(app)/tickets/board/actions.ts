@@ -1,5 +1,6 @@
 'use server'
 
+import { after } from 'next/server'
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
@@ -8,6 +9,7 @@ import { ticketStatusSchema } from '@/lib/validation/ticket'
 import { getTicket, updateTicketStatus } from '@/lib/data/tickets'
 import { appendTicketEvent } from '@/lib/data/ticket-events'
 import { canTransition } from '@/lib/tickets/status-flow'
+import { sendStatusChangeNotifications } from '@/lib/notifications/status-change'
 
 /**
  * Board-specific transition action (P-board).
@@ -61,6 +63,12 @@ export async function moveTicketStatusAction(
     }
   }
 
+  // Same rule as the detail action: ASSIGNED claims someone owns the work, so a drop
+  // onto that lane with neither an operator nor a vendor on the ticket is rejected.
+  if (nextStatus === 'ASSIGNED' && !ticket.assigned_operator_id && !ticket.assigned_vendor_id) {
+    return { ok: false, error: 'Assign an operator or vendor first.' }
+  }
+
   try {
     await updateTicketStatus(supabase, user.workspaceId, ticketId, nextStatus, ticket.status)
   } catch (e) {
@@ -82,6 +90,19 @@ export async function moveTicketStatusAction(
   } catch (e) {
     console.error('Failed to log STATUS_CHANGED event for ticket', ticketId, e)
   }
+
+  // Best-effort reporter email + in-app fan-out — the SAME sendStatusChangeNotifications
+  // the detail action runs (a board drag is the same transition and must notify the same
+  // people). Post-response via after(), so the drop's result returns immediately.
+  after(() =>
+    sendStatusChangeNotifications({
+      actorUserId: user.id,
+      workspaceId: user.workspaceId,
+      ticket,
+      nextStatus,
+      detailPath: `/tickets/${ticketId}`,
+    })
+  )
 
   revalidatePath('/tickets/board')
   revalidatePath('/tickets')

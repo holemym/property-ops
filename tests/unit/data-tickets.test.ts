@@ -5,9 +5,11 @@ import {
   getTicket,
   createTicket,
   updateTicketStatus,
+  updateTicketSchedule,
   assignTicket,
   getWorkspaceProfile,
   listWorkspaceOperators,
+  listProfilesByIds,
   countTicketsByStatus,
 } from '@/lib/data/tickets'
 import { appendTicketEvent } from '@/lib/data/ticket-events'
@@ -131,6 +133,22 @@ describe('tickets data access', () => {
     await expect(updateTicketStatus(client, WS_A, 't-1', 'CLOSED', 'NEW')).rejects.toThrow()
   })
 
+  it('updateTicketSchedule sets scheduled_at without touching status', async () => {
+    const updated = await updateTicketSchedule(client, WS_A, 't-1', '2026-06-01T10:00:00.000Z')
+    expect(updated.scheduled_at).toBe('2026-06-01T10:00:00.000Z')
+    expect(updated.status).toBe('NEW')
+  })
+
+  it('updateTicketSchedule clears scheduled_at via null', async () => {
+    await updateTicketSchedule(client, WS_A, 't-1', '2026-06-01T10:00:00.000Z')
+    const cleared = await updateTicketSchedule(client, WS_A, 't-1', null)
+    expect(cleared.scheduled_at).toBeNull()
+  })
+
+  it('updateTicketSchedule rejects a ticket in another workspace', async () => {
+    await expect(updateTicketSchedule(client, WS_A, 't-b', '2026-06-01T10:00:00.000Z')).rejects.toThrow()
+  })
+
   it('assigns an operator', async () => {
     const updated = await assignTicket(client, WS_A, 't-1', { assignedOperatorId: OP_1 })
     expect(updated.assigned_operator_id).toBe(OP_1)
@@ -174,6 +192,18 @@ describe('tickets data access', () => {
     })
     const operators = await listWorkspaceOperators(opsClient, WS_A)
     expect(operators.map((o) => o.id).sort()).toEqual(['op-a', 'owner-1', 'sa-1'])
+  })
+
+  it('listProfilesByIds returns only in-workspace profiles for the id set', async () => {
+    // 'op-b' is a real profile in WS_B — the workspace scope must exclude it even
+    // though its id is requested.
+    const profiles = await listProfilesByIds(client, WS_A, [OP_1, 'op-b', 'missing-id'])
+    expect(profiles.map((p) => p.id)).toEqual([OP_1])
+  })
+
+  it('listProfilesByIds returns [] for an empty id set without querying', async () => {
+    const profiles = await listProfilesByIds(client, WS_A, [])
+    expect(profiles).toEqual([])
   })
 
   it('countTicketsByStatus tallies statuses for the workspace', async () => {

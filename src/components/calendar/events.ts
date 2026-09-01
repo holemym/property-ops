@@ -11,7 +11,7 @@ export type CalendarEvent = {
   label: string
   /** Optional short suffix shown muted after the label (e.g. a priority or type). */
   meta?: string
-  /** Ticket events link to the ticket detail; other kinds are non-clickable chips. */
+  /** Where the chip links: ticket detail, the tenancy's unit, or /documents. */
   href?: string
 }
 
@@ -25,17 +25,17 @@ export const KIND_STYLES: Record<CalendarEventKind, { chip: string; dot: string;
     label: 'Scheduled ticket',
   },
   'move-in': {
-    chip: 'bg-green-100 text-green-800 dark:bg-green-500/20 dark:text-green-300',
+    chip: 'bg-green-100 text-green-800 hover:bg-green-200 dark:bg-green-500/20 dark:text-green-300 dark:hover:bg-green-500/30',
     dot: 'bg-green-500',
     label: 'Lease move-in',
   },
   'move-out': {
-    chip: 'bg-amber-100 text-amber-900 dark:bg-amber-500/20 dark:text-amber-300',
+    chip: 'bg-amber-100 text-amber-900 hover:bg-amber-200 dark:bg-amber-500/20 dark:text-amber-300 dark:hover:bg-amber-500/30',
     dot: 'bg-amber-500',
     label: 'Lease move-out',
   },
   'doc-expiry': {
-    chip: 'bg-red-100 text-red-800 dark:bg-red-500/20 dark:text-red-300',
+    chip: 'bg-red-100 text-red-800 hover:bg-red-200 dark:bg-red-500/20 dark:text-red-300 dark:hover:bg-red-500/30',
     dot: 'bg-red-500',
     label: 'Document expiry',
   },

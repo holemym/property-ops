@@ -5,6 +5,7 @@ import { can } from '@/lib/auth/permissions'
 import { createClient } from '@/lib/supabase/server'
 import { listTicketsPage } from '@/lib/data/tickets'
 import { listProperties } from '@/lib/data/properties'
+import { getUnit } from '@/lib/data/units'
 import { ticketStatusEnum, ticketPriorityEnum } from '@/lib/validation/ticket'
 import { isSortColumn, TICKET_DB_COLUMN, type SortDir } from '@/lib/tickets/sort'
 import { TicketTable } from '@/components/tickets/TicketTable'
@@ -61,7 +62,7 @@ export default async function TicketsPage({
   const supabase = await createClient()
   // Tickets are DB-sorted + paged (bounded query + payload); properties feed the filter
   // select (small set, fetched whole).
-  const [ticketPage, properties] = await Promise.all([
+  const [ticketPage, properties, scopedUnit] = await Promise.all([
     listTicketsPage(supabase, user.workspaceId, {
       filters: { status, priority, propertyId, unitId, search: q },
       orderBy: TICKET_DB_COLUMN[sort],
@@ -69,6 +70,9 @@ export default async function TicketsPage({
       page: requestedPage,
     }),
     listProperties(supabase, user.workspaceId),
+    // The unit-scope chip's label (unit pages link here with ?unitId=). Only fetched
+    // when the filter is set; a stale/foreign id resolves null and the chip degrades.
+    unitId ? getUnit(supabase, user.workspaceId, unitId) : Promise.resolve(null),
   ])
   const propertyNames = Object.fromEntries(properties.map((p) => [p.id, p.name]))
 
@@ -81,7 +85,7 @@ export default async function TicketsPage({
   if (unitId) filterParams.unitId = unitId
   if (q) filterParams.q = q
 
-  const isFiltered = Boolean(status || priority || propertyId || q)
+  const isFiltered = Boolean(status || priority || propertyId || unitId || q)
 
   return (
     <div className="flex flex-col gap-6">
@@ -98,7 +102,10 @@ export default async function TicketsPage({
         }
       />
 
-      <TicketFilters properties={properties.map((p) => ({ id: p.id, name: p.name }))} />
+      <TicketFilters
+        properties={properties.map((p) => ({ id: p.id, name: p.name }))}
+        unitLabel={scopedUnit?.label}
+      />
 
       {ticketPage.total === 0 ? (
         <EmptyState

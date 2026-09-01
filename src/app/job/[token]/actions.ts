@@ -34,7 +34,9 @@ import type { TicketStatus } from '@/types/domain'
 //      client.
 //   4. Best-effort audit event (metadata {via:'vendor_token'}) so vendor actions are
 //      attributable in the timeline even though there is no actor profile.
-//   5. Redirects back to /job/<token>.
+//   5. Redirects back to /job/<token> — EXCEPT the terminal actions (decline/complete),
+//      which revoke the token first and so land on the static /job/done confirmation
+//      instead (a revoked token can only render the generic invalid page).
 //
 // The service client is used because there is no authenticated vendor for RLS to key off;
 // the token validation IS the authorization. It is never exposed to the browser.
@@ -143,8 +145,9 @@ export async function declineJobAction(token: string) {
     console.error('Failed to log vendor decline event for ticket', job.token.ticket_id, e)
   }
 
-  revalidatePath(jobPath(token))
-  redirect(jobPath(token))
+  // The token was just revoked, so /job/<token> would now show the generic invalid
+  // page — land on the static token-free confirmation route instead.
+  redirect('/job/done?state=declined')
 }
 
 export async function completeJobAction(token: string) {
@@ -188,8 +191,8 @@ export async function completeJobAction(token: string) {
     console.error('Failed to log vendor complete event for ticket', job.token.ticket_id, e)
   }
 
-  revalidatePath(jobPath(token))
-  redirect(jobPath(token))
+  // Same as decline: the revoked token can't render a thank-you on /job/<token>.
+  redirect('/job/done?state=completed')
 }
 
 // -----------------------------------------------------------------------------

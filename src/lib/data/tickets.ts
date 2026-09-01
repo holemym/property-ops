@@ -244,6 +244,30 @@ export async function updateTicketStatus(
   return data as Ticket
 }
 
+/**
+ * Schedule (or clear) a ticket's planned visit time. Narrow single-column update —
+ * status/assignment/costs are untouched, mirroring updateTicketStatus's shape without
+ * the compare-and-swap (there is no legality machine over scheduled_at; last write
+ * wins is acceptable for a plain timestamp). null clears the schedule. Double-scoped
+ * by workspace_id + id.
+ */
+export async function updateTicketSchedule(
+  supabase: SupabaseClient,
+  workspaceId: string,
+  id: string,
+  scheduledAt: string | null
+): Promise<Ticket> {
+  const { data, error } = await supabase
+    .from('tickets')
+    .update({ scheduled_at: scheduledAt })
+    .eq('workspace_id', workspaceId)
+    .eq('id', id)
+    .select()
+    .single()
+  if (error) throw error
+  return data as Ticket
+}
+
 // Assignment. undefined-skip / null-through: an explicit null unassigns; an omitted
 // key is untouched. Setting an assignment does NOT auto-transition status — the P3.6
 // action decides whether to also move the ticket to ASSIGNED (a separate,
@@ -324,6 +348,27 @@ export async function getWorkspaceProfile(
     .single()
   if (error) return null
   return data as WorkspaceProfile
+}
+
+/**
+ * Batch profile lookup for rendering comment/timeline authors. Workspace-scoped like
+ * getWorkspaceProfile (a foreign-workspace id simply never comes back). One `.in()`
+ * query for the whole id set — the ticket detail page calls this once instead of a
+ * per-author getWorkspaceProfile fan-out.
+ */
+export async function listProfilesByIds(
+  supabase: SupabaseClient,
+  workspaceId: string,
+  userIds: string[]
+): Promise<WorkspaceProfile[]> {
+  if (userIds.length === 0) return []
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id, full_name, role')
+    .eq('workspace_id', workspaceId)
+    .in('id', userIds)
+  if (error) throw error
+  return data as WorkspaceProfile[]
 }
 
 /**

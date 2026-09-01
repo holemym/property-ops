@@ -68,7 +68,9 @@ export default async function NewTicketPage({
       <form action={createTicketAction} className="flex max-w-2xl flex-col gap-4">
         <div>
           <Label htmlFor="title">Title</Label>
-          <Input id="title" name="title" required />
+          {/* minLength mirrors ticketCreateSchema's 3-char floor so the browser catches
+              a too-short title before a server round-trip wipes the form. */}
+          <Input id="title" name="title" required minLength={3} />
         </div>
 
         <div>

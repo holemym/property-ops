@@ -223,6 +223,8 @@ export default async function VendorJobPage({
           </div>
         )}
 
+        {/* No declined/completed branches: those actions revoke the token and land on
+            the static /job/done confirmation, so this page never renders them. */}
         {accepted && !completed && !declined && (
           <div className="flex flex-col gap-3">
             <p className="text-sm text-muted-foreground">
@@ -245,16 +247,6 @@ export default async function VendorJobPage({
               <Button type="submit">Mark complete</Button>
             </form>
           </div>
-        )}
-
-        {declined && (
-          <p className="text-sm text-muted-foreground">You declined this job.</p>
-        )}
-
-        {completed && (
-          <p className="text-sm text-muted-foreground">
-            This job is marked complete. Thank you.
-          </p>
         )}
       </section>
     </main>

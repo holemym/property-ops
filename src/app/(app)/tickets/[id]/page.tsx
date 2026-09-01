@@ -12,6 +12,7 @@ import {
   getTicket,
   getWorkspaceProfile,
   listWorkspaceOperators,
+  listProfilesByIds,
 } from '@/lib/data/tickets'
 import { getProperty } from '@/lib/data/properties'
 import { getUnit } from '@/lib/data/units'
@@ -36,6 +37,7 @@ import { CommentThread } from '@/components/tickets/CommentThread'
 import type { TicketEventType } from '@/types/domain'
 import {
   transitionTicketStatusAction,
+  scheduleTicketAction,
   assignOperatorAction,
   assignVendorAction,
   addTicketCommentAction,
@@ -138,13 +140,27 @@ export default async function TicketDetailPage({
     ])
 
   // Resolve author ids → names for the comment thread and audit actors. operators +
-  // reporter cover most; fall back to the raw id when a name is unavailable.
+  // reporter + assignee cover most; any OTHER id appearing in comments/events (a
+  // deactivated operator, a tenant reporter outside the operator set) is batch-resolved
+  // in ONE extra query. Ids that still don't resolve render as '—', never a raw UUID.
   const nameById = new Map<string, string>()
   for (const op of operators) if (op.full_name) nameById.set(op.id, op.full_name)
   if (reporter?.full_name) nameById.set(reporter.id, reporter.full_name)
   if (assignedOperator?.full_name) nameById.set(assignedOperator.id, assignedOperator.full_name)
+  const unresolvedIds = [
+    ...new Set(
+      [...comments.map((c) => c.author_user_id), ...events.map((e) => e.actor_user_id)].filter(
+        (id): id is string => Boolean(id) && !nameById.has(id as string)
+      )
+    ),
+  ]
+  if (unresolvedIds.length > 0) {
+    for (const p of await listProfilesByIds(supabase, user.workspaceId, unresolvedIds)) {
+      if (p.full_name) nameById.set(p.id, p.full_name)
+    }
+  }
   const displayName = (userId: string | null) =>
-    userId ? nameById.get(userId) ?? userId : 'System'
+    userId ? nameById.get(userId) ?? '—' : 'System'
 
   // Short-lived signed download URLs (private bucket). Signing per-render is
   // fine (60s TTL); if a single path fails to sign we skip its link rather than crash.
@@ -161,16 +177,18 @@ export default async function TicketDetailPage({
 
   const transitions = nextStatuses(ticket.status)
   const boundTransition = transitionTicketStatusAction.bind(null, id)
+  const boundSchedule = scheduleTicketAction.bind(null, id)
   const boundAssignOperator = assignOperatorAction.bind(null, id)
   const boundAssignVendor = assignVendorAction.bind(null, id)
   const boundAddComment = addTicketCommentAction.bind(null, id)
   const boundGenerateVendorLink = generateVendorLinkAction.bind(null, id)
 
   // The one-time vendor job link, if the manager just generated one (present only in
-  // their own URL for this render — see generateVendorLinkAction's docstring).
-  const jobLinkUrl = joblink
-    ? `${process.env.NEXT_PUBLIC_SITE_URL}/job/${joblink}`
-    : null
+  // their own URL for this render — see generateVendorLinkAction's docstring). Mirrors
+  // notify.ts's ticketUrl null-guard: with no configured site URL there is no absolute
+  // link to render, so the copy field is hidden ("undefined/job/…" would be worse).
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL
+  const jobLinkUrl = joblink && siteUrl ? `${siteUrl}/job/${joblink}` : null
 
   const timelineEvents = events.map((e) => ({
     id: e.id,
@@ -394,6 +412,50 @@ export default async function TicketDetailPage({
             </Card>
           )}
 
+          {/* Schedule — the only write path for scheduled_at (feeds the calendar).
+              Hidden on terminal tickets (no transitions left = closed/cancelled),
+              where scheduling a visit makes no sense. */}
+          {canWrite && transitions.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Schedule</CardTitle>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-3">
+                {ticket.scheduled_at ? (
+                  <p className="text-sm text-muted-foreground">
+                    Currently scheduled for{' '}
+                    <span className="text-foreground">{formatDateTime(ticket.scheduled_at)}</span>.
+                  </p>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    Pick a visit date and time to place this ticket on the calendar.
+                  </p>
+                )}
+                <form action={boundSchedule} className="flex flex-col gap-2">
+                  <Label htmlFor="scheduledAt">Visit date &amp; time</Label>
+                  <Input id="scheduledAt" name="scheduledAt" type="datetime-local" required />
+                  <SubmitButton
+                    variant="outline"
+                    size="sm"
+                    className="self-start"
+                    pendingLabel="Saving"
+                  >
+                    Save schedule
+                  </SubmitButton>
+                </form>
+                {ticket.scheduled_at && (
+                  <form action={boundSchedule}>
+                    {/* intent=clear → the action writes scheduled_at = null. */}
+                    <input type="hidden" name="intent" value="clear" />
+                    <SubmitButton variant="ghost" size="sm" pendingLabel="Clearing">
+                      Clear schedule
+                    </SubmitButton>
+                  </form>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
           {/* Assignment (canAssign) */}
           {canAssign && (
             <Card>
@@ -435,9 +497,11 @@ export default async function TicketDetailPage({
                     className={SELECT_CLASS}
                   >
                     <option value="">Unassigned</option>
+                    {/* "(no email)" flags vendors the job-link/assignment emails can't
+                        reach — otherwise they look identical in the select. */}
                     {vendors.map((v) => (
                       <option key={v.id} value={v.id}>
-                        {v.company_name}
+                        {v.email ? v.company_name : `${v.company_name} (no email)`}
                       </option>
                     ))}
                   </select>
@@ -461,8 +525,18 @@ export default async function TicketDetailPage({
                         <p className="text-xs text-muted-foreground">
                           The vendor can view and act on this job without logging in. It
                           expires in 7 days. Share it only with the assigned vendor.
+                          {!assignedVendor?.email &&
+                            ' This vendor has no email on file, so the link was NOT emailed — send it to them yourself.'}
                         </p>
                       </>
+                    ) : joblink ? (
+                      // A link was minted but NEXT_PUBLIC_SITE_URL is unset, so there is
+                      // no absolute URL to show (or email). Same guard as notify.ts.
+                      <p className="text-xs text-muted-foreground">
+                        A job link was generated, but no site URL is configured
+                        (NEXT_PUBLIC_SITE_URL), so it cannot be displayed or emailed. Set
+                        it and generate a new link.
+                      </p>
                     ) : (
                       <>
                         <p className="text-sm text-muted-foreground">

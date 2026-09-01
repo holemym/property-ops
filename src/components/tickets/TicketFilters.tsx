@@ -32,8 +32,12 @@ const humanize = (v: string) => v.replace(/_/g, ' ')
 
 export function TicketFilters({
   properties,
+  unitLabel,
 }: {
   properties: Array<{ id: string; name: string }>
+  // Display label for the unit-scope chip when ?unitId= is set (resolved server-side
+  // by the page — there is no unit select here, only the dismissible chip).
+  unitLabel?: string
 }) {
   const router = useRouter()
   const pathname = usePathname()
@@ -43,8 +47,9 @@ export function TicketFilters({
   const status = searchParams.get('status') ?? ''
   const priority = searchParams.get('priority') ?? ''
   const propertyId = searchParams.get('propertyId') ?? ''
+  const unitId = searchParams.get('unitId') ?? ''
   const q = searchParams.get('q') ?? ''
-  const hasFilters = Boolean(status || priority || propertyId || q)
+  const hasFilters = Boolean(status || priority || propertyId || unitId || q)
 
   function pushParams(next: URLSearchParams) {
     const qs = next.toString()
@@ -61,8 +66,11 @@ export function TicketFilters({
 
   function applyQuick(params: Record<string, string>) {
     const next = new URLSearchParams()
-    // Preserve a free-text search across preset switches; drop the scoping params.
+    // Preserve the free-text search AND the unit scope across preset switches (the unit
+    // scope arrives from a unit page and should survive until its chip is dismissed);
+    // drop the other scoping params.
     if (q) next.set('q', q)
+    if (unitId) next.set('unitId', unitId)
     for (const [k, v] of Object.entries(params)) next.set(k, v)
     pushParams(next)
   }
@@ -120,6 +128,18 @@ export function TicketFilters({
             </button>
           )
         })}
+        {/* Unit scope chip — set by unit-page links (?unitId=), dismissible here. */}
+        {unitId && (
+          <button
+            type="button"
+            onClick={() => setParam('unitId', '')}
+            aria-label="Clear unit filter"
+            className="inline-flex items-center gap-1 rounded-full bg-muted px-3 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+          >
+            Unit: {unitLabel ?? 'unknown'}
+            <X className="size-3" />
+          </button>
+        )}
         {/* Subtle "updating" cue while a navigation transition is in flight. */}
         <span
           className={cn(

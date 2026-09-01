@@ -94,22 +94,25 @@ export default async function CalendarPage({
     })
   }
 
-  // Tenancies → a move-in chip on start_date and a move-out chip on end_date (if set).
+  // Tenancies → a move-in chip on start_date and a move-out chip on end_date (if set),
+  // linking to the unit whose occupancy is changing.
   for (const ten of tenancies) {
     const where = unitLabel.get(ten.unit_id) ?? 'Unit'
+    const href = `/units/${ten.unit_id}`
     const start = ten.start_date.slice(0, 10)
     if (inWindow(start)) {
-      events.push({ date: start, kind: 'move-in', label: ten.tenant_name, meta: where })
+      events.push({ date: start, kind: 'move-in', label: ten.tenant_name, meta: where, href })
     }
     if (ten.end_date) {
       const end = ten.end_date.slice(0, 10)
       if (inWindow(end)) {
-        events.push({ date: end, kind: 'move-out', label: ten.tenant_name, meta: where })
+        events.push({ date: end, kind: 'move-out', label: ten.tenant_name, meta: where, href })
       }
     }
   }
 
-  // Documents → an expiry chip on expires_at (if set), labelled title + type.
+  // Documents → an expiry chip on expires_at (if set), labelled title + type, linking
+  // to the documents repo (there is no per-document detail page to deep-link).
   for (const doc of documents) {
     if (!doc.expires_at) continue
     const date = doc.expires_at.slice(0, 10)
@@ -119,6 +122,7 @@ export default async function CalendarPage({
       kind: 'doc-expiry',
       label: doc.title,
       meta: DOC_TYPE_LABELS[doc.document_type],
+      href: '/documents',
     })
   }
 

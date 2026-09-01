@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { ticketCreateSchema, ticketCommentSchema, ticketStatusSchema } from '@/lib/validation/ticket'
+import {
+  ticketCreateSchema,
+  ticketCommentSchema,
+  ticketStatusSchema,
+  ticketScheduleSchema,
+} from '@/lib/validation/ticket'
 
 describe('ticketCreateSchema', () => {
   const valid = {
@@ -82,5 +87,34 @@ describe('ticketStatusSchema', () => {
   it('rejects a bad status', () => {
     const result = ticketStatusSchema.safeParse({ status: 'NOT_A_STATUS' })
     expect(result.success).toBe(false)
+  })
+})
+
+describe('ticketScheduleSchema', () => {
+  // datetime-local submits "YYYY-MM-DDTHH:mm"; build one a year out so the
+  // future-date refine always passes regardless of when the suite runs.
+  const future = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 16)
+
+  it('accepts a future datetime-local value', () => {
+    const result = ticketScheduleSchema.safeParse({ scheduledAt: future })
+    expect(result.success).toBe(true)
+  })
+
+  it('rejects an empty value', () => {
+    const result = ticketScheduleSchema.safeParse({ scheduledAt: '' })
+    expect(result.success).toBe(false)
+  })
+
+  it('rejects an unparseable value', () => {
+    const result = ticketScheduleSchema.safeParse({ scheduledAt: 'not-a-date' })
+    expect(result.success).toBe(false)
+  })
+
+  it('rejects a past datetime with the friendly future-date message', () => {
+    const result = ticketScheduleSchema.safeParse({ scheduledAt: '2020-01-01T10:00' })
+    expect(result.success).toBe(false)
+    if (!result.success) {
+      expect(result.error.issues[0].message).toBe('Scheduled time must be in the future.')
+    }
   })
 })

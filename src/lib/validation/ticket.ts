@@ -44,3 +44,16 @@ export const ticketStatusSchema = z.object({
 })
 
 export type TicketStatusValues = z.infer<typeof ticketStatusSchema>
+
+// Schedule payload. The value comes from a datetime-local input ("YYYY-MM-DDTHH:mm"),
+// so Date.parse-ability is the shape check; the not-in-the-past rule lives here too so
+// the action surfaces one friendly zod message either way.
+export const ticketScheduleSchema = z.object({
+  scheduledAt: z
+    .string()
+    .min(1, 'Pick a date and time.')
+    .refine((v) => !Number.isNaN(Date.parse(v)), 'Enter a valid date and time.')
+    .refine((v) => Date.parse(v) > Date.now(), 'Scheduled time must be in the future.'),
+})
+
+export type TicketScheduleValues = z.infer<typeof ticketScheduleSchema>

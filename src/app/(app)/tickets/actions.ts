@@ -11,11 +11,13 @@ import {
   ticketCreateSchema,
   ticketCommentSchema,
   ticketStatusSchema,
+  ticketScheduleSchema,
 } from '@/lib/validation/ticket'
 import {
   createTicket,
   getTicket,
   updateTicketStatus,
+  updateTicketSchedule,
   assignTicket,
   getWorkspaceProfile,
 } from '@/lib/data/tickets'
@@ -23,7 +25,6 @@ import { appendTicketEvent } from '@/lib/data/ticket-events'
 import { createTicketComment } from '@/lib/data/ticket-comments'
 import { runAutoTriage } from '@/lib/ai/triage-service'
 import {
-  notifyTicketStatusChanged,
   notifyOperatorAssigned,
   notifyVendorAssigned,
   notifyVendorJobLink,
@@ -32,9 +33,9 @@ import {
 import {
   createNotification,
   resolveOperatorAssignedRecipient,
-  resolveStatusChangedRecipients,
   resolveCommentRecipient,
 } from '@/lib/notifications/notify-inapp'
+import { sendStatusChangeNotifications } from '@/lib/notifications/status-change'
 import { createVendorJobToken } from '@/lib/data/vendor-tokens'
 import { getProperty } from '@/lib/data/properties'
 import { getUnit } from '@/lib/data/units'
@@ -46,6 +47,17 @@ export async function createTicketAction(formData: FormData) {
   // action (created_for_user_id + PUBLIC-visibility rules), so this one gates on write.
   const user = await requirePermission('tickets:write')
 
+  // On a validation bounce, carry the property/unit selection back with the redirect so
+  // the form's prefill survives (the POSTed text fields are lost either way — the page
+  // can only restore what it reads from the URL). Raw form values are fine here: the
+  // page re-checks them against its own property/unit lists before prefilling.
+  const prefill = new URLSearchParams()
+  const rawPropertyId = formData.get('propertyId')
+  const rawUnitId = formData.get('unitId')
+  if (typeof rawPropertyId === 'string' && rawPropertyId) prefill.set('propertyId', rawPropertyId)
+  if (typeof rawUnitId === 'string' && rawUnitId) prefill.set('unitId', rawUnitId)
+  const newTicketPath = prefill.toString() ? `/tickets/new?${prefill.toString()}` : '/tickets/new'
+
   const parsed = ticketCreateSchema.safeParse({
     title: formData.get('title'),
     description: formData.get('description'),
@@ -56,7 +68,7 @@ export async function createTicketAction(formData: FormData) {
     unitId: (formData.get('unitId') as string | null) || undefined,
   })
   if (!parsed.success) {
-    redirectWithError('/tickets/new', parsed.error.issues[0].message)
+    redirectWithError(newTicketPath, parsed.error.issues[0].message)
   }
 
   const { title, description, category, priority, propertyId, unitId } = parsed.data
@@ -66,7 +78,7 @@ export async function createTicketAction(formData: FormData) {
   // could reference another workspace's property or a stale id).
   const property = await getProperty(supabase, user.workspaceId, propertyId)
   if (!property) {
-    redirectWithError('/tickets/new', 'Selected property was not found.')
+    redirectWithError(newTicketPath, 'Selected property was not found.')
   }
 
   // If a unit was chosen it must exist in this workspace AND belong to the chosen
@@ -74,7 +86,7 @@ export async function createTicketAction(formData: FormData) {
   if (unitId) {
     const unit = await getUnit(supabase, user.workspaceId, unitId)
     if (!unit || unit.property_id !== propertyId) {
-      redirectWithError('/tickets/new', 'Selected unit does not belong to the chosen property.')
+      redirectWithError(newTicketPath, 'Selected unit does not belong to the chosen property.')
     }
   }
 
@@ -93,7 +105,7 @@ export async function createTicketAction(formData: FormData) {
     ticketId = ticket.id
   } catch (e) {
     // redirectWithError throws NEXT_REDIRECT, so ticketId is definitely assigned past here.
-    redirectWithError('/tickets/new', e instanceof Error ? e.message : 'Could not create ticket.')
+    redirectWithError(newTicketPath, e instanceof Error ? e.message : 'Could not create ticket.')
   }
 
   // Best-effort audit event, logged AFTER the ticket row exists via the SERVICE-ROLE
@@ -199,6 +211,14 @@ export async function transitionTicketStatusAction(id: string, formData: FormDat
     redirectWithError(detailPath, 'This ticket changed since you loaded it; please review and retry.')
   }
 
+  // A ticket can't be ASSIGNED with nobody on it: the status is a claim that someone
+  // owns the work, so require an operator or vendor first (the assignment card sits
+  // right next to the status buttons). Server-side check on the freshly-loaded row —
+  // the board move action enforces the same rule.
+  if (nextStatus === 'ASSIGNED' && !ticket.assigned_operator_id && !ticket.assigned_vendor_id) {
+    redirectWithError(detailPath, 'Assign an operator or vendor first.')
+  }
+
   try {
     // updateTicketStatus calls assertTransition internally, so an illegal move (e.g. the
     // submitted button no longer legal for the current status) throws here and is turned
@@ -227,59 +247,78 @@ export async function transitionTicketStatusAction(id: string, formData: FormDat
     console.error('Failed to log STATUS_CHANGED event for ticket', id, e)
   }
 
-  // Best-effort email to the reporter (tenant filed-for, else the creator). Mirrors the
-  // audit block: own try/catch, service-role client for the auth.admin email lookup,
-  // never blocks the redirect. Disconnected-safe (no-op with no RESEND_API_KEY).
-  after(async () => {
-    try {
-      await notifyTicketStatusChanged(createServiceClient(), {
-        ticketId: id,
-        workspaceId: user.workspaceId,
-        title: ticket.title,
-        category: ticket.category,
-        priority: ticket.priority,
-        reporterUserId: ticket.created_for_user_id ?? ticket.created_by_user_id,
-        fromStatus: ticket.status,
-        toStatus: nextStatus,
-      })
-    } catch (e) {
-      console.error('Failed to send status-changed email for ticket', id, e)
-    }
-  })
-
-  // Best-effort in-app notification (P2-1) — fans out to BOTH created_by and
-  // created_for when distinct. The email above only reaches one address (via the
-  // ??-collapsed reporterUserId passed to notifyTicketStatusChanged); the in-app
-  // inbox can afford to ping both real stakeholders. resolveStatusChangedRecipients
-  // already excludes the actor, and createNotification independently re-checks the
-  // same guard per recipient.
-  after(async () => {
-    try {
-      const recipients = resolveStatusChangedRecipients(
-        user.id,
-        ticket.created_by_user_id,
-        ticket.created_for_user_id
-      )
-      // Parallel — these were also written serially per recipient.
-      await Promise.all(
-        recipients.map((recipientUserId) =>
-          createNotification(createServiceClient(), {
-            workspaceId: user.workspaceId,
-            recipientUserId,
-            actorUserId: user.id,
-            type: 'TICKET_STATUS_CHANGED',
-            title: 'Ticket status changed',
-            body: ticket.title,
-            href: detailPath,
-          })
-        )
-      )
-    } catch (e) {
-      console.error('Failed to write status-changed notification for ticket', id, e)
-    }
-  })
+  // Best-effort reporter email + in-app fan-out, shared with the board move action
+  // (sendStatusChangeNotifications — factored out of the two after() blocks that used
+  // to live here). Post-response, never blocks the redirect, disconnected-safe.
+  after(() =>
+    sendStatusChangeNotifications({
+      actorUserId: user.id,
+      workspaceId: user.workspaceId,
+      ticket,
+      nextStatus,
+      detailPath,
+    })
+  )
 
   revalidatePath(detailPath)
+  redirect(detailPath)
+}
+
+/**
+ * Set (or clear) a ticket's scheduled visit time (the calendar's data source). Follows
+ * the P3.6 action template: gate on tickets:write, load + validate, narrow mutation via
+ * the RLS-bound client (updateTicketSchedule), best-effort audit event via the service
+ * client, redirect with ?error= on any friendly failure. The "Clear schedule" form
+ * posts intent=clear with no datetime — a null write, no validation needed.
+ */
+export async function scheduleTicketAction(id: string, formData: FormData) {
+  const user = await requirePermission('tickets:write')
+  const detailPath = `/tickets/${id}`
+
+  const supabase = await createClient()
+  const ticket = await getTicket(supabase, user.workspaceId, id)
+  if (!ticket) {
+    redirectWithError(detailPath, 'Ticket not found.')
+  }
+
+  const clearing = formData.get('intent') === 'clear'
+  let scheduledAt: string | null = null
+  if (!clearing) {
+    const parsed = ticketScheduleSchema.safeParse({ scheduledAt: formData.get('scheduledAt') })
+    if (!parsed.success) {
+      redirectWithError(detailPath, parsed.error.issues[0].message)
+    }
+    scheduledAt = new Date(parsed.data.scheduledAt).toISOString()
+  }
+
+  try {
+    await updateTicketSchedule(supabase, user.workspaceId, id, scheduledAt)
+  } catch (e) {
+    redirectWithError(detailPath, e instanceof Error ? e.message : 'Could not update the schedule.')
+  }
+
+  // Best-effort audit event. We reuse the existing STATUS_CHANGED enum value (no new
+  // TicketEventType invented — same rule as generateVendorLinkAction's link event) with
+  // metadata marking the schedule action; the old/new scheduledAt pair carries the
+  // actual change.
+  try {
+    await appendTicketEvent(createServiceClient(), {
+      workspaceId: user.workspaceId,
+      ticketId: id,
+      eventType: 'STATUS_CHANGED',
+      actorUserId: user.id,
+      actorType: 'USER',
+      oldValueJson: { scheduledAt: ticket.scheduled_at },
+      newValueJson: { scheduledAt },
+      metadataJson: { action: clearing ? 'schedule_cleared' : 'scheduled' },
+    })
+  } catch (e) {
+    console.error('Failed to log schedule event for ticket', id, e)
+  }
+
+  // The calendar renders scheduled tickets, so it must revalidate along with the detail.
+  revalidatePath(detailPath)
+  revalidatePath('/calendar')
   redirect(detailPath)
 }
 
@@ -531,8 +570,12 @@ export async function generateVendorLinkAction(id: string) {
   // serves. Best-effort: own try/catch, never blocks the redirect. Disconnected-safe.
   after(async () => {
     try {
+      // No configured site URL → no absolute link to send. Skip quietly (the same
+      // silent-skip notify.ts applies to a missing recipient email) rather than
+      // emailing a relative /job/<token> path the vendor cannot open.
       const base = process.env.NEXT_PUBLIC_SITE_URL
-      const jobUrl = base ? `${base}/job/${rawToken}` : `/job/${rawToken}`
+      if (!base) return
+      const jobUrl = `${base}/job/${rawToken}`
       await notifyVendorJobLink({
         ticketId: id,
         workspaceId: user.workspaceId,

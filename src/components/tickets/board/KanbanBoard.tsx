@@ -251,7 +251,13 @@ function BoardCard({
           <button
             type="button"
             draggable
-            onDragStart={onDragStart}
+            onDragStart={(e) => {
+              // Firefox refuses to start an HTML5 drag with an empty dataTransfer —
+              // set a payload for it. React state (dragId) stays the source of truth
+              // for the drop; this value is never read back.
+              e.dataTransfer.setData('text/plain', ticket.id)
+              onDragStart()
+            }}
             onDragEnd={onDragEnd}
             aria-label={`Drag ${ticket.title}`}
             className="relative z-10 -ml-0.5 mt-0.5 cursor-grab touch-none rounded text-muted-foreground/60 hover:text-muted-foreground active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
