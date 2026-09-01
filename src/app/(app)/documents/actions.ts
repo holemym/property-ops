@@ -10,9 +10,11 @@ import {
   DOCUMENTS_BUCKET,
   buildDocumentStoragePath,
   createDocument,
+  updateDocument,
 } from '@/lib/data/documents'
 import {
   documentFormSchema,
+  documentUpdateSchema,
   isAllowedDocumentMimeType,
   MAX_DOCUMENT_SIZE_BYTES,
   ALLOWED_DOCUMENT_LABEL,
@@ -42,6 +44,52 @@ import { getTicket } from '@/lib/data/tickets'
 // =============================================================================
 
 const DOCUMENTS_PATH = '/documents'
+
+// --- Friendly ownership check for provided entity refs. The DB composite FK (each
+// (entity_id, workspace_id) -> parent(id, workspace_id)) is the un-bypassable backstop;
+// this workspace-scoped read just turns a cross-workspace / missing ref into readable
+// copy instead of a raw FK-violation error. At most one ref is expected to be set.
+// Shared by upload + update (the update's re-attach takes the same user-supplied ids,
+// so it needs the identical re-verification). redirectWithError throws on failure. ---
+async function assertEntityRefsInWorkspace(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  workspaceId: string,
+  form: {
+    propertyId?: string | null
+    unitId?: string | null
+    tenancyId?: string | null
+    vendorId?: string | null
+    ticketId?: string | null
+  }
+): Promise<void> {
+  if (form.propertyId) {
+    const property = await getProperty(supabase, workspaceId, form.propertyId)
+    if (!property) redirectWithError(DOCUMENTS_PATH, 'Selected property was not found in your workspace.')
+  }
+  if (form.unitId) {
+    const unit = await getUnit(supabase, workspaceId, form.unitId)
+    if (!unit) redirectWithError(DOCUMENTS_PATH, 'Selected unit was not found in your workspace.')
+  }
+  if (form.vendorId) {
+    const vendor = await getVendor(supabase, workspaceId, form.vendorId)
+    if (!vendor) redirectWithError(DOCUMENTS_PATH, 'Selected vendor was not found in your workspace.')
+  }
+  if (form.ticketId) {
+    const ticket = await getTicket(supabase, workspaceId, form.ticketId)
+    if (!ticket) redirectWithError(DOCUMENTS_PATH, 'Selected ticket was not found in your workspace.')
+  }
+  if (form.tenancyId) {
+    // No single-tenancy getter exists; a workspace-scoped existence read is the friendly
+    // check (RLS + the composite FK remain the real boundary).
+    const { data: tenancy } = await supabase
+      .from('tenancies')
+      .select('id')
+      .eq('workspace_id', workspaceId)
+      .eq('id', form.tenancyId)
+      .maybeSingle()
+    if (!tenancy) redirectWithError(DOCUMENTS_PATH, 'Selected tenancy was not found in your workspace.')
+  }
+}
 
 /**
  * Upload a document to the workspace repository. Reads the File + form fields from
@@ -90,37 +138,7 @@ export async function uploadDocumentAction(formData: FormData): Promise<void> {
 
   const supabase = await createClient()
 
-  // --- Friendly ownership check for a provided entity ref. The DB composite FK (each
-  // (entity_id, workspace_id) -> parent(id, workspace_id)) is the un-bypassable backstop;
-  // this workspace-scoped read just turns a cross-workspace / missing ref into readable
-  // copy instead of a raw FK-violation error. At most one ref is expected to be set. ---
-  if (form.propertyId) {
-    const property = await getProperty(supabase, user.workspaceId, form.propertyId)
-    if (!property) redirectWithError(DOCUMENTS_PATH, 'Selected property was not found in your workspace.')
-  }
-  if (form.unitId) {
-    const unit = await getUnit(supabase, user.workspaceId, form.unitId)
-    if (!unit) redirectWithError(DOCUMENTS_PATH, 'Selected unit was not found in your workspace.')
-  }
-  if (form.vendorId) {
-    const vendor = await getVendor(supabase, user.workspaceId, form.vendorId)
-    if (!vendor) redirectWithError(DOCUMENTS_PATH, 'Selected vendor was not found in your workspace.')
-  }
-  if (form.ticketId) {
-    const ticket = await getTicket(supabase, user.workspaceId, form.ticketId)
-    if (!ticket) redirectWithError(DOCUMENTS_PATH, 'Selected ticket was not found in your workspace.')
-  }
-  if (form.tenancyId) {
-    // No single-tenancy getter exists; a workspace-scoped existence read is the friendly
-    // check (RLS + the composite FK remain the real boundary).
-    const { data: tenancy } = await supabase
-      .from('tenancies')
-      .select('id')
-      .eq('workspace_id', user.workspaceId)
-      .eq('id', form.tenancyId)
-      .maybeSingle()
-    if (!tenancy) redirectWithError(DOCUMENTS_PATH, 'Selected tenancy was not found in your workspace.')
-  }
+  await assertEntityRefsInWorkspace(supabase, user.workspaceId, form)
 
   // --- SERVER-BUILT path from the VALIDATED workspace_id (never client input). Filename
   // sanitized inside buildDocumentStoragePath. ---
@@ -163,6 +181,58 @@ export async function uploadDocumentAction(formData: FormData): Promise<void> {
     })
   } catch (e) {
     redirectWithError(DOCUMENTS_PATH, e instanceof Error ? e.message : 'Could not save the document.')
+  }
+
+  revalidatePath(DOCUMENTS_PATH)
+  redirect(DOCUMENTS_PATH)
+}
+
+/**
+ * Edit a document's metadata — title/notes/expiry + re-attach (change property/unit/
+ * tenancy/vendor/ticket, or detach to workspace-level). The retract-a-wrongly-attached-
+ * document surface: attachment drives tenant visibility (RLS 0030), so a mis-filed lease
+ * must be movable without touching the stored bytes (append-only by design — no delete).
+ * Same authorization + validation discipline as the upload above: documents:write app
+ * gate, zod-validated fields, and the shared workspace re-verification for whichever
+ * entity ref is submitted. No demo gate — this touches metadata only, never Storage
+ * bytes (the reason the upload is demo-blocked), matching the announcements actions.
+ */
+export async function updateDocumentAction(id: string, formData: FormData): Promise<void> {
+  const user = await requirePermission('documents:write')
+
+  // `|| null` maps empty strings to null before zod runs, mirroring the upload parse.
+  const parsed = documentUpdateSchema.safeParse({
+    title: formData.get('title'),
+    expiresAt: (formData.get('expiresAt') as string | null) || null,
+    notes: (formData.get('notes') as string | null) || null,
+    propertyId: (formData.get('propertyId') as string | null) || null,
+    unitId: (formData.get('unitId') as string | null) || null,
+    tenancyId: (formData.get('tenancyId') as string | null) || null,
+    vendorId: (formData.get('vendorId') as string | null) || null,
+    ticketId: (formData.get('ticketId') as string | null) || null,
+  })
+  if (!parsed.success) {
+    redirectWithError(DOCUMENTS_PATH, parsed.error.issues[0].message)
+  }
+  const form = parsed.data
+
+  const supabase = await createClient()
+
+  await assertEntityRefsInWorkspace(supabase, user.workspaceId, form)
+
+  try {
+    await updateDocument(supabase, user.workspaceId, id, {
+      title: form.title,
+      notes: form.notes ?? null,
+      expiresAt: form.expiresAt ?? null,
+      propertyId: form.propertyId ?? null,
+      unitId: form.unitId ?? null,
+      tenancyId: form.tenancyId ?? null,
+      vendorId: form.vendorId ?? null,
+      ticketId: form.ticketId ?? null,
+    })
+  } catch (e) {
+    redirectWithError(DOCUMENTS_PATH, e instanceof Error ? e.message : 'Could not update the document.')
   }
 
   revalidatePath(DOCUMENTS_PATH)

@@ -97,6 +97,8 @@ const NOTIFICATION_TYPE: Record<NotificationType, StatusBadgeSpec> = {
   TICKET_ASSIGNED: { label: 'Assigned', tone: 'blue' },
   TICKET_STATUS_CHANGED: { label: 'Status changed', tone: 'amber' },
   TICKET_COMMENT: { label: 'Comment', tone: 'neutral' },
+  // Informational broadcast, not a call to action — neutral, like Comment.
+  ANNOUNCEMENT_PUBLISHED: { label: 'Announcement', tone: 'neutral' },
 }
 
 // Announcement lifecycle (operator compose surface). DRAFT is muted — it exists but

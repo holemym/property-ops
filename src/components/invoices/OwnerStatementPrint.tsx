@@ -1,16 +1,17 @@
 'use client'
 
-import { formatMoneyExact } from '@/lib/format-money'
+import { formatMoneyIn } from '@/lib/format-money'
 import { Printer } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { formatDateLong } from '@/lib/format-date'
+import type { OwnerCurrencyTotals } from '@/lib/invoices/owners'
 import type { InvoiceStatus } from '@/types/domain'
 
 // Print-friendly owner statement, mirroring InvoicePrint: a button that fires the browser
 // print dialog, and a paper layout that is hidden on screen and shown alone on print
 // (the @media print rule hides the app chrome and reveals only #statement-print).
-
-const eur = { format: formatMoneyExact }
+// Money renders per currency (formatMoneyIn) — each invoice line in its own currency,
+// and the Billed / Paid / Outstanding summary as one amount per currency.
 
 // Long-month calendar date ('9 July 2026') for the printed statement.
 const formatDate = formatDateLong
@@ -21,6 +22,7 @@ export type StatementLine = {
   issueDate: string
   dueDate: string | null
   status: InvoiceStatus
+  currency: string
   total: number
 }
 
@@ -36,15 +38,11 @@ export function PrintStatementButton() {
 export function OwnerStatementPrint({
   ownerName,
   lines,
-  billed,
-  paid,
-  outstanding,
+  totals,
 }: {
   ownerName: string
   lines: StatementLine[]
-  billed: number
-  paid: number
-  outstanding: number
+  totals: OwnerCurrencyTotals[]
 }) {
   return (
     <>
@@ -85,7 +83,7 @@ export function OwnerStatementPrint({
                 <td className="py-2">{formatDate(l.issueDate)}</td>
                 <td className="py-2">{l.dueDate ? formatDate(l.dueDate) : '—'}</td>
                 <td className="py-2 capitalize">{l.status.toLowerCase()}</td>
-                <td className="py-2 text-right tabular-nums">{eur.format(l.total)}</td>
+                <td className="py-2 text-right tabular-nums">{formatMoneyIn(l.currency, l.total)}</td>
               </tr>
             ))}
           </tbody>
@@ -94,15 +92,33 @@ export function OwnerStatementPrint({
         <div className="mt-6 ml-auto w-64 text-sm">
           <div className="flex justify-between py-1">
             <span className="text-black/60">Billed</span>
-            <span className="tabular-nums">{eur.format(billed)}</span>
+            <span className="text-right tabular-nums">
+              {totals.map((t) => (
+                <span key={t.currency} className="block">
+                  {formatMoneyIn(t.currency, t.billed)}
+                </span>
+              ))}
+            </span>
           </div>
           <div className="flex justify-between py-1">
             <span className="text-black/60">Paid</span>
-            <span className="tabular-nums">{eur.format(paid)}</span>
+            <span className="text-right tabular-nums">
+              {totals.map((t) => (
+                <span key={t.currency} className="block">
+                  {formatMoneyIn(t.currency, t.paid)}
+                </span>
+              ))}
+            </span>
           </div>
           <div className="flex justify-between border-t border-black/20 py-2 font-semibold">
             <span>Outstanding</span>
-            <span className="tabular-nums">{eur.format(outstanding)}</span>
+            <span className="text-right tabular-nums">
+              {totals.map((t) => (
+                <span key={t.currency} className="block">
+                  {formatMoneyIn(t.currency, t.outstanding)}
+                </span>
+              ))}
+            </span>
           </div>
         </div>
       </div>

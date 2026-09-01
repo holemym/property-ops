@@ -20,9 +20,14 @@ import type { Role } from '@/types/domain'
  * recipients resolveStatusChangedRecipients fans a status-changed notification out to.
  *
  * Every v1 NotificationType is ticket-related (TICKET_ASSIGNED/STATUS_CHANGED/COMMENT —
- * src/types/domain.ts) and every href currently written is `/tickets/<id>`, so a plain
- * prefix swap is complete for now. A future notification type with a non-ticket href
- * would need a new case here rather than assuming the blanket swap still applies.
+ * src/types/domain.ts) and every href those types write is `/tickets/<id>`, so a plain
+ * prefix swap is complete for them. ANNOUNCEMENT_PUBLISHED (0034) — the first
+ * non-ticket type — needs NO case here by construction: its writer
+ * (publishAnnouncementAction) stores the portal-absolute `/portal/announcements`
+ * directly (its only recipients are tenants/guests), which misses the `/tickets/`
+ * prefix and passes through unchanged. A future type whose recipients span BOTH
+ * surfaces would need a real new case here rather than assuming the blanket swap
+ * still applies.
  */
 export function resolveNotificationHref(href: string, role: Role): string {
   const TICKETS_PREFIX = '/tickets/'

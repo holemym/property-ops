@@ -110,6 +110,56 @@ export type CreateDocumentInput = {
   notes?: string | null
 }
 
+export type UpdateDocumentInput = {
+  title: string
+  notes: string | null
+  expiresAt: string | null
+  // REPLACE semantics, unlike updateTenant's undefined-skip: an edit restates the
+  // document's single attachment in full, so ALL FIVE refs are written every time —
+  // choosing a new entity (or "nothing") clears whichever link was set before. That is
+  // exactly the retract-a-wrongly-attached-document move this function exists for; a
+  // skip-if-undefined merge could never DETACH. At most one ref is non-null (the dialog
+  // posts one field; the action re-validates ownership like the upload does).
+  propertyId: string | null
+  unitId: string | null
+  tenancyId: string | null
+  vendorId: string | null
+  ticketId: string | null
+}
+
+/**
+ * Edit a document's metadata row in place — title/notes/expiry + re-attach (or detach).
+ * NEVER touches storage_path/file_type/file_size: the stored bytes are append-only by
+ * design (no delete/replace surface), only the metadata that ATTRIBUTES them is
+ * editable. Workspace-scoped at the query layer; documents_update_manager (0018) is the
+ * real enforcement.
+ */
+export async function updateDocument(
+  supabase: SupabaseClient,
+  workspaceId: string,
+  id: string,
+  input: UpdateDocumentInput
+): Promise<Document> {
+  const { data, error } = await supabase
+    .from('documents')
+    .update({
+      title: input.title,
+      notes: input.notes,
+      expires_at: input.expiresAt,
+      property_id: input.propertyId,
+      unit_id: input.unitId,
+      tenancy_id: input.tenancyId,
+      vendor_id: input.vendorId,
+      ticket_id: input.ticketId,
+    })
+    .eq('workspace_id', workspaceId)
+    .eq('id', id)
+    .select()
+    .single()
+  if (error) throw error
+  return data as Document
+}
+
 /**
  * Insert the metadata row for an already-uploaded object. Called AFTER the bytes land in
  * Storage, via the authenticated (RLS-bound) client so documents_insert_manager enforces

@@ -1,5 +1,5 @@
 import { formatDateTime } from '@/lib/format-date'
-import { Bell, CheckCheck, MessageSquare, RefreshCw, UserCheck, type LucideIcon } from 'lucide-react'
+import { Bell, CheckCheck, Megaphone, MessageSquare, RefreshCw, UserCheck, type LucideIcon } from 'lucide-react'
 import { requireWorkspace } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { listNotificationsPage, countUnread, type Notification } from '@/lib/data/notifications'
@@ -26,6 +26,8 @@ const NOTIFICATION_ICON: Record<NotificationType, LucideIcon> = {
   TICKET_ASSIGNED: UserCheck,
   TICKET_STATUS_CHANGED: RefreshCw,
   TICKET_COMMENT: MessageSquare,
+  // Same glyph as the /announcements page header — one concept, one icon.
+  ANNOUNCEMENT_PUBLISHED: Megaphone,
 }
 
 export default async function NotificationsPage({

@@ -6,6 +6,7 @@ import {
   listAnnouncements,
   createAnnouncement,
   setAnnouncementStatus,
+  updateAnnouncement,
 } from '@/lib/data/announcements'
 
 const WS_A = 'workspace-a'
@@ -51,7 +52,7 @@ describe('announcements data access (tenant portal read)', () => {
     expect(result.map((a) => a.id)).not.toContain('a-draft')
   })
 
-  it('never leaks another workspace\'s announcement', async () => {
+  it("never leaks another workspace's announcement", async () => {
     const result = await listPublishedAnnouncementsForTenant(client, WS_A)
     expect(result.map((a) => a.id)).not.toContain('a-other-ws')
   })
@@ -88,7 +89,7 @@ describe('announcements data access (manager compose surface)', () => {
     expect(result.map((a) => a.id).sort()).toEqual(['a-draft', 'a-published'])
   })
 
-  it('listAnnouncements never leaks another workspace\'s announcement', async () => {
+  it("listAnnouncements never leaks another workspace's announcement", async () => {
     const result = await listAnnouncements(client, WS_A)
     expect(result.map((a) => a.id)).not.toContain('a-other-ws')
   })
@@ -126,5 +127,62 @@ describe('announcements data access (manager compose surface)', () => {
     const updated = await setAnnouncementStatus(client, WS_A, 'a-published', 'DRAFT')
     expect(updated.status).toBe('DRAFT')
     expect(updated.published_at).toBeNull()
+  })
+})
+
+describe('announcements data access (edit in place)', () => {
+  let client: ReturnType<typeof createFakeSupabaseClient>
+
+  beforeEach(() => {
+    client = createFakeSupabaseClient({
+      announcements: [
+        announcement({
+          id: 'a-live',
+          title: 'Elevator maintenance',
+          body: 'The elevator will be serviced on Friday.',
+          published_at: '2026-08-01T10:00:00Z',
+        }),
+        announcement({ id: 'a-other-ws', workspace_id: WS_B, title: 'Other workspace notice' }),
+      ],
+    })
+  })
+
+  it('edits title/body/property in place WITHOUT touching status or published_at', async () => {
+    const updated = await updateAnnouncement(client, WS_A, 'a-live', {
+      title: 'Elevator maintenance — new date',
+      body: 'Moved to Monday.',
+      propertyId: 'prop-1',
+    })
+    expect(updated.title).toBe('Elevator maintenance — new date')
+    expect(updated.body).toBe('Moved to Monday.')
+    expect(updated.property_id).toBe('prop-1')
+    // The publish/draft flip stays its own explicit action — an edit never flips it.
+    expect(updated.status).toBe('PUBLISHED')
+    expect(updated.published_at).toBe('2026-08-01T10:00:00Z')
+  })
+
+  it('can restate the audience back to workspace-wide (property_id null)', async () => {
+    await updateAnnouncement(client, WS_A, 'a-live', {
+      title: 'Elevator maintenance',
+      body: 'Same text.',
+      propertyId: 'prop-1',
+    })
+    const cleared = await updateAnnouncement(client, WS_A, 'a-live', {
+      title: 'Elevator maintenance',
+      body: 'Same text.',
+      propertyId: null,
+    })
+    expect(cleared.property_id).toBeNull()
+  })
+
+  it("is workspace-scoped: cannot edit another workspace's announcement", async () => {
+    // a-other-ws lives in WS_B; editing it AS workspace A must miss (single() -> error).
+    await expect(
+      updateAnnouncement(client, WS_A, 'a-other-ws', {
+        title: 'hijack',
+        body: 'hijack',
+        propertyId: null,
+      })
+    ).rejects.toThrow()
   })
 })

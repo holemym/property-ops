@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { Pencil, Mail } from 'lucide-react'
+import { formatMoneyIn } from '@/lib/format-money'
 import { requirePermission } from '@/lib/auth/session'
 import { can } from '@/lib/auth/permissions'
 import { createClient } from '@/lib/supabase/server'
@@ -72,10 +73,8 @@ export default async function InvoiceDetailPage({
   // status for its transition options.
   const todayIso = new Date().toISOString().slice(0, 10)
   const displayStatus = isInvoiceOverdue(invoice, todayIso) ? 'OVERDUE' : invoice.status
-  const fmt = new Intl.NumberFormat('en-IE', {
-    style: 'currency',
-    currency: invoice.currency || 'EUR',
-  })
+  // THE shared per-currency formatter — never a re-rolled Intl.NumberFormat.
+  const money = (amount: number) => formatMoneyIn(invoice.currency, amount)
 
   const boundSetStatus = setInvoiceStatusAction.bind(null, id)
   const boundSend = sendInvoiceAction.bind(null, id)
@@ -204,10 +203,10 @@ export default async function InvoiceDetailPage({
                               {l.quantity}
                             </TableCell>
                             <TableCell className="px-4 py-3 text-right tabular-nums">
-                              {fmt.format(l.unit_amount)}
+                              {money(l.unit_amount)}
                             </TableCell>
                             <TableCell className="px-4 py-3 text-right font-medium tabular-nums">
-                              {fmt.format(l.amount)}
+                              {money(l.amount)}
                             </TableCell>
                           </TableRow>
                         ))}
@@ -220,15 +219,15 @@ export default async function InvoiceDetailPage({
                 <div className="ml-auto mt-4 flex w-full max-w-xs flex-col gap-1 text-sm">
                   <div className="flex justify-between text-muted-foreground">
                     <span>Subtotal</span>
-                    <span className="tabular-nums">{fmt.format(totals.subtotal)}</span>
+                    <span className="tabular-nums">{money(totals.subtotal)}</span>
                   </div>
                   <div className="flex justify-between text-muted-foreground">
                     <span>Tax ({invoice.tax_rate}%)</span>
-                    <span className="tabular-nums">{fmt.format(totals.tax)}</span>
+                    <span className="tabular-nums">{money(totals.tax)}</span>
                   </div>
                   <div className="flex justify-between border-t pt-2 font-semibold">
                     <span>Total</span>
-                    <span className="tabular-nums">{fmt.format(totals.total)}</span>
+                    <span className="tabular-nums">{money(totals.total)}</span>
                   </div>
                 </div>
               </CardContent>

@@ -224,6 +224,16 @@ export async function setInvoiceStatusAction(id: string, formData: FormData): Pr
   try {
     await setInvoiceStatus(supabase, user.workspaceId, id, parsed.data.status)
   } catch (e) {
+    // 23505 = unique_violation. Re-opening a VOIDed rent invoice whose (tenancy, month)
+    // has since been regenerated leaves the VOID carve-out of 0027's
+    // invoices_tenancy_period_unique partial index and collides with the newer invoice —
+    // surface that as guidance instead of the raw Postgres constraint message.
+    if ((e as { code?: string })?.code === '23505') {
+      redirectWithError(
+        detailPath,
+        'Rent for this period has already been re-invoiced — edit the newer invoice instead.',
+      )
+    }
     redirectWithError(detailPath, e instanceof Error ? e.message : 'Could not update status.')
   }
 

@@ -1,8 +1,10 @@
 'use client'
 
 import { selectClassName } from '@/components/ui/native-select'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useFormStatus } from 'react-dom'
 import { Upload } from 'lucide-react'
+import { ALLOWED_DOCUMENT_MIME_TYPES } from '@/lib/validation/document'
 import {
   Dialog,
   DialogTrigger,
@@ -54,11 +56,36 @@ const ATTACH_KINDS = [
 
 type AttachKey = (typeof ATTACH_KINDS)[number]['key'] | ''
 
+// The exact server allowlist (src/lib/validation/document.ts), joined for the HTML
+// accept= hint — importing the const (rather than restating the list) makes drift
+// between what the picker offers and what the server accepts impossible.
+const ACCEPT_ATTR = ALLOWED_DOCUMENT_MIME_TYPES.join(',')
+
+// Detects the enclosing form's pending -> settled transition and fires onSettled once.
+// Rendered INSIDE the <form> (useFormStatus only reads the nearest form's status).
+function FormSettledWatcher({ onSettled }: { onSettled: () => void }) {
+  const { pending } = useFormStatus()
+  const wasPending = useRef(false)
+  useEffect(() => {
+    if (wasPending.current && !pending) onSettled()
+    wasPending.current = pending
+  }, [pending, onSettled])
+  return null
+}
+
 // Manager-only "Upload document" dialog. Posts to uploadDocumentAction (a server action):
 // title, document_type, an optional attach-to (an entity-kind select + a dependent id
 // select, so only one link field is submitted), an optional expiry date, and the file.
 // The action revalidates + redirects back with ?error= on failure (surfaced by the page's
-// ErrorToast), so we close optimistically on submit.
+// ErrorToast).
+//
+// DELIBERATE DEVIATION from the house close-optimistically-on-submit dialog pattern
+// (NewAnnouncementDialog & co): this is the one form that ships a multi-megabyte
+// multipart body through the server action, so an optimistic close left NO pending
+// feedback for the seconds a 10 MB file takes — the dialog vanished and nothing said
+// the upload was still running. Instead the dialog stays OPEN with the SubmitButton in
+// its pending state, and FormSettledWatcher closes it when the action settles (success
+// redirect and ?error= redirect both end the pending transition).
 export function UploadDocumentDialog({
   action,
   entities,
@@ -90,16 +117,15 @@ export function UploadDocumentDialog({
           <DialogTitle>Upload document</DialogTitle>
           <DialogDescription>
             Store a lease, permit, certificate, or invoice. Attach it to a property, unit,
-            tenancy, or vendor, or leave it workspace-wide.
+            tenancy, or vendor, or leave it workspace-wide. Attaching to a tenancy shares
+            the document with that resident (even after the lease ends); attaching to a
+            unit or property shares it with the current residents there — vendor-attached
+            and unattached documents stay visible to operators only.
           </DialogDescription>
         </DialogHeader>
 
-        <form
-          action={action}
-          onSubmit={() => setOpen(false)}
-          encType="multipart/form-data"
-          className="flex flex-col gap-3.5"
-        >
+        <form action={action} encType="multipart/form-data" className="flex flex-col gap-3.5">
+          <FormSettledWatcher onSettled={() => setOpen(false)} />
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="title">Title</Label>
             <Input id="title" name="title" required maxLength={200} />
@@ -167,12 +193,7 @@ export function UploadDocumentDialog({
 
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="file">File</Label>
-            <FileInput
-              id="file"
-              name="file"
-              accept="image/jpeg,image/png,image/webp,application/pdf"
-              required
-            />
+            <FileInput id="file" name="file" accept={ACCEPT_ATTR} required />
           </div>
 
           <DialogFooter className="-mx-4 -mb-4 mt-1">

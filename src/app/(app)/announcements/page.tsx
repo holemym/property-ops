@@ -11,8 +11,15 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/com
 import { Badge, StatusBadge } from '@/components/ui/badge'
 import { SubmitButton } from '@/components/tickets/SubmitButton'
 import { NewAnnouncementDialog } from '@/components/announcements/NewAnnouncementDialog'
+import { EditAnnouncementDialog } from '@/components/announcements/EditAnnouncementDialog'
+import { PublishedToast } from '@/components/announcements/PublishedToast'
 import { formatDate } from '@/lib/format-date'
-import { createAnnouncementAction, publishAnnouncementAction, unpublishAnnouncementAction } from './actions'
+import {
+  createAnnouncementAction,
+  publishAnnouncementAction,
+  unpublishAnnouncementAction,
+  updateAnnouncementAction,
+} from './actions'
 
 export default async function AnnouncementsPage() {
   // Managers + accountant hold announcements:read; accountant is read-only (no
@@ -35,6 +42,7 @@ export default async function AnnouncementsPage() {
   return (
     <div className="flex flex-col gap-6">
       <ErrorToast />
+      <PublishedToast />
 
       <PageHeader
         title="Announcements"
@@ -82,7 +90,17 @@ export default async function AnnouncementsPage() {
                     {a.body}
                   </p>
                   {canWrite && (
-                    <div className="flex justify-end">
+                    <div className="flex justify-end gap-2">
+                      <EditAnnouncementDialog
+                        action={updateAnnouncementAction.bind(null, a.id)}
+                        properties={propertyOptions}
+                        announcement={{
+                          id: a.id,
+                          title: a.title,
+                          body: a.body,
+                          propertyId: a.property_id,
+                        }}
+                      />
                       {isPublished ? (
                         <form action={boundUnpublish}>
                           <SubmitButton variant="outline" size="sm" pendingLabel="Updating">

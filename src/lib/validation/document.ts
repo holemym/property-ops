@@ -54,10 +54,23 @@ const DOCUMENT_TYPES = [
 
 // Calendar-date shape (HTML <input type="date"> + Postgres `date`). We validate the shape
 // with a regex rather than z.coerce.date() so the value stays a plain date string
-// end-to-end (no timezone shifting from a Date round-trip). Optional/nullable = no expiry.
+// end-to-end (no timezone shifting from a Date round-trip) — but the regex alone let
+// impossible dates (2026-13-40) through to Postgres, which rejected them with a raw
+// `date/time field value out of range` error. The refine builds a UTC Date (no local-TZ
+// drift) and round-trips it: JS Date normalizes overflow (Feb 30 -> Mar 2), so any
+// component changing means the date never existed. Optional/nullable = no expiry.
 const isoDate = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, 'Expiry must be in YYYY-MM-DD format')
+  .refine((value) => {
+    const [year, month, day] = value.split('-').map(Number)
+    const date = new Date(Date.UTC(year, month - 1, day))
+    return (
+      date.getUTCFullYear() === year &&
+      date.getUTCMonth() === month - 1 &&
+      date.getUTCDate() === day
+    )
+  }, 'Expiry must be a real calendar date')
 
 const optionalUuid = z.string().uuid('Invalid reference').nullable().optional()
 
@@ -79,3 +92,12 @@ export const documentFormSchema = z.object({
 })
 
 export type DocumentFormValues = z.infer<typeof documentFormSchema>
+
+// The metadata-edit subset (updateDocumentAction): everything about the row EXCEPT the
+// stored bytes (no file — storage rows are append-only by design) and document_type
+// (not editable; re-uploading under the right type is rarer than a mis-attachment and
+// out of this dialog's scope). Derived from the upload schema so the two can never
+// drift on shared fields.
+export const documentUpdateSchema = documentFormSchema.omit({ documentType: true })
+
+export type DocumentUpdateValues = z.infer<typeof documentUpdateSchema>

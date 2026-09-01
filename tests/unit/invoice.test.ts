@@ -144,6 +144,10 @@ describe('isInvoiceOverdue', () => {
     expect(isInvoiceOverdue({ status: 'PARTIAL', due_date: '2026-07-01' }, TODAY)).toBe(true)
   })
 
+  it('a stored-OVERDUE invoice past its due date is overdue (never vanishes from the filter)', () => {
+    expect(isInvoiceOverdue({ status: 'OVERDUE', due_date: '2026-07-01' }, TODAY)).toBe(true)
+  })
+
   it('due exactly today is NOT yet overdue (strict <)', () => {
     expect(isInvoiceOverdue({ status: 'SENT', due_date: TODAY }, TODAY)).toBe(false)
   })

@@ -254,7 +254,15 @@ export type InvoiceLineItem = {
 // roadmap v2 §2); the `Notification` row type itself stays local to
 // src/lib/data/notifications.ts, following the src/lib/data/tenants.ts (0025)
 // precedent. Written by src/lib/notifications/notify-inapp.ts.
-export type NotificationType = 'TICKET_ASSIGNED' | 'TICKET_STATUS_CHANGED' | 'TICKET_COMMENT'
+// ANNOUNCEMENT_PUBLISHED (migration 0034) is the first NON-ticket type: written by
+// publishAnnouncementAction's fan-out to the announcement's tenant/guest audience
+// (src/lib/notifications/announcement-audience.ts); its href is portal-absolute
+// (/portal/announcements), so resolveNotificationHref passes it through untouched.
+export type NotificationType =
+  | 'TICKET_ASSIGNED'
+  | 'TICKET_STATUS_CHANGED'
+  | 'TICKET_COMMENT'
+  | 'ANNOUNCEMENT_PUBLISHED'
 
 // Auth audit event type (migration 0028, Track S2.2). Written by
 // src/lib/audit/log-auth-event.ts (`logAuthEvent`) from the auth server

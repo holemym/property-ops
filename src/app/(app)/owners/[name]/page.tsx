@@ -1,4 +1,4 @@
-import { formatMoneyExact } from '@/lib/format-money'
+import { formatMoneyIn } from '@/lib/format-money'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { ArrowLeft, Download } from 'lucide-react'
@@ -27,10 +27,10 @@ import {
 
 import { formatDate } from '@/lib/format-date'
 
-const eur = { format: formatMoneyExact }
-
 // One owner's statement — every invoice billed to them, with billed / paid / outstanding
-// and a printable version. Finance-gated. The owner is keyed by party name (URL-encoded).
+// per currency, and a printable version. Finance-gated. The owner is keyed by party name
+// (URL-encoded). Money renders via formatMoneyIn: one line per currency, never summed
+// across currencies.
 export default async function OwnerStatementPage({
   params,
 }: {
@@ -60,6 +60,7 @@ export default async function OwnerStatementPage({
 
   const rows: OwnerInvoiceRow[] = owned.map((inv) => ({
     name: inv.party_name,
+    currency: inv.currency,
     total: totalFor(inv.id, inv.tax_rate),
     status: inv.status,
   }))
@@ -74,6 +75,7 @@ export default async function OwnerStatementPage({
       issueDate: inv.issue_date,
       dueDate: inv.due_date,
       status: inv.status,
+      currency: inv.currency,
       total: totalFor(inv.id, inv.tax_rate),
     }))
 
@@ -106,14 +108,21 @@ export default async function OwnerStatementPage({
         }
       />
 
-      {/* Summary */}
+      {/* Summary — one value per currency (a single line in the overwhelming single-currency case). */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <SummaryCard label="Billed" value={eur.format(summary.billed)} />
-        <SummaryCard label="Paid" value={eur.format(summary.paid)} muted />
+        <SummaryCard
+          label="Billed"
+          values={summary.totals.map((t) => formatMoneyIn(t.currency, t.billed))}
+        />
+        <SummaryCard
+          label="Paid"
+          values={summary.totals.map((t) => formatMoneyIn(t.currency, t.paid))}
+          muted
+        />
         <SummaryCard
           label="Outstanding"
-          value={eur.format(summary.outstanding)}
-          tone={summary.outstanding > 0 ? 'amber' : undefined}
+          values={summary.totals.map((t) => formatMoneyIn(t.currency, t.outstanding))}
+          tone={summary.totals.some((t) => t.outstanding > 0) ? 'amber' : undefined}
         />
       </div>
 
@@ -147,7 +156,9 @@ export default async function OwnerStatementPage({
                 <TableCell className="relative z-10 px-4 py-3">
                   <StatusBadge kind="invoice_status" value={l.status} />
                 </TableCell>
-                <TableCell className="px-4 py-3 text-right tabular-nums">{eur.format(l.total)}</TableCell>
+                <TableCell className="px-4 py-3 text-right tabular-nums">
+                  {formatMoneyIn(l.currency, l.total)}
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -156,25 +167,19 @@ export default async function OwnerStatementPage({
     </div>
 
     {/* Print-only layout — a sibling OUTSIDE the print:hidden wrapper so it survives print. */}
-    <OwnerStatementPrint
-      ownerName={name}
-      lines={statementLines}
-      billed={summary.billed}
-      paid={summary.paid}
-      outstanding={summary.outstanding}
-    />
+    <OwnerStatementPrint ownerName={name} lines={statementLines} totals={summary.totals} />
     </>
   )
 }
 
 function SummaryCard({
   label,
-  value,
+  values,
   muted,
   tone,
 }: {
   label: string
-  value: string
+  values: string[]
   muted?: boolean
   tone?: 'amber'
 }) {
@@ -191,7 +196,11 @@ function SummaryCard({
                 : 'text-2xl font-semibold tabular-nums text-foreground'
           }
         >
-          {value}
+          {values.map((v) => (
+            <span key={v} className="block">
+              {v}
+            </span>
+          ))}
         </span>
       </CardContent>
     </Card>

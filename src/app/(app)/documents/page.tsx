@@ -4,7 +4,7 @@ import { can } from '@/lib/auth/permissions'
 import { createClient } from '@/lib/supabase/server'
 import { signStoragePaths } from '@/lib/storage/sign'
 import { listDocuments, DOCUMENTS_BUCKET } from '@/lib/data/documents'
-import { uploadDocumentAction } from './actions'
+import { uploadDocumentAction, updateDocumentAction } from './actions'
 import { listProperties } from '@/lib/data/properties'
 import { listUnits } from '@/lib/data/units'
 import { listTenancies } from '@/lib/data/tenancies'
@@ -77,6 +77,15 @@ export default async function DocumentsPage() {
     vendors: vendors.map((v) => ({ id: v.id, label: v.company_name })),
   }
 
+  // The EDIT dialog additionally offers tickets: the upload UI never sets a ticket link,
+  // but the schema/DB allow one, so editing must be able to restate it (replace
+  // semantics would otherwise silently detach a ticket-attached document).
+  const editEntityOptions = {
+    ...entityOptions,
+    tickets: tickets.map((t) => ({ id: t.id, label: t.title })),
+  }
+  const edit = canWrite ? { action: updateDocumentAction, entities: editEntityOptions } : undefined
+
   return (
     <div className="flex flex-col gap-6">
       <ErrorToast />
@@ -105,7 +114,7 @@ export default async function DocumentsPage() {
           }
         />
       ) : (
-        <DocumentsTable rows={rows} maps={maps} />
+        <DocumentsTable rows={rows} maps={maps} edit={edit} />
       )}
     </div>
   )

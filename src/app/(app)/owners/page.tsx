@@ -1,4 +1,4 @@
-import { formatMoneyExact } from '@/lib/format-money'
+import { formatMoneyIn } from '@/lib/format-money'
 import Link from 'next/link'
 import { Users } from 'lucide-react'
 import { requirePermission } from '@/lib/auth/session'
@@ -17,9 +17,9 @@ import {
 import { EmptyState } from '@/components/common/EmptyState'
 import { PageHeader } from '@/components/layout/PageHeader'
 
-// Cent-exact, matching the per-owner statement page one click deeper — the same
-// Billed/Paid/Outstanding figures used to render whole-euro here and with cents there.
-const eur = { format: formatMoneyExact }
+// Cent-exact, matching the per-owner statement page one click deeper. Money renders
+// per currency (formatMoneyIn) — an owner invoiced in two currencies gets one line per
+// currency; amounts are never summed across currencies.
 
 // Owner statements — a per-owner rollup of the invoices billed to them (party_type OWNER).
 // Finance-gated read, same audience as invoices/finance. An "owner" is a distinct party
@@ -42,6 +42,7 @@ export default async function OwnersPage() {
   }
   const rows: OwnerInvoiceRow[] = invoices.map((inv) => ({
     name: inv.party_name,
+    currency: inv.currency,
     total: invoiceTotals(linesByInvoice.get(inv.id) ?? [], inv.tax_rate).total,
     status: inv.status,
   }))
@@ -76,20 +77,25 @@ export default async function OwnersPage() {
                     {o.invoiceCount} {o.invoiceCount === 1 ? 'invoice' : 'invoices'}
                   </span>
                 </div>
-                <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-                  <span className="tabular-nums">
-                    Billed {eur.format(o.billed)} · Paid {eur.format(o.paid)}
-                  </span>
-                  <span
-                    className={
-                      o.outstanding > 0
-                        ? 'shrink-0 font-medium tabular-nums text-amber-700 dark:text-amber-400'
-                        : 'shrink-0 tabular-nums'
-                    }
+                {o.totals.map((t) => (
+                  <div
+                    key={t.currency}
+                    className="flex items-center justify-between gap-2 text-xs text-muted-foreground"
                   >
-                    {eur.format(o.outstanding)} due
-                  </span>
-                </div>
+                    <span className="tabular-nums">
+                      Billed {formatMoneyIn(t.currency, t.billed)} · Paid {formatMoneyIn(t.currency, t.paid)}
+                    </span>
+                    <span
+                      className={
+                        t.outstanding > 0
+                          ? 'shrink-0 font-medium tabular-nums text-amber-700 dark:text-amber-400'
+                          : 'shrink-0 tabular-nums'
+                      }
+                    >
+                      {formatMoneyIn(t.currency, t.outstanding)} due
+                    </span>
+                  </div>
+                ))}
               </Link>
             </li>
           ))}
@@ -121,18 +127,29 @@ export default async function OwnersPage() {
                   <TableCell className="px-4 py-3 text-right tabular-nums text-muted-foreground">
                     {o.invoiceCount}
                   </TableCell>
-                  <TableCell className="px-4 py-3 text-right tabular-nums">{eur.format(o.billed)}</TableCell>
-                  <TableCell className="px-4 py-3 text-right tabular-nums text-muted-foreground">
-                    {eur.format(o.paid)}
+                  <TableCell className="px-4 py-3 text-right tabular-nums">
+                    {o.totals.map((t) => (
+                      <div key={t.currency}>{formatMoneyIn(t.currency, t.billed)}</div>
+                    ))}
                   </TableCell>
-                  <TableCell
-                    className={
-                      o.outstanding > 0
-                        ? 'px-4 py-3 text-right font-medium tabular-nums text-amber-700 dark:text-amber-400'
-                        : 'px-4 py-3 text-right tabular-nums text-muted-foreground'
-                    }
-                  >
-                    {eur.format(o.outstanding)}
+                  <TableCell className="px-4 py-3 text-right tabular-nums text-muted-foreground">
+                    {o.totals.map((t) => (
+                      <div key={t.currency}>{formatMoneyIn(t.currency, t.paid)}</div>
+                    ))}
+                  </TableCell>
+                  <TableCell className="px-4 py-3 text-right tabular-nums">
+                    {o.totals.map((t) => (
+                      <div
+                        key={t.currency}
+                        className={
+                          t.outstanding > 0
+                            ? 'font-medium text-amber-700 dark:text-amber-400'
+                            : 'text-muted-foreground'
+                        }
+                      >
+                        {formatMoneyIn(t.currency, t.outstanding)}
+                      </div>
+                    ))}
                   </TableCell>
                 </TableRow>
               ))}

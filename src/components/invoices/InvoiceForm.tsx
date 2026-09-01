@@ -1,7 +1,7 @@
 'use client'
 
 import { selectClassName } from '@/components/ui/native-select'
-import { formatMoneyExact } from '@/lib/format-money'
+import { formatMoneyIn } from '@/lib/format-money'
 import { useState } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
@@ -57,8 +57,6 @@ export type InvoiceFormDefaults = {
 
 const EMPTY_LINE: LineRow = { description: '', quantity: '1', unitAmount: '0' }
 
-const fmt = formatMoneyExact
-
 function today(): string {
   return new Date().toISOString().slice(0, 10)
 }
@@ -86,6 +84,16 @@ export function InvoiceForm({
     defaults.lines && defaults.lines.length > 0 ? defaults.lines : [{ ...EMPTY_LINE }],
   )
   const [taxRate, setTaxRate] = useState(defaults.taxRate ?? '0')
+  const [currency, setCurrency] = useState(defaults.currency ?? 'EUR')
+
+  // Live money preview in the form's own currency. Mid-edit the field can hold a
+  // malformed code ('EU'), and Intl throws on anything but a 3-letter code — fall back
+  // to EUR until it's well-formed again; the server re-validates the real value on
+  // submit. An unknown-but-well-formed code renders as e.g. 'XYZ 12.00', which is fine.
+  const currencyCode = /^[A-Za-z]{3}$/.test(currency.trim())
+    ? currency.trim().toUpperCase()
+    : 'EUR'
+  const fmt = (amount: number) => formatMoneyIn(currencyCode, amount)
 
   function updateLine(index: number, patch: Partial<LineRow>) {
     setLines((prev) => prev.map((l, i) => (i === index ? { ...l, ...patch } : l)))
@@ -171,7 +179,8 @@ export function InvoiceForm({
           <Input
             id="currency"
             name="currency"
-            defaultValue={defaults.currency ?? 'EUR'}
+            value={currency}
+            onChange={(e) => setCurrency(e.target.value)}
             maxLength={8}
           />
         </div>
@@ -284,13 +293,14 @@ export function InvoiceForm({
                 <Input
                   aria-label={`Line ${i + 1} description`}
                   placeholder="Description"
+                  required
                   value={line.description}
                   onChange={(e) => updateLine(i, { description: e.target.value })}
                 />
                 <Input
                   aria-label={`Line ${i + 1} quantity`}
                   type="number"
-                  min={0}
+                  min={0.01}
                   step="0.01"
                   className="sm:text-right"
                   value={line.quantity}

@@ -51,6 +51,33 @@ export type EntityMaps = {
 
 export type EntityLabel = { kind: string; name: string } | null
 
+// Whether (and to whom) a document is visible on the resident portal, derived purely
+// from its attachment fields — the exact rule documents_select_own_tenant +
+// tenant_can_read_document (migration 0030) enforce, restated here so operators can SEE
+// it per row without any extra query:
+//   * tenancy-attached  -> that tenancy's tenant, INCLUDING after the lease ends (a
+//     resident always keeps their own historical lease);
+//   * unit/property-attached -> every tenant holding an ACTIVE tenancy there (former
+//     tenants lose access — the 0030 HIGH-finding guard);
+//   * vendor-/ticket-attached or unattached -> operators only, never residents.
+// Returns null for the operators-only case so callers render nothing.
+export function residentVisibility(doc: {
+  property_id: string | null
+  unit_id: string | null
+  tenancy_id: string | null
+}): { hint: string } | null {
+  if (doc.tenancy_id) {
+    return { hint: "Visible on the resident portal to this tenancy's tenant, including after the lease ends." }
+  }
+  if (doc.unit_id) {
+    return { hint: 'Visible on the resident portal to current tenants of this unit.' }
+  }
+  if (doc.property_id) {
+    return { hint: 'Visible on the resident portal to current tenants of this property.' }
+  }
+  return null
+}
+
 // Resolve a document's single attached entity (at most one link is set) to a
 // { kind, name } pair for display, e.g. "Unit · Top 1". Returns null when the document is
 // workspace-level (no link) or the linked row is missing from the rosters, so the caller

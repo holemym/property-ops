@@ -137,6 +137,44 @@ export async function createAnnouncement(
   return data as Announcement
 }
 
+export type UpdateAnnouncementInput = {
+  title: string
+  body: string
+  // null = workspace-wide; set = targeted at one property. Always written (replace
+  // semantics — an edit fully restates the audience), matching the create shape; the
+  // action layer re-validates a non-null id belongs to this workspace first.
+  propertyId: string | null
+}
+
+/**
+ * Edit an announcement's content/audience in place (title/body/property scope).
+ * Status and published_at are deliberately NOT touched here — the publish/draft flip
+ * stays its own explicit action (setAnnouncementStatus below), so an edit to a live
+ * notice never silently unpublishes it and an edit to a draft never publishes it.
+ * Workspace-scoped at the query layer; announcements_update_manager (0030) is the
+ * real enforcement.
+ */
+export async function updateAnnouncement(
+  supabase: SupabaseClient,
+  workspaceId: string,
+  id: string,
+  input: UpdateAnnouncementInput
+): Promise<Announcement> {
+  const { data, error } = await supabase
+    .from('announcements')
+    .update({
+      title: input.title,
+      body: input.body,
+      property_id: input.propertyId,
+    })
+    .eq('workspace_id', workspaceId)
+    .eq('id', id)
+    .select()
+    .single()
+  if (error) throw error
+  return data as Announcement
+}
+
 /**
  * Transition status (Publish / move back to Draft). Stamps published_at on entering
  * PUBLISHED and clears it on leaving — symmetric with setInvoiceStatus's paid_at

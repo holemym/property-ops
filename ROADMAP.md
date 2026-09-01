@@ -7,7 +7,78 @@ of truth for what to build next.** Strategy lives in
 
 ---
 
-## ▶ HANDOVER — current state (as of 2026-07-30, post rentee portal + loading polish)
+## ▶ HANDOVER — current state (as of 2026-09-01, post virtual-journey audit + fix wave)
+
+**VIRTUAL-JOURNEY AUDIT + FIX WAVE SHIPPED 2026-09-01** (677 tests, lint + build green).
+Six read-only tracers walked the owner journey (auth/onboarding, tickets+calendar,
+property→tenancy→invite, settings/users/MFA, documents+announcements, finance) plus a
+tenant-portal walkthrough and a perf sweep; ~45 verified findings were then implemented by
+five builders in one round. Highlights, by class:
+
+- **SECURITY (was live!):** invite-attach account hijack fixed — the email-exists path ran
+  an unconditional service-role `profiles.update`, letting any OWNER pull ANY known email's
+  account into their workspace / demote staff to TENANT / self-demote via re-invite. Now a
+  pure decision core (`src/lib/auth/invite-attach.ts`, 9 tests) + race-proof
+  `.is('workspace_id', null)` conditional update. Also: the three CSV export Route Handlers
+  bypassed the MFA step-up gate (AAL1 pending-challenge sessions could pull finance CSVs) —
+  closed via `src/lib/auth/route-guard.ts`; invite endpoints rate-limited; stale ?error
+  banners cleared on success.
+- **Perceived speed:** skeletons now reveal after 150ms (globals.css `skeleton-appear`) so
+  fast navigations NEVER flash a wireframe; page fades cut 320→120ms; middleware getUser()
+  → getClaims() (kills the per-request auth round-trip — flip Supabase to asymmetric
+  signing keys to make it zero-network); `staleTimes.dynamic: 30` router cache; property
+  hub getProperty folded into its Promise.all; all 41 loaders wrapped in LoadingRegion.
+- **Owner flow:** post-signup "Check your email" screen was unreachable (P0, dead code) —
+  fixed; signup password rule client/server aligned (10); dashboard "Finish setting up"
+  checklist (property→units→tenancies→residents, head-count driven, self-retiring, new
+  `src/lib/data/setup.ts`); archived-only portfolios get onboarding again; property hub
+  "Add unit" CTA + `?propertyId=` prefill on /units/new; /workspace/new got sign-out escape
+  + currency select.
+- **Tickets:** scheduled_at finally writable (Schedule card + action → calendar lane live);
+  vendor complete/decline no longer lands on "invalid link" (/job/done); board drags now
+  send the same notifications as detail transitions (shared `status-change.ts`); →ASSIGNED
+  blocked with no assignee; unit-scope filter chip; Firefox drag fixed; calendar chips link.
+- **Tenancies:** overlap + end-before-start now rejected (app check `occupancy/overlap.ts`
+  + DB backstops in **0033**); tenancies EDITABLE at last (EditTenancyDialog + End-tenancy
+  shortcut); errors return to the host page (returnTo); success toasts; unit hub status
+  derived from coverage (no more "Vacant" next to "Current tenant").
+- **Portal:** tenant reports/comments now notify managers in-app (was: silent!); "invitation
+  sent" honest for existing accounts (attached vs invited); thread author attribution
+  (You/manager name); ?created=1 confirmation; own-home preselect on report form; change-
+  password in account menu; tenant on operator URL → /portal/home (was: crash page);
+  unlinked-tenancy warning ("rent charges won't reach the portal").
+- **Records:** announcement publish fans out in-app notifications (**0034** enum value
+  ANNOUNCEMENT_PUBLISHED); announcements + documents now editable (Edit dialogs,
+  re-attach/detach); "Resident-visible" badges on documents; .doc/.docx accept fix;
+  upload dialog stays open while uploading; real-date expiry validation; zero-reach
+  publish notice.
+- **Finance:** owner statements/CSV now group per currency (never sum across; cent-conserving,
+  new tests); stored-OVERDUE unified with the derived predicate; insights no longer hides
+  money metrics at zero tickets; ledger rows cent-exact; invoice CSV honors overdue+property
+  filters; invoiceCount head-count (1000-row cap bug); friendly 23505 on reopen-after-
+  regenerate; form min/required guards; formatter sweep.
+
+**⚠ MIGRATIONS 0033 + 0034 ARE AUTHORED BUT NOT APPLIED** (user action): 0033 = 9
+query-justified indexes + btree_gist + tenancy EXCLUDE/CHECK backstops (failure-tolerant
+DO blocks — NOTICEs instead of aborting if live rows violate); 0034 = enum-only
+ANNOUNCEMENT_PUBLISHED. Both folded into schema_bundle.sql. Until 0034 runs, announcement
+publish still works — the fan-out is best-effort and its inserts just fail quietly.
+
+**Known follow-ups (deliberate):** TICKET_CREATED notification type (tenant new-request
+fan-out currently reuses TICKET_STATUS_CHANGED — wants its own enum value + icon in a
+future migration); tenant-filed tickets email leg (in-app only today); portal photo upload
+at report time (banner points to the existing detail-page upload instead); RLS initplan
+wrapping (`(select auth.uid())` pattern — HIGH perf lever before data grows, needs its own
+adversarial review round); unbounded fetch stacks on calendar/insights/documents/finance/
+occupancy/map (perf sweep list, MED); pre-existing tsc drift in 3 test fixture files
+(task chip spawned); pending-invite visibility/resend on /settings/users; MFA
+enroll/unenroll audit events; e-sign does not exist (product decision); proration +
+manual-invoice dedupe in Generate rent (product decision — Austrian aliquot norm);
+mid-period meter decision (unchanged, recommend option B).
+
+---
+
+## ▶ previous handover (2026-07-30, post rentee portal + loading polish)
 
 **WHOLE-APP POLISH PASS SHIPPED 2026-08-26** (`f1ebdf5`..`e4ff08e`, 4 commits, 611 tests):
 three read-only reviews (cleanliness / UI consistency / loading+perf) triaged and

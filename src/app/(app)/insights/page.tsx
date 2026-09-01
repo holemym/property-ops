@@ -49,7 +49,11 @@ export default async function InsightsPage() {
     canReadFinance ? listExpenseRecords(supabase, user.workspaceId) : Promise.resolve([]),
   ])
 
-  if (tickets.length === 0) {
+  // Combined empty state ONLY when both sources are empty. Finance rows alone (income /
+  // expenses without any tickets) still render the finance-driven cards below — the
+  // ticket-driven cards get their own scoped empty state instead.
+  const hasFinanceRows = income.length > 0 || expenses.length > 0
+  if (tickets.length === 0 && !hasFinanceRows) {
     return (
       <div className="flex flex-col gap-6">
         <PageHeader
@@ -58,8 +62,8 @@ export default async function InsightsPage() {
         />
         <EmptyState
           icon={<ChartColumn />}
-          title="No tickets to analyse yet"
-          body="Log maintenance tickets with costs and outcomes, and this page fills in spend, vendor benchmarks, and cycle times."
+          title="Nothing to analyse yet"
+          body="Log maintenance tickets or record income and expenses, and this page fills in spend, vendor benchmarks, cycle times, and profit."
         />
       </div>
     )
@@ -115,9 +119,19 @@ export default async function InsightsPage() {
         subtitle="Spend, vendors, and cycle times across the portfolio."
       />
 
+      {/* Ticket-driven section — scoped empty state so finance-driven cards below still
+          render when finance rows exist without any tickets. */}
+      {tickets.length === 0 ? (
+        <EmptyState
+          icon={<ChartColumn />}
+          title="No tickets to analyse yet"
+          body="Log maintenance tickets with costs and outcomes, and this page fills in spend, vendor benchmarks, and cycle times."
+        />
+      ) : (
+      <>
       {/* Top metric strip */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Metric label="Total spend" value={formatMoney(overview.totalActualCost)} />
+        <Metric label="Maintenance spend" value={formatMoney(overview.totalActualCost)} />
         <Metric label="Open-cost exposure" value={formatMoney(overview.openCostExposure)} />
         <Metric label="Avg resolve time" value={formatDays(cycles.avgResolveDays)} />
         <Metric label="Tickets" value={formatCount(tickets.length)} />
@@ -190,9 +204,12 @@ export default async function InsightsPage() {
           <TrendChart points={monthly} />
         </CardContent>
       </Card>
+      </>
+      )}
 
       {/* Profit per unit — only shown to finance-readers, and only once finance rows
-          exist. Income − maintenance cost per unit; cost-only units read negative. */}
+          exist. Income − maintenance cost per unit; cost-only units read negative.
+          Finance-driven, so it renders even when there are no tickets at all. */}
       {canReadFinance && (
         <Card>
           <CardHeader>
@@ -208,24 +225,26 @@ export default async function InsightsPage() {
         </Card>
       )}
 
-      {/* Cycle time by priority */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Cycle time by priority</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            {PRIORITY_ORDER.map((p) => (
-              <div key={p} className="flex flex-col gap-1 rounded-lg bg-muted/40 px-3 py-2.5">
-                <dt className="text-xs text-muted-foreground capitalize">{humanize(p)}</dt>
-                <dd className="text-lg font-semibold tabular-nums text-foreground">
-                  {formatDays(cycles.byPriority[p])}
-                </dd>
-              </div>
-            ))}
-          </dl>
-        </CardContent>
-      </Card>
+      {/* Cycle time by priority — ticket-driven, hidden with the rest when no tickets. */}
+      {tickets.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Cycle time by priority</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              {PRIORITY_ORDER.map((p) => (
+                <div key={p} className="flex flex-col gap-1 rounded-lg bg-muted/40 px-3 py-2.5">
+                  <dt className="text-xs text-muted-foreground capitalize">{humanize(p)}</dt>
+                  <dd className="text-lg font-semibold tabular-nums text-foreground">
+                    {formatDays(cycles.byPriority[p])}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 }

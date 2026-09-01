@@ -1,11 +1,14 @@
 import type { IncomeRecord, ExpenseRecord } from '@/types/domain'
 import { Badge } from '@/components/ui/badge'
-import { formatMoney, formatDate, humanizeCategory } from './shared'
+import { formatMoneyExact } from '@/lib/format-money'
+import { formatDate, humanizeCategory } from './shared'
 
 // Read-only tables of recent income / expense entries. Category renders as a tone-tinted
 // Badge pill (blue for income, amber for expense — saturated colour stays reserved for
 // meaning, matching the app's badge tones). A resolved property/unit label sits under the
 // category as context; a linked ticket shows as a subtle "· ticket" note on expenses.
+// Individual booked amounts are cent-exact (formatMoneyExact) — whole-euro rounding stays
+// reserved for the metric-strip rollups.
 
 export type EntryLabels = {
   // unit_id / property_id → a human label ('Alpha · 1A' or 'Alpha').
@@ -44,7 +47,7 @@ export function IncomeTable({
                 {labelFor(r) ?? <span className="text-muted-foreground">Portfolio</span>}
               </td>
               <td className="py-2 text-right tabular-nums font-medium text-foreground">
-                {formatMoney(r.amount)}
+                {formatMoneyExact(r.amount)}
               </td>
             </tr>
           ))}
@@ -95,7 +98,7 @@ export function ExpenseTable({
                   )}
                 </td>
                 <td className="py-2 text-right tabular-nums font-medium text-foreground">
-                  {formatMoney(r.amount)}
+                  {formatMoneyExact(r.amount)}
                 </td>
               </tr>
             )

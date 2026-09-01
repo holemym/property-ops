@@ -6,7 +6,7 @@ import type {
   InvoicePartyType,
   InvoiceDirection,
 } from '@/types/domain'
-import { formatInvoiceNumber } from '@/lib/invoices/compute'
+import { formatInvoiceNumber, OVERDUE_ELIGIBLE_STATUSES } from '@/lib/invoices/compute'
 
 // RLS scopes every query to the workspace + finance-eligible roles (0019). This layer
 // applies the workspace scope + optional filters and shapes writes; it never sets the
@@ -17,10 +17,11 @@ export type InvoiceFilters = {
   partyType?: InvoicePartyType
   direction?: InvoiceDirection
   propertyId?: string
-  // Derived "Overdue" quick filter (Track P3, spec §3) — NOT a stored status. Matches
-  // due_date < today AND status in (SENT, PARTIAL), the same predicate as
-  // src/lib/invoices/compute.ts's isInvoiceOverdue. Only listInvoicesPage (the /invoices
-  // list) implements it; listInvoices/CSV export are unaffected (out of spec scope).
+  // "Overdue" quick filter (Track P3, spec §3). Matches due_date < today AND status in
+  // OVERDUE_ELIGIBLE_STATUSES (SENT, PARTIAL, plus a stored OVERDUE) — the same
+  // predicate as src/lib/invoices/compute.ts's isInvoiceOverdue derivation. Honoured by
+  // both listInvoicesPage (the /invoices list) and listInvoices (the CSV export), so
+  // the export matches what the filtered screen shows.
   overdue?: boolean
 }
 
@@ -34,6 +35,10 @@ export async function listInvoices(
   if (filters.partyType) query = query.eq('party_type', filters.partyType)
   if (filters.direction) query = query.eq('direction', filters.direction)
   if (filters.propertyId) query = query.eq('property_id', filters.propertyId)
+  if (filters.overdue) {
+    const todayIso = new Date().toISOString().slice(0, 10)
+    query = query.lt('due_date', todayIso).in('status', OVERDUE_ELIGIBLE_STATUSES)
+  }
   const { data, error } = await query.order('created_at', { ascending: false })
   if (error) throw error
   return data as Invoice[]
@@ -165,7 +170,7 @@ export async function listInvoicesPage(
     if (f.partyType) query = query.eq('party_type', f.partyType)
     if (f.direction) query = query.eq('direction', f.direction)
     if (f.propertyId) query = query.eq('property_id', f.propertyId)
-    if (f.overdue) query = query.lt('due_date', todayIso).in('status', ['SENT', 'PARTIAL'])
+    if (f.overdue) query = query.lt('due_date', todayIso).in('status', OVERDUE_ELIGIBLE_STATUSES)
     const { data, count, error } = await query
       .order('created_at', { ascending: false })
       .range(from, from + pageSize - 1)
@@ -220,10 +225,14 @@ export type CreateInvoiceInput = {
 // below and the invoices_number_workspace_unique constraint, this is safe against the rare
 // concurrent-create collision without a DB sequence.
 async function invoiceCount(supabase: SupabaseClient, workspaceId: string): Promise<number> {
-  const { data, error } = await supabase
-    .from('invoices').select('id').eq('workspace_id', workspaceId)
+  // Head-only exact count — counting fetched ids breaks past PostgREST's 1000-row page
+  // cap (the fetch silently truncates, so number allocation would repeat sequences).
+  const { count, error } = await supabase
+    .from('invoices')
+    .select('id', { count: 'exact', head: true })
+    .eq('workspace_id', workspaceId)
   if (error) throw error
-  return data?.length ?? 0
+  return count ?? 0
 }
 
 /**

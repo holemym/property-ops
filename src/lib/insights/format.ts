@@ -9,12 +9,15 @@
 // Whole-euro EUR — re-exported from THE shared formatter (src/lib/format-money).
 export { formatMoney } from '@/lib/format-money'
 
+// Locale pinned to 'en-IE' like every other formatter in src/lib, so server and client
+// render identically regardless of the runtime's locale.
+
 export function formatDays(value: number | null): string {
   if (value === null) return '—'
   const rounded = Math.round(value)
-  return `${rounded.toLocaleString()} ${rounded === 1 ? 'day' : 'days'}`
+  return `${rounded.toLocaleString('en-IE')} ${rounded === 1 ? 'day' : 'days'}`
 }
 
 export function formatCount(value: number): string {
-  return Math.round(value).toLocaleString()
+  return Math.round(value).toLocaleString('en-IE')
 }

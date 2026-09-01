@@ -105,11 +105,14 @@ export default async function InvoicesPage({
 
   const isFiltered = Boolean(status || partyType || direction || overdue)
 
-  // Carry the CURRENT filters onto the export link so the CSV matches what's on screen.
+  // Carry the CURRENT filters onto the export link so the CSV matches what's on screen —
+  // including the property scope and the Overdue quick filter.
   const exportParams = new URLSearchParams({
     ...(status ? { status } : {}),
     ...(partyType ? { partyType } : {}),
     ...(direction ? { direction } : {}),
+    ...(propertyId ? { propertyId } : {}),
+    ...(overdue ? { overdue: '1' } : {}),
   }).toString()
   const exportHref = exportParams ? `/invoices/export?${exportParams}` : '/invoices/export'
 

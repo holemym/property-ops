@@ -81,7 +81,7 @@ export function AddIncomeDialog({
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="amount">Amount (EUR)</Label>
-              <Input id="amount" name="amount" type="number" step="any" min="0" required />
+              <Input id="amount" name="amount" type="number" step="any" min="0.01" required />
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="category">Category</Label>
@@ -159,7 +159,7 @@ export function AddExpenseDialog({
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="amount">Amount (EUR)</Label>
-              <Input id="amount" name="amount" type="number" step="any" min="0" required />
+              <Input id="amount" name="amount" type="number" step="any" min="0.01" required />
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="category">Category</Label>

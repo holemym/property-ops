@@ -38,9 +38,14 @@ export function formatInvoiceNumber(sequence: number, year: number): string {
 }
 
 // Statuses "Generate rent" (Track P3) or a manual Send can leave sitting unpaid past
-// their due date. Only these two are eligible — DRAFT hasn't been sent yet, PAID/VOID
-// are terminal, so neither can be "overdue" in any useful sense.
-const OVERDUE_ELIGIBLE_STATUSES = new Set<InvoiceStatus>(['SENT', 'PARTIAL'])
+// their due date — plus a stored 'OVERDUE' (an operator can set it explicitly via the
+// status actions), which must never vanish from the word "overdue". DRAFT hasn't been
+// sent yet, PAID/VOID are terminal, so neither can be "overdue" in any useful sense.
+// Exported as a list so the data layer's Overdue quick-filter predicate
+// (src/lib/data/invoices.ts) matches this derivation exactly — the filter, the badge,
+// and the CSV export all mean the same thing.
+export const OVERDUE_ELIGIBLE_STATUSES: InvoiceStatus[] = ['SENT', 'PARTIAL', 'OVERDUE']
+const OVERDUE_ELIGIBLE = new Set<InvoiceStatus>(OVERDUE_ELIGIBLE_STATUSES)
 
 /**
  * Whether an invoice should show as OVERDUE right now — DERIVED and display-only (spec
@@ -57,6 +62,6 @@ export function isInvoiceOverdue(
   return (
     invoice.due_date !== null &&
     invoice.due_date < todayIso &&
-    OVERDUE_ELIGIBLE_STATUSES.has(invoice.status)
+    OVERDUE_ELIGIBLE.has(invoice.status)
   )
 }

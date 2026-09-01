@@ -1,5 +1,6 @@
 import { getCurrentUser } from '@/lib/auth/session'
 import { can } from '@/lib/auth/permissions'
+import { routeMfaSatisfied } from '@/lib/auth/route-guard'
 import { createClient } from '@/lib/supabase/server'
 import { listInvoices, listLineItemsForWorkspace } from '@/lib/data/invoices'
 import { invoiceTotals } from '@/lib/invoices/compute'
@@ -16,7 +17,8 @@ import type {
 } from '@/types/domain'
 
 // GET /invoices/export — streams the workspace's invoices (honouring the same
-// status/partyType/direction filters as the list page) as a CSV. Reads are RLS-scoped
+// status/partyType/direction/propertyId filters and the Overdue quick filter as the list
+// page) as a CSV. Reads are RLS-scoped
 // (listInvoices filters by workspace_id under the finance SELECT policy) and this handler
 // gates on finance:read on top. A Route Handler can't use requirePermission (it redirect()s
 // / throws for the page error boundary), so we resolve the user directly and return 401/403
@@ -55,6 +57,11 @@ export async function GET(request: Request) {
   if (!user.workspaceId || !can(user.role, 'finance:read')) {
     return new Response('Not permitted', { status: 403 })
   }
+  // MFA step-up: an enrolled user's AAL1 session (challenge still pending) must not
+  // pull CSVs the page layer would block — see route-guard.ts.
+  if (!(await routeMfaSatisfied())) {
+    return new Response('Two-factor challenge required', { status: 401 })
+  }
 
   // Same enum guard as the invoices list page — invalid values are ignored rather than
   // 400-ing at PostgREST.
@@ -71,10 +78,16 @@ export async function GET(request: Request) {
   const direction = invoiceDirectionEnum.safeParse(rawDirection).success
     ? (rawDirection as InvoiceDirection)
     : undefined
+  // Same UUID guard + overdue flag shape as the invoices list page, so the export link's
+  // carried params filter identically to the screen.
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+  const rawPropertyId = params.get('propertyId') ?? undefined
+  const propertyId = rawPropertyId && UUID_RE.test(rawPropertyId) ? rawPropertyId : undefined
+  const overdue = params.get('overdue') === '1'
 
   const supabase = await createClient()
   const [invoices, lineItems] = await Promise.all([
-    listInvoices(supabase, user.workspaceId, { status, partyType, direction }),
+    listInvoices(supabase, user.workspaceId, { status, partyType, direction, propertyId, overdue }),
     listLineItemsForWorkspace(supabase, user.workspaceId),
   ])
 

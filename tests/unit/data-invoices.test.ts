@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { createFakeSupabaseClient } from '../helpers/fake-supabase'
-import { listTenantCharges } from '@/lib/data/invoices'
+import { listTenantCharges, listInvoices, listInvoicesPage, createInvoice } from '@/lib/data/invoices'
 
 const WS_A = 'workspace-a'
 const WS_B = 'workspace-b'
@@ -60,5 +60,67 @@ describe('listTenantCharges', () => {
   it('never leaks another workspace\'s invoices', async () => {
     const result = await listTenantCharges(client, WS_A)
     expect(result.map((i) => i.id)).not.toContain('i-other-ws')
+  })
+})
+
+describe('overdue quick filter', () => {
+  // Far-past / far-future due dates so the predicate's internal "today" can't flake.
+  const seed = () =>
+    createFakeSupabaseClient({
+      invoices: [
+        invoice({ id: 'i-sent-due', status: 'SENT', due_date: '2020-01-01' }),
+        invoice({ id: 'i-partial-due', status: 'PARTIAL', due_date: '2020-01-01' }),
+        // A stored OVERDUE must match the filter too — the word means one thing everywhere.
+        invoice({ id: 'i-stored-overdue', status: 'OVERDUE', due_date: '2020-01-01' }),
+        invoice({ id: 'i-sent-future', status: 'SENT', due_date: '2999-01-01' }),
+        invoice({ id: 'i-paid-due', status: 'PAID', due_date: '2020-01-01' }),
+        invoice({ id: 'i-draft-due', status: 'DRAFT', due_date: '2020-01-01' }),
+        invoice({ id: 'i-no-due', status: 'SENT', due_date: null }),
+      ],
+    })
+
+  it('listInvoices matches past-due SENT / PARTIAL / stored-OVERDUE only', async () => {
+    const result = await listInvoices(seed(), WS_A, { overdue: true })
+    expect(result.map((i) => i.id).sort()).toEqual([
+      'i-partial-due',
+      'i-sent-due',
+      'i-stored-overdue',
+    ])
+  })
+
+  it('listInvoicesPage applies the same predicate (stored OVERDUE included)', async () => {
+    const page = await listInvoicesPage(seed(), WS_A, { filters: { overdue: true } })
+    expect(page.total).toBe(3)
+    expect(page.rows.map((i) => i.id).sort()).toEqual([
+      'i-partial-due',
+      'i-sent-due',
+      'i-stored-overdue',
+    ])
+  })
+})
+
+describe('createInvoice number allocation', () => {
+  it('allocates the next sequence from a head-only exact count', async () => {
+    const client = createFakeSupabaseClient({
+      invoices: [
+        invoice({ id: 'i-1', invoice_number: 'INV-2026-0001' }),
+        // Another workspace's invoice must not inflate the sequence.
+        invoice({ id: 'i-b', workspace_id: WS_B, invoice_number: 'INV-2026-0009' }),
+      ],
+    })
+    const created = await createInvoice(client, {
+      workspaceId: WS_A,
+      createdByUserId: 'u1',
+      partyType: 'OWNER',
+      partyName: 'Jane Owner',
+      direction: 'OUTBOUND',
+      currency: 'EUR',
+      taxRate: 0,
+      issueDate: '2026-07-01',
+      lines: [{ description: 'Fee', quantity: 1, unitAmount: 100 }],
+    })
+    const year = new Date().getUTCFullYear()
+    expect(created.invoice_number).toBe(`INV-${year}-0002`)
+    expect(created.status).toBe('DRAFT')
   })
 })

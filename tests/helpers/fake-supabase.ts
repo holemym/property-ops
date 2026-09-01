@@ -39,7 +39,7 @@ export function createFakeSupabaseClient(seed: Record<string, Row[]> = {}) {
     if (!tables[table]) tables[table] = []
     const filters: Array<[string, any]> = []
     const notEqFilters: Array<[string, any]> = []
-    const rangeFilters: Array<[string, '>=' | '<=', any]> = []
+    const rangeFilters: Array<[string, '>=' | '<=' | '<', any]> = []
     let op: 'select' | 'insert' | 'update' | 'delete' = 'select'
     let payload: Row | null = null
     let single = false
@@ -76,6 +76,11 @@ export function createFakeSupabaseClient(seed: Record<string, Row[]> = {}) {
       // ISO date strings is lexicographic, which is correct for YYYY-MM-DD.
       gte(col: string, val: any) { rangeFilters.push([col, '>=', val]); return api },
       lte(col: string, val: any) { rangeFilters.push([col, '<=', val]); return api },
+      // `.lt()` — added minimally for the invoices Overdue quick-filter predicate
+      // (listInvoices / listInvoicesPage's `due_date < today`). Strict `<` on ISO
+      // dates is lexicographic, correct for YYYY-MM-DD; a null column never matches,
+      // same as PostgREST.
+      lt(col: string, val: any) { rangeFilters.push([col, '<', val]); return api },
       // `.in(col, values)` — added for U-B's batched meter-readings fetch
       // (buildUnitConsumption's single .in('meter_id', ids) query).
       inFilter: null as null | [string, any[]],
@@ -131,7 +136,9 @@ export function createFakeSupabaseClient(seed: Record<string, Row[]> = {}) {
             matches(r, filters) &&
             matchesOrFilter(r, orFilter) &&
             notEqFilters.every(([col, val]) => r[col] !== val) &&
-            rangeFilters.every(([col, cmp, val]) => (cmp === '>=' ? r[col] >= val : r[col] <= val)) &&
+            rangeFilters.every(([col, cmp, val]) =>
+              cmp === '>=' ? r[col] >= val : cmp === '<=' ? r[col] <= val : r[col] !== null && r[col] < val,
+            ) &&
             (api.inFilter === null || (api.inFilter[1] as any[]).includes(r[api.inFilter[0]]))
         )
         if (orderBy) {
