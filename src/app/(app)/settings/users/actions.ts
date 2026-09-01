@@ -16,9 +16,10 @@ import {
 } from '@/lib/demo'
 import { z } from 'zod'
 import { AUTH_CALLBACK_URL } from '@/lib/urls'
-import { clientIp } from '@/lib/rate-limit'
+import { checkRateLimit, clientIp } from '@/lib/rate-limit'
 import { logAuthEvent, clientUserAgent } from '@/lib/audit/log-auth-event'
 import { getTenant } from '@/lib/data/tenants'
+import { decideAttach, type AttachProfileState } from '@/lib/auth/invite-attach'
 import type { Role } from '@/types/domain'
 
 const inviteSchema = z.object({
@@ -33,52 +34,96 @@ const inviteSchema = z.object({
 // (residents). Sends an invite email for a brand-new account, or — the c019f72 path —
 // gracefully ATTACHES an already-registered account (self-signed-up, invited elsewhere)
 // to THIS workspace with the given role instead of 500-ing on "email exists". Returns the
-// resolved auth user id, or a friendly error string for the caller to surface via its own
-// redirect target (this helper never redirects — it stays reusable across surfaces).
+// resolved auth user id + whether an EXISTING account was attached (attached: true means
+// NO invite email went out — callers must not claim one did), or a friendly error string
+// for the caller to surface via its own redirect target (this helper never redirects —
+// it stays reusable across surfaces).
+//
+// SECURITY (attach-hijack close): the email-exists path previously re-pointed the
+// existing profile at the inviter's workspace UNCONDITIONALLY — any admin who knew an
+// email in use elsewhere could pull that account (and its session) into their own
+// workspace with a role of their choosing. The attach is now gated by decideAttach
+// (src/lib/auth/invite-attach.ts — pure, unit-tested): only a workspace-LESS profile may
+// be claimed, and the claim itself is a conditional UPDATE pinned on
+// `workspace_id IS NULL`, so a concurrent claim by another workspace matches zero rows
+// (lost race → refuse) instead of being silently overwritten.
 async function inviteOrAttachUser(
   admin_client: ReturnType<typeof createServiceClient>,
   email: string,
   role: Role,
   workspaceId: string
-): Promise<{ userId: string } | { error: string }> {
+): Promise<{ userId: string; attached: boolean } | { error: string }> {
   const { data, error } = await admin_client.auth.admin.inviteUserByEmail(email, {
     redirectTo: `${AUTH_CALLBACK_URL}?next=${encodeURIComponent('/auth/set-password')}`,
   })
 
-  let userId: string
-  if (error) {
-    const code = (error as { code?: string }).code
-    const alreadyExists =
-      code === 'email_exists' ||
-      code === 'user_already_exists' ||
-      /already.*registered|already exists/i.test(error.message)
-    if (!alreadyExists) {
-      return { error: 'Could not send the invitation. Please try again.' }
+  if (!error) {
+    // Brand-new account — the invite email is out. The fresh profile row (created
+    // workspace-less by the on-signup trigger) is claimed for this workspace; no
+    // IS NULL pin needed since nobody else can have seen this account yet.
+    const { error: attachError } = await admin_client
+      .from('profiles')
+      .update({ workspace_id: workspaceId, role })
+      .eq('id', data.user.id)
+      .select('id')
+      .single()
+    if (attachError) {
+      return { error: 'Could not add that person to the workspace.' }
     }
-    const existingId = await findUserIdByEmail(admin_client, email)
-    if (!existingId) {
-      return {
-        error:
-          'That email already has an account elsewhere. Ask them to sign in once, then try inviting again.',
-      }
-    }
-    userId = existingId
-  } else {
-    userId = data.user.id
+    return { userId: data.user.id, attached: false }
   }
 
-  const { error: attachError } = await admin_client
-    .from('profiles')
-    .update({ workspace_id: workspaceId, role })
-    .eq('id', userId)
-    .select('id')
-    .single()
+  const code = (error as { code?: string }).code
+  const alreadyExists =
+    code === 'email_exists' ||
+    code === 'user_already_exists' ||
+    /already.*registered|already exists/i.test(error.message)
+  if (!alreadyExists) {
+    return { error: 'Could not send the invitation. Please try again.' }
+  }
+  const existingId = await findUserIdByEmail(admin_client, email)
+  if (!existingId) {
+    return {
+      error:
+        'That email already has an account elsewhere. Ask them to sign in once, then try inviting again.',
+    }
+  }
 
-  if (attachError) {
+  // Existing account: decide from its CURRENT profile state whether attaching is
+  // legitimate at all (see decideAttach's invariant doc).
+  const { data: existingProfile } = await admin_client
+    .from('profiles')
+    .select('workspace_id, role')
+    .eq('id', existingId)
+    .single()
+  if (!existingProfile) {
     return { error: 'Could not add that person to the workspace.' }
   }
 
-  return { userId }
+  const decision = decideAttach(existingProfile as AttachProfileState, role, workspaceId)
+  if (decision.kind === 'refuse') {
+    return { error: decision.message }
+  }
+  if (decision.kind === 'already-member') {
+    // Already a resident of this workspace — nothing to write on the profile; the
+    // portal caller proceeds straight to linking tenants.auth_user_id.
+    return { userId: existingId, attached: true }
+  }
+
+  // Workspace-less profile — claim it, pinned on workspace_id IS NULL (race-proof:
+  // zero matched rows means another workspace won the claim; refuse rather than
+  // overwrite).
+  const { data: claimed, error: attachError } = await admin_client
+    .from('profiles')
+    .update({ workspace_id: workspaceId, role })
+    .eq('id', existingId)
+    .is('workspace_id', null)
+    .select('id')
+  if (attachError || !claimed || claimed.length === 0) {
+    return { error: 'Could not add that person to the workspace.' }
+  }
+
+  return { userId: existingId, attached: true }
 }
 
 // Find an existing auth user's id by email via the admin API. Returns null if none
@@ -109,6 +154,15 @@ export async function inviteUser(formData: FormData) {
     redirectWithError('/settings/users', DEMO_USERS_BLOCKED_MESSAGE)
   }
 
+  // Invites trigger outbound email to an arbitrary address — rate-limit per admin
+  // (shared budget with the portal-invite path below, same key) so a compromised or
+  // careless session can't spray invites. Mirrors the demo-actions checkRateLimit
+  // pattern.
+  const invitesAllowed = await checkRateLimit(`invite:${admin.id}`, 10, 60 * 60)
+  if (!invitesAllowed) {
+    redirectWithError('/settings/users', 'Too many invitations. Try again in an hour.')
+  }
+
   const parsed = inviteSchema.safeParse({
     email: formData.get('email'),
     role: formData.get('role') ?? 'OPERATOR',
@@ -128,7 +182,8 @@ export async function inviteUser(formData: FormData) {
 
   // S2-2: best-effort audit write (never throws — see log-auth-event.ts).
   // Reuses admin_client (already the service-role client this function built
-  // above) instead of constructing a second one.
+  // above) instead of constructing a second one. attached: true records that an
+  // existing account was added — no invite email actually went out.
   const h = await headers()
   await logAuthEvent(admin_client, {
     eventType: 'INVITE_SENT',
@@ -137,9 +192,14 @@ export async function inviteUser(formData: FormData) {
     email,
     ip: clientIp(h),
     userAgent: clientUserAgent(h),
+    metadata: { attached: result.attached },
   })
 
   revalidatePath('/settings/users')
+  // Success redirect: lands on a clean URL (clearing any stale ?error= from a prior
+  // failed attempt) with an outcome param the page can render honestly — an ATTACHED
+  // account got no invite email.
+  redirect(`/settings/users?invited=${result.attached ? 'attached' : '1'}`)
 }
 
 // Phase 1A — the tenant portal front door. Onboards a People-directory CONTACT
@@ -158,6 +218,12 @@ export async function inviteTenantToPortal(formData: FormData) {
   }
   if (!tenantId) {
     redirectWithError('/people', 'Missing tenant.')
+  }
+
+  // Same per-admin invite budget as inviteUser (shared key — both paths send email).
+  const invitesAllowed = await checkRateLimit(`invite:${admin.id}`, 10, 60 * 60)
+  if (!invitesAllowed) {
+    redirectWithError(backTo, 'Too many invitations. Try again in an hour.')
   }
 
   const admin_client = createServiceClient()
@@ -202,11 +268,15 @@ export async function inviteTenantToPortal(formData: FormData) {
     email: tenant.email,
     ip: clientIp(h),
     userAgent: clientUserAgent(h),
-    metadata: { tenant_id: tenantId, portal: true },
+    metadata: { tenant_id: tenantId, portal: true, attached: result.attached },
   })
 
   revalidatePath(backTo)
-  redirect(`${backTo}?portal=invited`)
+  // Distinguishable outcomes: `attached` = the email already had an account, so NO
+  // invite email went out (the person signs in with their existing credentials);
+  // `invited` = a fresh invite email is on its way. The person page renders a
+  // different message for each — claiming "invitation sent" for an attach was false.
+  redirect(`${backTo}?portal=${result.attached ? 'attached' : 'invited'}`)
 }
 
 export async function setUserActive(formData: FormData) {
@@ -277,6 +347,8 @@ export async function setUserActive(formData: FormData) {
   }
 
   revalidatePath('/settings/users')
+  // Clean-URL success redirect — clears any stale ?error= left by a prior failure.
+  redirect('/settings/users')
 }
 
 // D7 — manual emergency reset, deferred from the demo-mode spec §3 (flagged by the D2

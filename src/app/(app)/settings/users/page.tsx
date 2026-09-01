@@ -14,7 +14,7 @@ import { inviteUser, setUserActive, resetDemoWorkspaceManually } from './actions
 export default async function UsersSettingsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; resetDemo?: string }>
+  searchParams: Promise<{ error?: string; resetDemo?: string; invited?: string }>
 }) {
   const params = await searchParams
   const admin = await requirePermission('users:invite')
@@ -36,6 +36,21 @@ export default async function UsersSettingsPage({
       />
 
       <FormError message={params.error} />
+
+      {/* Invite outcome (the action redirects here with ?invited=). `attached` means the
+          email already had an account — it was added to the workspace, but NO invite
+          email went out, so the message must not claim one did. */}
+      {params.invited === '1' && (
+        <p role="status" className="text-sm text-muted-foreground">
+          Invitation sent.
+        </p>
+      )}
+      {params.invited === 'attached' && (
+        <p role="status" className="text-sm text-muted-foreground">
+          That person already had an account — they&apos;ve been added to this workspace and
+          can sign in with their existing credentials.
+        </p>
+      )}
 
       <form action={inviteUser} className="flex items-end gap-2">
         <Input

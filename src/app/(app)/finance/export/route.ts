@@ -1,5 +1,6 @@
 import { getCurrentUser } from '@/lib/auth/session'
 import { can } from '@/lib/auth/permissions'
+import { routeMfaSatisfied } from '@/lib/auth/route-guard'
 import { createClient } from '@/lib/supabase/server'
 import { listIncomeRecords, listExpenseRecords } from '@/lib/data/finance'
 import type { IncomeRecord, ExpenseRecord } from '@/types/domain'
@@ -79,6 +80,11 @@ export async function GET() {
   }
   if (!user.workspaceId || !can(user.role, 'finance:read')) {
     return new Response('Not permitted', { status: 403 })
+  }
+  // MFA step-up: an enrolled user's AAL1 session (challenge still pending) must not
+  // pull CSVs the page layer would block — see route-guard.ts.
+  if (!(await routeMfaSatisfied())) {
+    return new Response('Two-factor challenge required', { status: 401 })
   }
 
   const supabase = await createClient()
