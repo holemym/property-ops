@@ -1,19 +1,25 @@
 import Link from 'next/link'
 import { ChevronRight, DoorClosed } from 'lucide-react'
 import { StatusBadge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/common/EmptyState'
 import type { Unit } from '@/lib/data/units'
 
 // Compact list of a property's units. Each row links to the unit hub at /units/[id]
 // and shows the unit status pill plus floor. Occupancy is passed in per-unit (a unit
 // counts occupied if a tenancy covers today OR status='OCCUPIED') so the list can flag
-// it without re-deriving. EmptyState when the property has no units. Self-contained.
+// it without re-deriving. EmptyState when the property has no units — with a direct
+// "Add unit" CTA when the host passes `addUnitHref` (write-gated by the host): the
+// onboarding flow lands HERE right after creating a property, and the empty state
+// used to describe the next step without offering it. Self-contained.
 export function UnitsList({
   units,
   occupiedUnitIds,
+  addUnitHref,
 }: {
   units: Unit[]
   occupiedUnitIds: Set<string>
+  addUnitHref?: string
 }) {
   if (units.length === 0) {
     return (
@@ -21,6 +27,13 @@ export function UnitsList({
         icon={<DoorClosed />}
         title="No units yet"
         body="Add units to this property to track occupancy, access details, and tickets."
+        action={
+          addUnitHref ? (
+            <Button render={<Link href={addUnitHref} />} nativeButton={false}>
+              Add a unit
+            </Button>
+          ) : undefined
+        }
       />
     )
   }

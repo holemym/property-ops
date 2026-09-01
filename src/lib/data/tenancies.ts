@@ -69,6 +69,22 @@ export async function listTenanciesForUnit(
   return data as Tenancy[]
 }
 
+/**
+ * One tenancy by id, workspace-scoped (mirrors getUnit). Returns null for a missing id
+ * OR a cross-workspace id — callers use it as the friendly ownership check before an
+ * update, the same way actions use getUnit before an insert.
+ */
+export async function getTenancy(
+  supabase: SupabaseClient,
+  workspaceId: string,
+  id: string
+): Promise<Tenancy | null> {
+  const { data, error } = await supabase
+    .from('tenancies').select('*').eq('workspace_id', workspaceId).eq('id', id).single()
+  if (error) return null
+  return data as Tenancy
+}
+
 export type CreateTenancyInput = {
   workspaceId: string
   unitId: string
@@ -120,6 +136,57 @@ export async function createTenancy(
       rent_amount: input.rentAmount ?? null,
       notes: input.notes ?? null,
     })
+    .select()
+    .single()
+  if (error) throw error
+  return data as Tenancy
+}
+
+// Everything the edit dialog can change. unit_id is deliberately absent — a tenancy's
+// unit is immutable after creation (same stance as updateUnit's property_id), and
+// created_by_user_id stays the original author. "Ending" a tenancy is just an update
+// that sets endDate (migration 0016's design note), so there is no separate end path.
+export type UpdateTenancyInput = {
+  tenantId?: string | null
+  tenantName: string
+  tenantContact?: string | null
+  startDate: string
+  endDate?: string | null
+  rentAmount?: number | null
+  notes?: string | null
+}
+
+export async function updateTenancy(
+  supabase: SupabaseClient,
+  workspaceId: string,
+  id: string,
+  input: UpdateTenancyInput
+): Promise<Tenancy> {
+  // Same CRITICAL rule as createTenancy: a linked directory person's full_name is the
+  // source of truth for tenant_name — resolve it server-side (workspace-scoped) and
+  // throw if it doesn't resolve, never trusting the client's copy. Unlinking
+  // (tenantId null) restores the free-text tenantName exactly as on create.
+  let tenantName = input.tenantName
+  const tenantId = input.tenantId ?? null
+  if (tenantId) {
+    const tenant = await getTenant(supabase, workspaceId, tenantId)
+    if (!tenant) throw new Error('Selected person was not found in your workspace.')
+    tenantName = tenant.full_name
+  }
+
+  const { data, error } = await supabase
+    .from('tenancies')
+    .update({
+      tenant_id: tenantId,
+      tenant_name: tenantName,
+      tenant_contact: input.tenantContact ?? null,
+      start_date: input.startDate,
+      end_date: input.endDate ?? null,
+      rent_amount: input.rentAmount ?? null,
+      notes: input.notes ?? null,
+    })
+    .eq('workspace_id', workspaceId)
+    .eq('id', id)
     .select()
     .single()
   if (error) throw error

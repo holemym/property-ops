@@ -53,6 +53,26 @@ describe('tenancyFormSchema', () => {
     expect(result.success).toBe(true)
   })
 
+  // Cross-field refine: an inverted span never parses; end == start (a single-day
+  // tenancy) is the boundary case and stays valid.
+  it('rejects an end date before the start date', () => {
+    const result = tenancyFormSchema.safeParse({ ...valid, endDate: '2025-12-31' })
+    expect(result.success).toBe(false)
+    if (!result.success) {
+      expect(result.error.issues[0].message).toBe('End date must be on or after the start date.')
+    }
+  })
+
+  it('accepts an end date equal to the start date (single-day tenancy)', () => {
+    const result = tenancyFormSchema.safeParse({ ...valid, endDate: '2026-01-01' })
+    expect(result.success).toBe(true)
+  })
+
+  it('accepts an end date after the start date', () => {
+    const result = tenancyFormSchema.safeParse({ ...valid, endDate: '2026-06-30' })
+    expect(result.success).toBe(true)
+  })
+
   it('rejects a non-positive rent amount', () => {
     const result = tenancyFormSchema.safeParse({ ...valid, rentAmount: 0 })
     expect(result.success).toBe(false)

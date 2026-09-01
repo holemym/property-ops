@@ -7,11 +7,13 @@ import { can, isTenantRole } from '@/lib/auth/permissions'
 import { createClient } from '@/lib/supabase/server'
 import { listTickets, countTicketsByStatus, type Ticket } from '@/lib/data/tickets'
 import { listProperties } from '@/lib/data/properties'
+import { getSetupProgress } from '@/lib/data/setup'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { StatusBadge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/common/EmptyState'
 import { DashboardMfaNag } from '@/components/dashboard/DashboardMfaNag'
+import { SetupChecklist } from '@/components/dashboard/SetupChecklist'
 import { cn } from '@/lib/utils'
 import { relativeDay } from '@/lib/relative-date'
 import { isTicketOpen } from '@/lib/status'
@@ -65,7 +67,7 @@ export default async function DashboardPage() {
   // parallel (not N+1). RLS scopes every query to this workspace. listTickets has no
   // server-side LIMIT today (Phase-4 optimization), so widgets slice in JS below;
   // workspace ticket volume is bounded at MVP scale.
-  const [counts, allTickets, properties, mfaFactors] = await Promise.all([
+  const [counts, allTickets, properties, mfaFactors, setupProgress] = await Promise.all([
     countTicketsByStatus(supabase, user.workspaceId),
     // ONE workspace ticket read; every widget slice below derives from it in JS.
     // (The old version issued four extra filtered listTickets calls whose results
@@ -79,6 +81,8 @@ export default async function DashboardPage() {
     // auth hiccup can't 500 the app's main landing page — same fail-safe as before,
     // now in the batch instead of a serialized follow-up await.
     supabase.auth.mfa.listFactors().catch(() => null),
+    // Three head-only counts feeding the "Finish setting up" checklist below.
+    getSetupProgress(supabase, user.workspaceId),
   ])
   const newTickets = allTickets.filter((t) => t.status === 'NEW')
   const urgentTickets = allTickets.filter((t) => t.priority === 'URGENT')
@@ -113,12 +117,25 @@ export default async function DashboardPage() {
     .sort((a, b) => b.updated_at.localeCompare(a.updated_at))
     .slice(0, RECENT_CAP)
 
-  // A brand-new workspace has no properties, so a ticket-only dashboard is six zero
-  // cards and five empty widgets with NO path to the first real action. Show the
+  // A brand-new workspace has no ACTIVE properties, so a ticket-only dashboard is six
+  // zero cards and five empty widgets with NO path to the first real action. Show the
   // setup chain instead — the single biggest new-owner strand the flow review found.
-  if (properties.length === 0) {
+  // ACTIVE (not all): an owner who archives their only property is back at square one
+  // and gets the guidance again, not the empty ticket dashboard.
+  const activeProperties = properties.filter((p) => p.status === 'ACTIVE')
+  // After the first property, the checklist card carries the remaining chain (units →
+  // tenancies → residents) until each has data; ACCOUNTANT can't act on any step and
+  // never sees it. Same gate as the zero-state CTA.
+  const showChecklist =
+    can(user.role, 'properties:write') &&
+    activeProperties.length > 0 &&
+    (setupProgress.units === 0 ||
+      setupProgress.tenancies === 0 ||
+      setupProgress.invitedResidents === 0)
+
+  if (activeProperties.length === 0) {
     return (
-      <div className="motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-[--duration-slow]">
+      <div className="motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-[--duration-fast]">
         <PageHeader title="Dashboard" subtitle="Let's set up your portfolio." />
         {showMfaNag && <DashboardMfaNag />}
         <EmptyState
@@ -138,13 +155,15 @@ export default async function DashboardPage() {
   }
 
   return (
-    <div className="motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-[--duration-slow]">
+    <div className="motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-[--duration-fast]">
       <PageHeader
         title="Dashboard"
         subtitle={`${openCount} open ${openCount === 1 ? 'ticket' : 'tickets'} across the portfolio`}
       />
 
       {showMfaNag && <DashboardMfaNag />}
+
+      {showChecklist && <SetupChecklist progress={setupProgress} />}
 
       {/* Status summary strip — one graphite metric card per key status, linking to the
           filtered inbox. Saturated color stays out of these; the counts read as data. */}

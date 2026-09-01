@@ -1,4 +1,4 @@
-import Link from 'next/link'
+﻿import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { Building2, Wrench, FileText, Plus } from 'lucide-react'
 import { requirePermission } from '@/lib/auth/session'
@@ -12,7 +12,9 @@ import { listExpenseRecords } from '@/lib/data/finance'
 import { listDocuments } from '@/lib/data/documents'
 import { listTenants } from '@/lib/data/tenants'
 import { NewTenancyDialog } from '@/components/occupancy/NewTenancyDialog'
-import { createTenancyAction } from '../../occupancy/actions'
+import { EditTenancyDialog } from '@/components/occupancy/EditTenancyDialog'
+import { TenancySavedToast } from '@/components/occupancy/TenancySavedToast'
+import { createTenancyAction, updateTenancyAction } from '../../occupancy/actions'
 import { buildUnitTimeline, defaultWindow } from '@/lib/occupancy/timeline'
 import { UnitForm } from '@/components/units/UnitForm'
 import { StatusBadge } from '@/components/ui/badge'
@@ -57,7 +59,7 @@ export default async function UnitDetailPage({
   if (!unit) notFound()
 
   // Tickets + expenses are DB-scoped to this unit (the old version pulled the whole
-  // workspace and filtered in JS — payload scaled with workspace size on every hub
+  // workspace and filtered in JS вЂ” payload scaled with workspace size on every hub
   // open, and one fetch was discarded entirely). Documents stay unfiltered because
   // this page's scope is unit_id OR tenancy-of-unit, an OR computed below.
   const [property, unitTickets, tenancies, expenseRecords, documents, tenants] =
@@ -98,8 +100,21 @@ export default async function UnitDetailPage({
   const currentTenant = currentTenancy?.tenant_name ?? null
   const monthlyRent = currentTenancy?.rent_amount ?? null
 
+  // The DISPLAYED status derives occupancy the way the occupancy strip does
+  // (buildUnitTimeline): MAINTENANCE/BLOCKED are point-in-time ops flags that override
+  // everything; otherwise a tenancy covering today (or a stored OCCUPIED) shows
+  // Occupied. Display-only — the STORED unit.status is never mutated here, and the
+  // edit form below still shows/saves the raw column. This stops the header badge and
+  // Status metric reading "Vacant" right next to "Current tenant: X".
+  const displayedStatus =
+    unit.status === 'MAINTENANCE' || unit.status === 'BLOCKED'
+      ? unit.status
+      : currentTenancy || unit.status === 'OCCUPIED'
+        ? 'OCCUPIED'
+        : 'VACANT'
+
   return (
-    <div className="motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-[--duration-slow]">
+    <div className="motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-[--duration-fast]">
       <PageHeader
         title={`Unit ${unit.label}`}
         backHref="/units"
@@ -109,7 +124,7 @@ export default async function UnitDetailPage({
             <span className="text-sm text-muted-foreground">
               {humanizeEnum(unit.occupancy_type)}
             </span>
-            <StatusBadge kind="unit_status" value={unit.status} />
+            <StatusBadge kind="unit_status" value={displayedStatus} />
           </div>
         }
       />
@@ -123,20 +138,21 @@ export default async function UnitDetailPage({
           >
             {property.name}
           </Link>
-          {unit.floor ? <span>· Floor {unit.floor}</span> : null}
+          {unit.floor ? <span>В· Floor {unit.floor}</span> : null}
         </p>
       )}
 
       <FormError message={error} className="mb-6" />
+      <TenancySavedToast />
 
       <div className="flex flex-col gap-6">
         <MetricStrip
           metrics={[
-            { label: 'Status', value: humanizeEnum(unit.status) },
+            { label: 'Status', value: humanizeEnum(displayedStatus) },
             { label: 'Current tenant', value: currentTenant ?? 'Vacant' },
             {
               label: 'Monthly rent',
-              value: monthlyRent != null ? formatMoney(monthlyRent) : '—',
+              value: monthlyRent != null ? formatMoney(monthlyRent) : 'вЂ”',
             },
             {
               label: 'Open tickets',
@@ -171,8 +187,22 @@ export default async function UnitDetailPage({
                   units={[{ id: unit.id, label: unit.label, propertyName: property?.name ?? '' }]}
                   tenants={tenants}
                   defaultUnitId={unit.id}
+                  returnTo={`/units/${id}`}
                 />
               ) : undefined
+            }
+            renderRowAction={
+              canWrite
+                ? (tenancy) => (
+                    <EditTenancyDialog
+                      action={updateTenancyAction.bind(null, tenancy.id)}
+                      tenancy={tenancy}
+                      tenants={tenants}
+                      returnTo={`/units/${id}`}
+                      today={today}
+                    />
+                  )
+                : undefined
             }
           />
 
@@ -278,7 +308,7 @@ export default async function UnitDetailPage({
           </CardContent>
         </Card>
 
-        {/* Edit details — preserved from the original detail page, gated on units:write. */}
+        {/* Edit details вЂ” preserved from the original detail page, gated on units:write. */}
         <Card>
           <CardHeader>
             <CardTitle>Edit details</CardTitle>

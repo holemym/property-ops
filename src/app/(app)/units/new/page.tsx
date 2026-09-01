@@ -13,14 +13,21 @@ import { createUnitAction } from '../actions'
 export default async function NewUnitPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>
+  searchParams: Promise<{ error?: string; propertyId?: string }>
 }) {
   const user = await requirePermission('units:write')
-  const { error } = await searchParams
+  const { error, propertyId: rawPropertyId } = await searchParams
   const supabase = await createClient()
   // Only ACTIVE properties are selectable — a unit cannot be attached to an archived
   // property.
   const properties = await listProperties(supabase, user.workspaceId, { status: 'ACTIVE' })
+  // ?propertyId= preselects the property (the hub's "Add unit" passes it) — membership
+  // in the fetched list doubles as the UUID/workspace guard, so a garbage or foreign id
+  // just falls back to the default. Without this, the form defaulted to the NEWEST
+  // property (created_at desc), silently wrong the moment a second property exists.
+  const defaultPropertyId = properties.some((p) => p.id === rawPropertyId)
+    ? rawPropertyId
+    : undefined
 
   return (
     <div className="flex flex-col gap-6">
@@ -36,7 +43,12 @@ export default async function NewUnitPage({
           action={<Button render={<Link href="/properties/new" />} nativeButton={false}>Add a property</Button>}
         />
       ) : (
-        <UnitForm action={createUnitAction} properties={properties} submitLabel="Create unit" />
+        <UnitForm
+          action={createUnitAction}
+          properties={properties}
+          defaultValues={defaultPropertyId ? { property_id: defaultPropertyId } : undefined}
+          submitLabel="Create unit"
+        />
       )}
     </div>
   )

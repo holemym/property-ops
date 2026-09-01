@@ -35,14 +35,27 @@ export function NewTenancyDialog({
   units,
   tenants,
   defaultUnitId,
+  returnTo,
 }: {
   action: (formData: FormData) => void | Promise<void>
   units: UnitOption[]
   tenants: TenantOption[]
   /** Preselects the unit — set when the dialog is hosted on a unit's own hub. */
   defaultUnitId?: string
+  /** The host page's own path ('/occupancy' or '/units/<id>') — posted so the
+   * action's error AND success redirects land back on the page the user was on. */
+  returnTo: string
 }) {
   const [open, setOpen] = useState(false)
+  // Tracked only to drive the end-date input's `min` (both date inputs themselves stay
+  // uncontrolled) — the server refine on endDate >= startDate is the real guard.
+  const [startDate, setStartDate] = useState('')
+  // Whether a directory person is currently linked — drives the unlinked-tenancy
+  // warning below (a free-text tenancy's rent invoices can never surface in any
+  // resident's /portal/charges; the RLS chain needs tenancy.tenant_id →
+  // tenants.auth_user_id). Reset on every open: the form remounts with the select
+  // back on "No linked person".
+  const [linkedPerson, setLinkedPerson] = useState(false)
   const nameInputRef = useRef<HTMLInputElement>(null)
 
   // Selecting a directory person previews their name in the free-text field below —
@@ -58,10 +71,17 @@ export function NewTenancyDialog({
     const selected = tenants.find((t) => t.id === e.target.value)
     input.value = selected ? selected.full_name : ''
     input.readOnly = selected != null
+    setLinkedPerson(selected != null)
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next)
+        if (next) setLinkedPerson(false)
+      }}
+    >
       <DialogTrigger
         render={
           <Button size="sm">
@@ -84,6 +104,8 @@ export function NewTenancyDialog({
           onSubmit={() => setOpen(false)}
           className="flex flex-col gap-3.5"
         >
+          <input type="hidden" name="returnTo" value={returnTo} />
+
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="unitId">Unit</Label>
             <select
@@ -131,16 +153,30 @@ export function NewTenancyDialog({
               maxLength={120}
               className="read-only:bg-muted/50 read-only:text-muted-foreground"
             />
+            {/* Warning copy only (no data-model change): a name-only tenancy works for
+                the occupancy timeline, but its rent invoices can never reach a resident
+                portal — /portal/charges resolves visibility through tenancy.tenant_id. */}
+            {!linkedPerson && (
+              <p className="text-xs text-amber-600 dark:text-amber-500">
+                Not linked to a person — rent charges won&apos;t appear in their portal.
+              </p>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="startDate">Start date</Label>
-              <Input id="startDate" name="startDate" type="date" required />
+              <Input
+                id="startDate"
+                name="startDate"
+                type="date"
+                required
+                onChange={(e) => setStartDate(e.target.value)}
+              />
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="endDate">End date</Label>
-              <Input id="endDate" name="endDate" type="date" />
+              <Input id="endDate" name="endDate" type="date" min={startDate || undefined} />
             </div>
           </div>
 

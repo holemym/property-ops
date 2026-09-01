@@ -14,6 +14,7 @@ import { PageHeader } from '@/components/layout/PageHeader'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/common/EmptyState'
 import { ErrorToast } from '@/components/common/ErrorToast'
+import { TenancySavedToast } from '@/components/occupancy/TenancySavedToast'
 import { TapeChart, type PropertyGroup } from '@/components/occupancy/TapeChart'
 import { NewTenancyDialog } from '@/components/occupancy/NewTenancyDialog'
 import { createTenancyAction } from './actions'
@@ -74,12 +75,18 @@ export default async function OccupancyPage() {
   return (
     <div className="flex flex-col gap-6">
       <ErrorToast />
+      <TenancySavedToast />
       <PageHeader
         title="Occupancy"
         subtitle="Unit availability across the portfolio."
         actions={
           canWrite && unitOptions.length > 0 ? (
-            <NewTenancyDialog action={createTenancyAction} units={unitOptions} tenants={tenants} />
+            <NewTenancyDialog
+              action={createTenancyAction}
+              units={unitOptions}
+              tenants={tenants}
+              returnTo="/occupancy"
+            />
           ) : undefined
         }
       />

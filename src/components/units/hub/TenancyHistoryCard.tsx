@@ -29,12 +29,16 @@ export function TenancyHistoryCard({
   tenancies,
   today,
   action,
+  renderRowAction,
 }: {
   tenancies: Tenancy[]
   today: string
   /** Optional header slot — the unit hub hosts the New-tenancy dialog here so
    * recording a tenancy no longer requires knowing it lives on /occupancy. */
   action?: React.ReactNode
+  /** Optional per-row action slot — the unit hub renders the Edit-tenancy dialog here
+   * (write-gated by the host, like `action`), keeping this card presentation-only. */
+  renderRowAction?: (tenancy: Tenancy) => React.ReactNode
 }) {
   const rows = tenancies
     .map((t) => ({ tenancy: t, phase: tenancyPhase(t.start_date, t.end_date, today) }))
@@ -82,10 +86,13 @@ export function TenancyHistoryCard({
                     {formatSpan(tenancy.start_date, tenancy.end_date)}
                   </div>
                 </div>
-                <div className="text-sm font-medium text-foreground tabular-nums">
-                  {tenancy.rent_amount != null
-                    ? `${formatMoney(tenancy.rent_amount)} / mo`
-                    : '—'}
+                <div className="flex shrink-0 items-center gap-2">
+                  <div className="text-sm font-medium text-foreground tabular-nums">
+                    {tenancy.rent_amount != null
+                      ? `${formatMoney(tenancy.rent_amount)} / mo`
+                      : '—'}
+                  </div>
+                  {renderRowAction?.(tenancy)}
                 </div>
               </li>
             ))}

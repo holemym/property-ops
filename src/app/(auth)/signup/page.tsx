@@ -87,9 +87,13 @@ export default async function SignupPage({
             name="password"
             type="password"
             autoComplete="new-password"
-            minLength={8}
+            minLength={10}
             required
           />
+          {/* Mirrors passwordSchema (min 10) — with minLength=8 the browser passed
+              9-char passwords that zod then rejected, and the error round-trip wiped
+              every field the user had typed. */}
+          <p className="text-xs text-muted-foreground">At least 10 characters.</p>
         </div>
         <Button type="submit" size="lg" className="w-full">
           Create account

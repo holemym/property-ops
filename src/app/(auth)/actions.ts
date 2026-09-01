@@ -175,7 +175,10 @@ export async function signUpWithPassword(formData: FormData) {
     userAgent,
   })
 
-  redirect('/login?confirmEmailSent=1')
+  // The confirm-email card lives on /signup (login/page.tsx doesn't render this
+  // param) — redirecting to /login here left the brand-new user on a bare sign-in
+  // form with no hint that a confirmation email was sent.
+  redirect('/signup?confirmEmailSent=1')
 }
 
 // Set/change the current user's password. Used both by freshly-invited users (who

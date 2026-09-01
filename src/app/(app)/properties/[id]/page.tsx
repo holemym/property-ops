@@ -1,4 +1,4 @@
-import Link from 'next/link'
+﻿import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { DoorClosed, MapPin, Wrench, Plus, Receipt } from 'lucide-react'
 import { requirePermission } from '@/lib/auth/session'
@@ -47,14 +47,15 @@ export default async function PropertyDetailPage({
   const user = await requirePermission('properties:read')
   const supabase = await createClient()
 
-  const property = await getProperty(supabase, user.workspaceId, id)
-  if (!property) notFound()
-
-  // Fetch the related data in parallel. Units/tickets/documents filter to this property;
+  // Fetch the property AND its related data in one parallel batch — every query here
+  // depends only on the URL id, so serializing getProperty first just added a network
+  // step. A missing/foreign id 404s after the batch; the sibling queries' RLS-scoped
+  // empty results are discarded. Units/tickets/documents filter to this property;
   // tenancies + finance ledgers are workspace-wide (no property filter in the data layer)
   // and are scoped in-page to this property or its units.
-  const [units, propertyTickets, tenancies, incomeRecords, expenseRecords, documents] =
+  const [property, units, propertyTickets, tenancies, incomeRecords, expenseRecords, documents] =
     await Promise.all([
+      getProperty(supabase, user.workspaceId, id),
       listUnits(supabase, user.workspaceId, { propertyId: id }),
       listTickets(supabase, user.workspaceId, { propertyId: id }),
       listTenancies(supabase, user.workspaceId),
@@ -62,6 +63,7 @@ export default async function PropertyDetailPage({
       listExpenseRecords(supabase, user.workspaceId),
       listDocuments(supabase, user.workspaceId, { propertyId: id }),
     ])
+  if (!property) notFound()
 
   const canWrite = can(user.role, 'properties:write')
   const boundUpdate = updatePropertyAction.bind(null, id)
@@ -107,7 +109,7 @@ export default async function PropertyDetailPage({
   ].filter(Boolean)
 
   return (
-    <div className="motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-[--duration-slow]">
+    <div className="motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-[--duration-fast]">
       <PageHeader
         title={property.name}
         backHref="/properties"
@@ -167,17 +169,35 @@ export default async function PropertyDetailPage({
             <HubCard
               title="Units"
               action={
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  render={<Link href={`/units?propertyId=${property.id}`} />}
-                >
-                  <DoorClosed className="size-4" />
-                  View all
-                </Button>
+                <div className="flex items-center gap-1">
+                  {canWrite && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      render={<Link href={`/units/new?propertyId=${property.id}`} />}
+                      nativeButton={false}
+                    >
+                      <Plus className="size-4" />
+                      Add unit
+                    </Button>
+                  )}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    render={<Link href={`/units?propertyId=${property.id}`} />}
+                    nativeButton={false}
+                  >
+                    <DoorClosed className="size-4" />
+                    View all
+                  </Button>
+                </div>
               }
             >
-              <UnitsList units={units} occupiedUnitIds={occupiedUnitIds} />
+              <UnitsList
+                units={units}
+                occupiedUnitIds={occupiedUnitIds}
+                addUnitHref={canWrite ? `/units/new?propertyId=${property.id}` : undefined}
+              />
             </HubCard>
 
             <HubCard
@@ -233,7 +253,7 @@ export default async function PropertyDetailPage({
           </div>
         </div>
 
-        {/* Edit details — preserved from the original detail page, still gated on
+        {/* Edit details вЂ” preserved from the original detail page, still gated on
             properties:write (read-only form when the viewer cannot write). */}
         <HubCard title="Edit details">
           <PropertyForm
