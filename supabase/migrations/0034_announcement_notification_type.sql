@@ -1,0 +1,40 @@
+-- =============================================================================
+-- Migration 0034: ANNOUNCEMENT_PUBLISHED notification type
+-- =============================================================================
+-- Publishing an announcement (0030) previously notified no one — tenants had to
+-- poll /portal/announcements. publishAnnouncementAction now fans out one in-app
+-- notification per audience member (workspace-wide -> every active TENANT/GUEST
+-- profile; property-targeted -> tenants holding an ACTIVE tenancy in that
+-- property — the same audience tenant_can_read_announcement (0030) grants read
+-- access to). The writer stays src/lib/notifications/notify-inapp.ts via the
+-- service-role client (notifications keeps its ZERO INSERT POLICY, 0026 — no
+-- policy change here), so this migration is ONLY the enum extension.
+--
+-- MIGRATION NUMBERING: existing files run 0001-0033 (0033 is the perf-indexes/
+-- tenancy-integrity migration landing in this same round). Next free lexical
+-- number, 0034.
+--
+-- ALTER TYPE ... ADD VALUE is allowed inside a transaction on PG 12+ as long as
+-- the new value is not USED in the same transaction — this file adds the value
+-- and nothing else, so it is safe under Supabase's per-file transaction.
+-- IF NOT EXISTS makes a re-run a no-op.
+--
+-- NO RLS CHANGE ANYWHERE IN THIS FILE: notifications' policies (0026 — strictly
+-- own-inbox SELECT/UPDATE, zero INSERT policy, no DELETE) are untouched; the new
+-- enum member flows through the existing service-role write funnel unchanged.
+-- =============================================================================
+
+alter type public.notification_type add value if not exists 'ANNOUNCEMENT_PUBLISHED';
+
+-- =============================================================================
+-- SMOKE TESTS — run these manually once applied to a live Supabase project:
+-- =============================================================================
+-- 1. select unnest(enum_range(null::public.notification_type)); -> includes
+--    'ANNOUNCEMENT_PUBLISHED' alongside the three 0026 ticket values.
+-- 2. As service_role: insert a notifications row with
+--    type = 'ANNOUNCEMENT_PUBLISHED' -> succeeds.
+-- 3. As authenticated (any role): the same insert is still rejected (zero
+--    INSERT policy, 0026 — unchanged).
+-- 4. The recipient SELECTs their ANNOUNCEMENT_PUBLISHED row exactly like a
+--    ticket one (notifications_select_own is type-agnostic).
+-- =============================================================================

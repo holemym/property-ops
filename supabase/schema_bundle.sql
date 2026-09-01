@@ -1689,7 +1689,9 @@ exception when duplicate_object or duplicate_table then null; end $do$;
 -- =============================================================================
 do $do$ begin
   create type public.notification_type as enum
-    ('TICKET_ASSIGNED', 'TICKET_STATUS_CHANGED', 'TICKET_COMMENT');
+    ('TICKET_ASSIGNED', 'TICKET_STATUS_CHANGED', 'TICKET_COMMENT',
+     'ANNOUNCEMENT_PUBLISHED');  -- 0034 (fresh installs get it here; the 0034
+                                 -- section at the end covers existing databases)
 exception when duplicate_object then null; end $do$;
 
 create table if not exists public.notifications (
@@ -2732,6 +2734,69 @@ exception when duplicate_object then null; end $do$;
 -- No tenant policy anywhere above — U-C's job, same seam 0031 specifies. See
 -- supabase/migrations/0032_betriebskosten_meters.sql for the full 14-scenario
 -- smoke-test list.
+
+-- =============================================================================
+-- 0033: PERF INDEXES + TENANCY INTEGRITY (see supabase/migrations/0033 for the
+-- full rationale). Appended here as a section: every statement is idempotent and
+-- only references tables created above, so end-of-bundle placement is correct for
+-- fresh installs.
+-- =============================================================================
+
+-- 0034: ANNOUNCEMENT_PUBLISHED notification type — for a database created from an
+-- OLDER bundle whose enum predates the value (fresh installs already got it in the
+-- 0026 section above; duplicate adds are no-ops). Safe inside the bundle's
+-- transaction on PG 12+ because nothing below USES the value (the demo seed only
+-- wipes notifications, never inserts them).
+alter type public.notification_type add value if not exists 'ANNOUNCEMENT_PUBLISHED';
+
+create index if not exists tickets_workspace_unit_idx
+  on public.tickets (workspace_id, unit_id);
+create index if not exists tickets_workspace_vendor_idx
+  on public.tickets (workspace_id, assigned_vendor_id);
+create index if not exists invoices_workspace_created_idx
+  on public.invoices (workspace_id, created_at desc);
+create index if not exists invoices_workspace_party_type_idx
+  on public.invoices (workspace_id, party_type);
+create index if not exists expense_records_workspace_unit_idx
+  on public.expense_records (workspace_id, unit_id);
+create index if not exists documents_workspace_property_idx
+  on public.documents (workspace_id, property_id);
+create index if not exists tenancies_workspace_tenant_idx
+  on public.tenancies (workspace_id, tenant_id);
+create index if not exists income_records_workspace_period_idx
+  on public.income_records (workspace_id, period_start desc);
+create index if not exists expense_records_workspace_incurred_idx
+  on public.expense_records (workspace_id, incurred_on desc);
+
+create extension if not exists btree_gist;
+
+-- NOT VALID + VALIDATE split: the validation scan then runs without holding the
+-- ACCESS EXCLUSIVE lock (see 0033's locking caveat).
+do $do$ begin
+  alter table public.tenancies
+    add constraint tenancies_dates_ordered
+    check (end_date is null or end_date >= start_date) not valid;
+exception when duplicate_object then null; end $do$;
+
+do $do$ begin
+  alter table public.tenancies validate constraint tenancies_dates_ordered;
+exception
+  when others then
+    raise notice 'tenancies_dates_ordered NOT validated (%).', sqlerrm;
+end $do$;
+
+do $do$ begin
+  alter table public.tenancies
+    add constraint tenancies_no_overlap
+    exclude using gist (
+      unit_id with =,
+      daterange(start_date, end_date, '[]') with &&
+    );
+exception
+  when duplicate_object then null;
+  when others then
+    raise notice 'tenancies_no_overlap NOT added (%).', sqlerrm;
+end $do$;
 
 -- =============================================================================
 -- DEFERRED DEMO SEED — must run LAST (see the note in the DEMO MODE section).
