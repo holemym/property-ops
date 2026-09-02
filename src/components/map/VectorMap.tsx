@@ -5,6 +5,15 @@ import * as maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import type { MapProperty } from './PropertyMap'
 
+// CRITICAL — the worker must be a real same-origin file, never bundler-reconstructed.
+// maplibre's default builds cannot survive Turbopack (v5 stringifies its own module
+// functions to rebuild the worker; v6 relies on import.meta.url asset emission — both
+// break SILENTLY: style/sprites/markers load, zero tile requests, blank beige map).
+// scripts/copy-maplibre-worker.mjs (predev/prebuild) keeps this file in sync with the
+// installed maplibre version; CSP-wise it's plain 'self'. Module scope: must run
+// before the first Map is constructed.
+maplibregl.setWorkerUrl('/maplibre-gl-csp-worker.js')
+
 // ---------------------------------------------------------------------------
 // The actual MapLibre-touching component (Track M). Replaces the original Leaflet
 // build: raster OSM tiles under a grayscale filter looked muddy at every zoom, and

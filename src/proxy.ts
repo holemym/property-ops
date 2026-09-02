@@ -42,5 +42,8 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)'],
+  // maplibre-gl-csp-worker.js: the map's worker script (public/, copied by
+  // scripts/copy-maplibre-worker.mjs) — a hot static asset with no reason to pay the
+  // per-request auth check.
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|maplibre-gl-csp-worker\\.js|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)'],
 }
