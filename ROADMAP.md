@@ -59,7 +59,7 @@ five builders in one round. Highlights, by class:
   regenerate; form min/required guards; formatter sweep.
 
 **MIGRATIONS 0033 + 0034 APPLIED 2026-09-02** (user ran the combined paste, "Success.
-No rows returned"; per-object verify query issued — expect 9 indexes / 2 tenancy
+No rows returned"; per-object verify CONFIRMED 2026-09-02: 9 indexes / 2 tenancy
 constraints / 1 enum value). 0033 = 9 query-justified indexes + btree_gist + tenancy
 EXCLUDE/CHECK backstops; 0034 = enum-only ANNOUNCEMENT_PUBLISHED (announcement publish
 fan-out is live from this point). Both folded into schema_bundle.sql.
