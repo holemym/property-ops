@@ -58,11 +58,21 @@ five builders in one round. Highlights, by class:
   filters; invoiceCount head-count (1000-row cap bug); friendly 23505 on reopen-after-
   regenerate; form min/required guards; formatter sweep.
 
-**⚠ MIGRATIONS 0033 + 0034 ARE AUTHORED BUT NOT APPLIED** (user action): 0033 = 9
-query-justified indexes + btree_gist + tenancy EXCLUDE/CHECK backstops (failure-tolerant
-DO blocks — NOTICEs instead of aborting if live rows violate); 0034 = enum-only
-ANNOUNCEMENT_PUBLISHED. Both folded into schema_bundle.sql. Until 0034 runs, announcement
-publish still works — the fan-out is best-effort and its inserts just fail quietly.
+**MIGRATIONS 0033 + 0034 APPLIED 2026-09-02** (user ran the combined paste, "Success.
+No rows returned"; per-object verify query issued — expect 9 indexes / 2 tenancy
+constraints / 1 enum value). 0033 = 9 query-justified indexes + btree_gist + tenancy
+EXCLUDE/CHECK backstops; 0034 = enum-only ANNOUNCEMENT_PUBLISHED (announcement publish
+fan-out is live from this point). Both folded into schema_bundle.sql.
+
+**⚠ NEXT USER ACTION — custom SMTP in the Supabase dashboard** (the go-live blocker for
+outside testers): the built-in mailer's ~2-emails/hour PROJECT-WIDE budget throttles
+every signup confirmation, invite, and magic link (a first-time tester hit it 2026-09-02;
+error message made honest in 155e9c8). Project Settings → Authentication → SMTP →
+custom SMTP (e.g. Resend: smtp.resend.com:465, user `resend`, password = API key,
+sender on a Resend-verified domain), then raise Auth → Rate Limits → emails/hour.
+Google login: provider is DISABLED in the Supabase project (probed live) — its button
+is now env-gated behind NEXT_PUBLIC_AUTH_GOOGLE=1; configure the provider first if
+Google sign-in is wanted. Demo mode is off in prod (no env flag).
 
 **Known follow-ups (deliberate):** TICKET_CREATED notification type (tenant new-request
 fan-out currently reuses TICKET_STATUS_CHANGED — wants its own enum value + icon in a
