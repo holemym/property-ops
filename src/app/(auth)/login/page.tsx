@@ -1,6 +1,7 @@
 import Link from 'next/link'
 
 import { AuthCard } from '@/components/auth/AuthCard'
+import { PasswordInput } from '@/components/auth/PasswordInput'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -12,9 +13,11 @@ import { enterDemo } from '../demo-actions'
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; magicLinkSent?: string }>
+  searchParams: Promise<{ error?: string; magicLinkSent?: string; next?: string }>
 }) {
   const params = await searchParams
+  // Set by the proxy when the gate interrupted a visit; validated again server-side.
+  const nextField = params.next ? <input type="hidden" name="next" value={params.next} /> : null
 
   return (
     <AuthCard
@@ -27,24 +30,27 @@ export default async function LoginPage({
           role="status"
           className="mb-4 rounded-lg bg-muted px-3 py-2 text-sm text-muted-foreground"
         >
-          Check your email for a sign-in link.
+          Check your email for a sign-in link and open it in this browser.
         </div>
       )}
 
       <form action={signInWithPassword} className="flex flex-col gap-4">
+        {nextField}
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="email">Email</Label>
           <Input id="email" name="email" type="email" autoComplete="email" required />
         </div>
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="password">Password</Label>
-          <Input
-            id="password"
-            name="password"
-            type="password"
-            autoComplete="current-password"
-            required
-          />
+          <div className="flex items-baseline justify-between gap-2">
+            <Label htmlFor="password">Password</Label>
+            <Link
+              href="/forgot-password"
+              className="text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+            >
+              Forgot password?
+            </Link>
+          </div>
+          <PasswordInput id="password" name="password" autoComplete="current-password" required />
         </div>
         <Button type="submit" size="lg" className="w-full">
           Sign in
@@ -59,6 +65,7 @@ export default async function LoginPage({
 
       <div className="flex flex-col gap-2.5">
         <form action={signInWithMagicLink} className="flex flex-col gap-1.5">
+          {nextField}
           <Label htmlFor="magic-email" className="text-muted-foreground">
             Email for magic link
           </Label>

@@ -2,18 +2,19 @@ import Link from 'next/link'
 import { MailCheck } from 'lucide-react'
 
 import { AuthCard } from '@/components/auth/AuthCard'
+import { PasswordInput } from '@/components/auth/PasswordInput'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { isInviteOnly } from '@/lib/auth/signup-mode'
 import { isDemoEnabled } from '@/lib/demo'
-import { signUpWithPassword } from '../actions'
+import { signUpWithPassword, resendConfirmation } from '../actions'
 import { enterDemo } from '../demo-actions'
 
 export default async function SignupPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; confirmEmailSent?: string }>
+  searchParams: Promise<{ error?: string; confirmEmailSent?: string; resent?: string }>
 }) {
   const params = await searchParams
 
@@ -48,19 +49,41 @@ export default async function SignupPage({
 
   if (params.confirmEmailSent) {
     return (
-      <AuthCard title="Check your email">
+      <AuthCard title="Check your email" error={params.error}>
         <div className="flex flex-col items-center gap-4 py-2 text-center">
           <div className="flex size-11 items-center justify-center rounded-full bg-muted text-foreground">
             <MailCheck className="size-5" aria-hidden />
           </div>
           <p className="text-sm text-muted-foreground">
-            We sent a confirmation link to your inbox. Open it to activate your account, then sign
-            in.
+            {params.resent
+              ? 'If that account still needs confirming, a new link is on its way.'
+              : 'We sent a confirmation link. Open it in this browser to activate your account.'}
           </p>
           <Button render={<Link href="/login" />} nativeButton={false} size="lg" className="w-full">
             Back to sign in
           </Button>
         </div>
+
+        {/* The two ways this screen strands people: the email never arrives, or the
+            address already had an account (Supabase then sends nothing and says nothing,
+            by design). Both get a next step here without revealing which case it is. */}
+        <form action={resendConfirmation} className="mt-5 flex flex-col gap-2 border-t pt-5">
+          <Label htmlFor="resend-email" className="text-muted-foreground">
+            No email? Send the link again
+          </Label>
+          <div className="flex gap-2">
+            <Input id="resend-email" name="email" type="email" autoComplete="email" required />
+            <Button type="submit" variant="outline" className="shrink-0">
+              Resend
+            </Button>
+          </div>
+        </form>
+        <p className="mt-4 text-center text-sm text-muted-foreground">
+          Already have an account?{' '}
+          <Link href="/forgot-password" className="font-medium text-foreground underline-offset-4 hover:underline">
+            Reset your password
+          </Link>
+        </p>
       </AuthCard>
     )
   }
@@ -82,10 +105,9 @@ export default async function SignupPage({
         </div>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="password">Password</Label>
-          <Input
+          <PasswordInput
             id="password"
             name="password"
-            type="password"
             autoComplete="new-password"
             minLength={10}
             required

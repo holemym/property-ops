@@ -54,7 +54,7 @@ async function inviteOrAttachUser(
   workspaceId: string
 ): Promise<{ userId: string; attached: boolean } | { error: string }> {
   const { data, error } = await admin_client.auth.admin.inviteUserByEmail(email, {
-    redirectTo: `${AUTH_CALLBACK_URL}?next=${encodeURIComponent('/auth/set-password')}`,
+    redirectTo: `${AUTH_CALLBACK_URL}?next=${encodeURIComponent('/auth/set-password?reason=invite')}`,
   })
 
   if (!error) {

@@ -37,7 +37,20 @@ export function friendlyAuthError(error: AuthErrorLike): string {
   // PROJECT-WIDE budget on Supabase's mailer (2/hour on the built-in one), not the
   // caller's own attempts — "too many attempts" was blaming first-time users for it.
   if (code === 'over_email_send_rate_limit' || message.includes('email rate limit')) {
-    return 'The email service is at its hourly sending limit — please try again in about an hour.'
+    return 'The email service reached its hourly sending limit. Try again in about an hour.'
+  }
+  // updateUser on the set-password screen when the "new" password is the current one.
+  if (code === 'same_password' || message.includes('different from the old password')) {
+    return 'Choose a password different from your current one.'
+  }
+  // The reset/invite link's session died before the form was submitted.
+  if (
+    code === 'session_not_found' ||
+    code === 'session_expired' ||
+    code === 'refresh_token_not_found' ||
+    message.includes('auth session missing')
+  ) {
+    return 'Your session expired. Sign in again, or request a new link.'
   }
   if (code === 'over_request_rate_limit' || message.includes('rate limit')) {
     return 'Too many attempts. Try again in a few minutes.'

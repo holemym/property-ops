@@ -44,10 +44,25 @@ describe('friendlyAuthError', () => {
   // these pin the ORDER of the checks too.
   it('maps the project-wide email send limit to its own message, by code and by message', () => {
     expect(friendlyAuthError({ code: 'over_email_send_rate_limit' })).toBe(
-      'The email service is at its hourly sending limit — please try again in about an hour.'
+      'The email service reached its hourly sending limit. Try again in about an hour.'
     )
     expect(friendlyAuthError({ message: 'email rate limit exceeded' })).toBe(
-      'The email service is at its hourly sending limit — please try again in about an hour.'
+      'The email service reached its hourly sending limit. Try again in about an hour.'
+    )
+  })
+
+  it('maps reusing the current password on the set-password screen', () => {
+    expect(friendlyAuthError({ code: 'same_password' })).toBe(
+      'Choose a password different from your current one.'
+    )
+  })
+
+  it('maps a dead session on the set-password screen to a next step', () => {
+    expect(friendlyAuthError({ code: 'session_not_found' })).toBe(
+      'Your session expired. Sign in again, or request a new link.'
+    )
+    expect(friendlyAuthError({ message: 'Auth session missing!' })).toBe(
+      'Your session expired. Sign in again, or request a new link.'
     )
   })
 

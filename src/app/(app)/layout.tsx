@@ -1,4 +1,6 @@
+import { Suspense } from 'react'
 import { requireWorkspace } from '@/lib/auth/session'
+import { FlashToast } from '@/components/layout/FlashToast'
 import { createClient } from '@/lib/supabase/server'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { TopNav } from '@/components/layout/TopNav'
@@ -55,6 +57,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </main>
       </div>
       <Toaster />
+      {/* useSearchParams in a layout needs its own Suspense boundary. */}
+      <Suspense fallback={null}>
+        <FlashToast />
+      </Suspense>
     </div>
   )
 }
