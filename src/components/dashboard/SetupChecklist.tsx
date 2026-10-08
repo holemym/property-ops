@@ -53,11 +53,19 @@ export function SetupChecklist({ progress }: { progress: SetupProgress }) {
 
   return (
     <section className="mb-6 overflow-hidden rounded-xl border bg-card">
-      <div className="border-b px-4 py-3">
-        <h2 className="text-sm font-semibold text-foreground">Finish setting up</h2>
-        <p className="text-xs text-muted-foreground">
-          Tickets, rent, and statements all build on these steps.
-        </p>
+      <div className="flex items-baseline justify-between gap-2 border-b px-4 py-3">
+        <div className="flex min-w-0 flex-col">
+          <h2 className="text-sm font-semibold text-foreground">Finish setting up</h2>
+          <p className="text-xs text-muted-foreground">
+            Tickets, rent, and statements all build on these steps.
+          </p>
+        </div>
+        <Link
+          href="/guide"
+          className="shrink-0 text-xs font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+        >
+          Full guide
+        </Link>
       </div>
       <ul className="flex flex-col divide-y">
         {steps.map((step) => {

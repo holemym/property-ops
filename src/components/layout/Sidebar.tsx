@@ -27,6 +27,7 @@ import {
   UserCog,
   Home,
   Megaphone,
+  BookOpen,
   type LucideIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -97,6 +98,7 @@ const OPERATOR_GROUPS: NavGroup[] = [
     items: [
       { href: '/settings/security', label: 'Security', icon: ShieldCheck },
       { href: '/settings/users', label: 'Users', icon: UserCog, permission: 'users:invite' },
+      { href: '/guide', label: 'Guide', icon: BookOpen },
     ],
   },
 ]
@@ -127,6 +129,7 @@ const TENANT_GROUPS: NavGroup[] = [
       // is the same concept; ReceiptText stays reserved for Rent roll.
       { href: '/portal/charges', label: 'My charges', icon: Receipt },
       { href: '/portal/announcements', label: 'Announcements', icon: Megaphone },
+      { href: '/guide', label: 'Guide', icon: BookOpen },
     ],
   },
 ]

@@ -29,6 +29,7 @@ import {
   UserCog,
   Megaphone,
   Bell,
+  BookOpen,
   type LucideIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -70,6 +71,7 @@ const COMMANDS: Command[] = [
   { id: 'go-notifications', label: 'Notifications', icon: Bell, href: '/notifications', group: 'Go to' },
   { id: 'go-security', label: 'Security', icon: ShieldCheck, href: '/settings/security', group: 'Go to' },
   { id: 'go-users', label: 'Users', icon: UserCog, href: '/settings/users', group: 'Go to', permission: 'users:invite' },
+  { id: 'go-guide', label: 'Guide', icon: BookOpen, href: '/guide', group: 'Go to' },
   { id: 'new-ticket', label: 'New ticket', icon: CirclePlus, href: '/tickets/new', group: 'Create', permission: 'tickets:write' },
   { id: 'new-invoice', label: 'New invoice', icon: CirclePlus, href: '/invoices/new', group: 'Create', permission: 'finance:write' },
   { id: 'new-property', label: 'New property', icon: CirclePlus, href: '/properties/new', group: 'Create', permission: 'properties:write' },

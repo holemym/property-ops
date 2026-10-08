@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { Bell, ChevronsUpDown, KeyRound, LogOut, User } from 'lucide-react'
+import { Bell, BookOpen, ChevronsUpDown, KeyRound, LogOut, User } from 'lucide-react'
 import { signOut } from '@/app/(auth)/actions'
 import { cn } from '@/lib/utils'
 import {
@@ -106,6 +106,10 @@ export function TopNav({
             {/* All roles: /auth/set-password gates on requireUser only. This is the ONLY
                 password path a tenant has (operators could already reach it via the
                 invite flow's redirect); rendered for everyone for consistency. */}
+            <DropdownMenuItem render={<Link href="/guide" />}>
+              <BookOpen />
+              Guide
+            </DropdownMenuItem>
             <DropdownMenuItem render={<Link href="/auth/set-password" />}>
               <KeyRound />
               Change password
