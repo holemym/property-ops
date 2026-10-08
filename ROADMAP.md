@@ -7,7 +7,52 @@ of truth for what to build next.** Strategy lives in
 
 ---
 
-## ▶ HANDOVER — current state (as of 2026-09-01, post virtual-journey audit + fix wave)
+## ▶ HANDOVER — current state (as of 2026-10-08, post auth-recovery + in-app guide)
+
+**SHIPPED 2026-10-08 (HEAD 27cc842, deployed, 696 tests, lint + build green).** David asked to port
+the "nobody gets stranded" patterns from the studio's recent apps (survey: kicks-crew v2, Derech,
+englibee-hive, Dossier) and for a clickable walkthrough before a client meeting.
+- **Auth recovery:** `/forgot-password` (non-enumerating, rate-limited) → reset link →
+  `/auth/set-password?reason=reset`; set-password names its reason (invite/reset/change), keeps
+  it across errors, lands each role home with a "Password updated" flash (`FlashToast`, fixed
+  key allow-list). Show/hide toggle on every password field (`PasswordInput`). Signup "check
+  your email" card gained resend + "already have an account? reset" (Supabase sends NOTHING for
+  an existing address — the 2026-09-02 tester report). Sign-in returns to the interrupted page
+  (`?next=` through gate, both forms, and the magic link).
+- **Email-link robustness (live-verified with curl):** when Supabase falls back to the Site URL
+  with `?code=`, the proxy now FORWARDS it to the callback (it used to drop it at /login — the
+  "clicked the link, back at sign-in" bug); the callback handles `token_hash` too, maps link
+  errors (expired / reused / opened in another browser = PKCE verifier missing) to next steps,
+  sends broken reset links back to `/forgot-password`, and validates `next` as a same-origin
+  path (`@evil.com` was an OPEN REDIRECT). Pure helpers in `src/lib/auth/callback.ts`, tested.
+- **In-app guide `/guide`** (sidebar, account menu, Ctrl K, dashboard checklist): one chapter set
+  per audience; every step that happens on a screen links into it; operator chapters state the
+  workspace's REAL numbers (`src/lib/data/guide.ts`, head counts) so it doubles as a checklist;
+  lifecycles drawn with the real status badges, each stage linking to its filtered list;
+  residents see the real progress tracker. Links filtered by the permission matrix
+  (`src/components/guide/chapters.tsx`, tested). **Rule: a change to what the app does updates
+  the guide's chapters in the same commit** (kicks-crew's standing rule).
+- Turbopack root pinned in next.config (the studio folder above the repo has its own lockfile;
+  first dev compiles hung for minutes); ESLint ignores the vendored map worker; gate skips /_vercel/.
+
+**USER ACTIONS before outside testers / the client meeting:**
+1. **Custom SMTP** (Supabase → Project Settings → Authentication → SMTP): either fully filled
+   (e.g. Resend: smtp.resend.com:465, user `resend`, password = API key, sender on a verified
+   domain) or OFF. Enabled-with-empty-fields breaks every auth email. Without SMTP the built-in
+   mailer allows ~2 auth emails per hour for the whole project (invites, resets, confirmations).
+2. **Auth → URL Configuration:** Site URL `https://property-ops-sandy.vercel.app`, Redirect URLs
+   `https://property-ops-sandy.vercel.app/**`. The code now survives a missing allow-list entry,
+   but the fallback drops `next`, so an invited resident would land signed in WITHOUT being asked
+   to set a password.
+3. Optional: Google provider + `NEXT_PUBLIC_AUTH_GOOGLE=1`; asymmetric JWT signing keys.
+
+**Not built (say so if a client asks):** online rent payment, e-signature, German UI, the
+Betriebskosten operator UI (engine live, no screen), proration in Generate rent, pending-invite
+list/resend on Settings → Users, unsaved-changes guards.
+
+---
+
+## ▶ previous handover (2026-09-01, post virtual-journey audit + fix wave)
 
 **VIRTUAL-JOURNEY AUDIT + FIX WAVE SHIPPED 2026-09-01** (677 tests, lint + build green).
 Six read-only tracers walked the owner journey (auth/onboarding, tickets+calendar,
