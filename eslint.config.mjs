@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Vendored minified build, copied from node_modules by scripts/copy-maplibre-worker.mjs.
+    "public/maplibre-gl-csp-worker.js",
   ]),
 ]);
 

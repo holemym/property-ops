@@ -30,6 +30,11 @@ const CSP = [
 ].join("; ");
 
 const nextConfig: NextConfig = {
+  // Pin the workspace root to this app. Locally the repo sits inside a larger folder
+  // with its own package-lock.json, and Next's inference picked THAT folder, so
+  // Turbopack crawled every sibling project (a first dev compile hung for minutes).
+  // On Vercel the repo is alone and this resolves to the same directory.
+  turbopack: { root: process.cwd() },
   // Client router cache for dynamic routes (PERF-3). Every route here is dynamic
   // (cookies), so the Next default of 0 refetched the ENTIRE page on every repeat
   // navigation — back/forward and sidebar re-visits within 30s are now instant
